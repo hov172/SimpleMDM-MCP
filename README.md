@@ -154,33 +154,106 @@ Quit and reopen the app. You should see a tools icon in the chat input bar — c
 
 ---
 
-## Connect to Claude Code
+## Connect to Claude Code (CLI)
 
-```bash
-claude mcp add simplemdm \
-  -e SIMPLEMDM_API_KEY=your-api-key-here \
-  -- npx simplemdm-mcp
-```
+The `claude` CLI has a built-in `mcp add` subcommand. Pick whichever transport matches how you installed the server:
 
-Or from source:
-```bash
-claude mcp add simplemdm \
-  -e SIMPLEMDM_API_KEY=your-api-key-here \
-  -- node /path/to/SimpleMDM-MCP/dist/index.js
-```
-
-From Docker:
+**Docker:**
 ```bash
 claude mcp add simplemdm \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   -- docker run --rm -i simplemdm-mcp
 ```
 
-If you want to keep secrets in a file instead of repeating `-e` flags:
+**npm (global install):**
+```bash
+claude mcp add simplemdm \
+  -e SIMPLEMDM_API_KEY=your-api-key-here \
+  -- npx simplemdm-mcp
+```
+
+**From source:**
+```bash
+claude mcp add simplemdm \
+  -e SIMPLEMDM_API_KEY=your-api-key-here \
+  -- node /path/to/SimpleMDM-MCP/dist/index.js
+```
+
+To keep secrets in a file instead of repeating `-e` flags, point Docker at an env-file:
 ```bash
 claude mcp add simplemdm \
   -- docker run --rm -i --env-file /absolute/path/to/SimpleMDM-MCP/.env simplemdm-mcp
 ```
+
+Verify the server is connected:
+```bash
+claude mcp list
+```
+
+Remove it later with:
+```bash
+claude mcp remove simplemdm
+```
+
+---
+
+## Connect to Codex CLI (OpenAI)
+
+The OpenAI [Codex CLI](https://github.com/openai/codex) supports stdio MCP servers via `~/.codex/config.toml`.
+
+Open (or create) `~/.codex/config.toml` and add:
+
+```toml
+[mcp_servers.simplemdm]
+command = "docker"
+args = ["run", "--rm", "-i", "--env-file", "/absolute/path/to/SimpleMDM-MCP/.env", "simplemdm-mcp"]
+```
+
+Or without Docker:
+
+```toml
+[mcp_servers.simplemdm]
+command = "node"
+args = ["/absolute/path/to/SimpleMDM-MCP/dist/index.js"]
+env = { SIMPLEMDM_API_KEY = "your-api-key-here" }
+```
+
+Restart `codex`. The SimpleMDM tools will appear in tool listings during a session.
+
+---
+
+## Connect to ChatGPT
+
+ChatGPT's custom connectors require an **HTTPS URL** (SSE or streamable-HTTP transport). This server speaks stdio, so you need a bridge.
+
+**1. Run an MCP stdio → HTTP proxy** (e.g. [`mcp-proxy`](https://github.com/sparfenyuk/mcp-proxy)):
+
+```bash
+pip install mcp-proxy
+
+SIMPLEMDM_API_KEY=your-api-key-here \
+mcp-proxy --sse-port 8080 -- \
+  node /absolute/path/to/SimpleMDM-MCP/dist/index.js
+```
+
+Expose port 8080 over HTTPS (e.g. `cloudflared`, `ngrok`, or a reverse proxy with TLS). ChatGPT will not accept plain HTTP URLs.
+
+**2. Add it as a connector in ChatGPT**
+
+Available on ChatGPT **Pro, Business, Enterprise, and Edu** plans:
+
+1. Open **Settings → Connectors → Advanced → Developer mode** and enable it.
+2. In a chat, open **+ → Add connector → + Create**.
+3. Fill in:
+   - **Name:** `SimpleMDM`
+   - **MCP server URL:** your HTTPS URL (e.g. `https://your-tunnel.example.com/sse`)
+   - **Authentication:** whatever your proxy/tunnel requires (OAuth, header token, or none for a locked-down local tunnel)
+4. Save, then enable the connector in the composer's tool picker.
+
+**Notes:**
+- Anyone with the URL can call your fleet tools. Put the proxy behind authentication or an IP-restricted tunnel — don't expose it publicly.
+- ChatGPT caches connector schemas; if you add/remove tools, refresh the connector in Settings.
+- If your ChatGPT plan doesn't expose developer-mode connectors, you can still use the MCP server from the **ChatGPT Apps SDK** or through any agent framework that supports MCP (LangChain, Mastra, OpenAI Agents SDK, etc.).
 
 ---
 
