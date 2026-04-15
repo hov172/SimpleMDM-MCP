@@ -1,0 +1,40 @@
+{
+  "name": "simplemdm-mcp",
+  "version": "0.2.0",
+  "description": "MCP server for SimpleMDM — query and manage your MDM fleet with natural language through Claude.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "simplemdm-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mcp",
+    "simplemdm",
+    "mdm",
+    "apple",
+    "macos",
+    "ios",
+    "fleet-management",
+    "claude",
+    "anthropic"
+  ],
+  "author": "Jay Ayala (hov172)",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
