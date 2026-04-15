@@ -1,5 +1,9 @@
 # SimpleMDM MCP Server
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)](package.json)
+[![MCP](https://img.shields.io/badge/MCP-compatible-6E56CF.svg)](https://modelcontextprotocol.io)
+
 An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) that lets you query and manage your fleet using natural language through Claude Desktop, Claude Code, or any MCP-compatible client.
 
 ---
@@ -15,6 +19,10 @@ Once connected, you can ask Claude things like:
 - *"How many devices are enrolled vs unenrolled?"*
 - *"What apps are installed on the device with serial ABC123XYZ?"*
 - *"Lock device 1234 with the message 'Contact IT at x4400'"*
+- *"Run the 'rotate FileVault keys' script on every Mac in the Finance assignment group"*
+- *"Set the `department` custom attribute to 'Sales' on all devices in the Sales device group"*
+- *"Show me which DDM declarations are assigned to serial ABC123XYZ and which are pending"*
+- *"List every managed app config pushed in the last 24 hours and the devices that received them"*
 
 Claude decides which tools to call and in what combination. You just ask the question.
 
@@ -520,6 +528,28 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 ---
 
+## Rate limits and error behavior
+
+SimpleMDM enforces an API rate limit of roughly **60 requests per minute** per account. Tools that fan out across the fleet (bulk `list_devices` pagination, `push_apps_to_group`, `create_script_job` on large groups) can hit this quickly.
+
+How the server behaves on common API responses:
+
+| API response | Server behavior |
+|---|---|
+| `200 OK` | Returned to Claude as tool output |
+| `401 Unauthorized` | Surfaced as an error — API key is invalid or revoked |
+| `403 Forbidden` | Surfaced as an error — API key lacks the required permission domain for that tool |
+| `404 Not Found` | Returned as an error with the resource identifier |
+| `429 Too Many Requests` | Returned as an error; Claude will typically retry with a different approach or wait |
+| `5xx` | Surfaced as a server error; retry the question after a short wait |
+
+**Tips for large fleets**
+- Prefer `get_fleet_summary` over `list_devices` for posture/KPI questions — it's one call.
+- When iterating over devices, let Claude paginate naturally rather than asking for "all 5000 devices at once."
+- For writes that touch many devices (e.g. `push_apps_to_group`), SimpleMDM queues server-side — check `list_script_jobs` / app install status a minute later rather than re-triggering.
+
+---
+
 ## Troubleshooting
 
 **Tools don't appear in Claude Desktop**
@@ -538,6 +568,18 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 **Write action returns 403**
 - The API key lacks the required permission domain. Check the tool's required permission in the Tools table above and update the key's permissions in SimpleMDM.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+---
+
+## License
+
+[MIT](LICENSE) © Jay Ayala ([@hov172](https://github.com/hov172))
 
 ---
 
