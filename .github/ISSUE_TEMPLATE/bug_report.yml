@@ -1,0 +1,66 @@
+name: Bug report
+description: Something isn't working as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The exact tool call or natural-language prompt, and what Claude / your client did with it.
+        Include the error message (redact API keys and device serials if sensitive).
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - npm (global)
+        - Docker
+        - From source (node dist/index.js)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`
+      placeholder: v20.11.1
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Claude Desktop / Claude Code CLI / Codex CLI / ChatGPT / other — include version if known.
+      placeholder: Claude Code CLI 1.x
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: simplemdm-mcp version or commit SHA
+      placeholder: 0.2.0 or 8b3ec2b
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Related logs, env vars set (names only, not values), or a link to a discussion.

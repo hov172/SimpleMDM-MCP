@@ -6,6 +6,27 @@
 
 An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) that lets you query and manage your fleet using natural language through Claude Desktop, Claude Code, or any MCP-compatible client.
 
+## Contents
+
+- [What this lets you do](#what-this-lets-you-do)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Install](#install)
+- [Connect to Claude Desktop](#connect-to-claude-desktop)
+- [Connect to Claude Code (CLI)](#connect-to-claude-code-cli)
+- [Connect to Codex CLI (OpenAI)](#connect-to-codex-cli-openai)
+- [Connect to ChatGPT](#connect-to-chatgpt)
+- [Use With Other MCP Clients](#use-with-other-mcp-clients)
+- [Enable write actions](#enable-write-actions)
+- [Tools](#tools)
+- [API key permissions](#api-key-permissions)
+- [Environment variables](#environment-variables)
+- [Security](#security)
+- [Rate limits and error behavior](#rate-limits-and-error-behavior)
+- [Troubleshooting](#troubleshooting)
+- [Changelog](#changelog)
+- [License](#license)
+
 ---
 
 ## What this lets you do

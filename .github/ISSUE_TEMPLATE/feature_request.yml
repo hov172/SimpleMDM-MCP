@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a new MCP tool or improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the fleet management task you can't currently accomplish (or have to work around).
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        Which SimpleMDM API endpoint(s) would need to be exposed?
+        Link the [SimpleMDM API docs](https://api.simplemdm.com) page if possible.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: write
+    attributes:
+      label: Is this a read or write tool?
+      options:
+        - Read (always available)
+        - Write (requires SIMPLEMDM_ALLOW_WRITES=true)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Can this already be done by composing existing tools?

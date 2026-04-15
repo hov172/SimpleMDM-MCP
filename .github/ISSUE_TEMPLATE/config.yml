@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/hov172/SimpleMDM-MCP/security/advisories/new
+    about: Report a security vulnerability privately. Do not file a public issue.
+  - name: SimpleMDM API question
+    url: https://simplemdm.com/docs
+    about: API behavior, rate limits, or data issues are handled by SimpleMDM, not this project.
