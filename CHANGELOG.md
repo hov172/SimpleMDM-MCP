@@ -4,13 +4,79 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0]
+
+Security-hardening and reliability release. No breaking changes for
+existing callers — every `tools/list` entry, resource URI, and prompt
+name is unchanged. New behavior is additive and tunable via env vars.
 
 ### Added
 - Committed `.claude/settings.json` pre-approving all read-only SimpleMDM
   MCP tools and safe shell helpers for Claude Code contributors. Write
   and destructive tools still prompt per call.
+- `.claude/settings.auto.example.json` — opt-in auto-mode permission profile
+  for Claude Code users who want `defaultMode: "auto"` with a curated deny
+  list. Denies genuine data-loss operations (`rm`, `git reset --hard`,
+  `git clean -f*`, force-push, `npm publish`, `docker system prune`,
+  `gh repo delete`, etc.) and SimpleMDM write tools that can impact devices
+  (`wipe_device`, `delete_*`, `clear_*`). Common dev-workflow commands
+  (`git commit --amend`, `git rebase`, `killall`, `docker rm`) are allowed
+  — they're only dangerous when pushed, which the force-push deny still
+  blocks. Template; never contains credentials.
 - `CONTRIBUTING.md` section documenting the permission policy.
+- Server-side input validation against each tool's declared `inputSchema`
+  (required fields + primitive type checks) before dispatch.
+- URL path-segment validator (`seg()`) that rejects disallowed characters
+  (`/`, `?`, `#`, control chars) and `encodeURIComponent`-encodes every
+  interpolated path parameter — blocks path traversal / query injection
+  through tool arguments.
+- Request timeouts via `AbortSignal.timeout` on all upstream calls
+  (SimpleMDM, MunkiReport, Report-SimpleMDM). Tunable via
+  `SIMPLEMDM_TIMEOUT_MS` / `LOCAL_APP_TIMEOUT_MS`.
+- Automatic retry with exponential backoff for `429` / `5xx` responses,
+  honoring `Retry-After`. Tunable via `SIMPLEMDM_MAX_RETRIES`.
+- Hard cap on fleet-wide pagination (`SIMPLEMDM_MAX_PAGES`, default 200)
+  to bound memory and request volume on large fleets.
+- OCI labels on the published Docker image (title, description, source,
+  license).
+
+### Changed
+- Dockerfile base bumped to `node:22-alpine`; image now runs as the
+  non-root `node` user (`COPY --chown=node:node`, `USER node`).
+- Fleet-wide device pagination consolidated behind a shared
+  `paginateDevices()` async generator; removed four duplicated while-loops
+  in `get_fleet_summary`, `get_security_posture`, and the
+  `simplemdm://reports/enrollment` / `.../reports/filevault` resources.
+- Write-tool annotation is now driven by an explicit `WRITE_TOOLS` set
+  rather than a description-string emoji prefix; `readOnlyHint` can no
+  longer silently flip when a description is rewritten.
+- Basic-auth header pre-computed once at module load instead of on every
+  request.
+- Tool and resource responses are serialized as compact JSON (no
+  indentation) — reduces LLM token usage.
+- Top-level side effects (`process.exit`, `checkLocalApp`, `server.connect`)
+  moved into a `main()` entry point; the module is now safely importable.
+  `main()` catches errors and exits cleanly, and registers SIGINT/SIGTERM
+  handlers that call `server.close()` before exit.
+- `checkLocalApp()` now throws on misconfiguration instead of calling
+  `process.exit(1)` from inside the module.
+
+### Fixed
+- **FileVault compliance resource** previously used an `os_version` regex
+  that matched iOS versions (10–19) as well as macOS. It now gates strictly
+  on `model_name` matching `/Mac/i`.
+- **`get_device_full_profile`** no longer fetches the device record twice
+  (once for the parallel call, once inside the logs closure); the promise
+  is reused.
+- **`list_logs` / `get_device_logs`** handler had a tautological ternary
+  (`args.serial_number ?? (name === "get_device_logs" ? args.serial_number : undefined)`)
+  — both branches read the same value. Replaced with the existing `qs()`
+  helper.
+- **MunkiReport auth fallback** previously fell back to the SimpleMDM API
+  key when `MUNKIREPORT_AUTH_HEADER_VALUE` was empty. It now throws an
+  explicit configuration error, so the SimpleMDM key cannot leak to the
+  MunkiReport endpoint.
+- `Content-Type: application/json` is now only set on requests with a body.
 
 ## [0.3.0]
 

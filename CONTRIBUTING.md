@@ -7,10 +7,13 @@ Thanks for your interest in improving SimpleMDM-MCP.
 ```bash
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
-nvm use          # reads .nvmrc (Node 20)
+nvm use          # reads .nvmrc
 npm install
 npm run build
 ```
+
+Node 18 is the minimum supported version. CI runs against 18, 20, and 22;
+the published Docker image uses `node:22-alpine`.
 
 Run against your own SimpleMDM account for testing:
 
@@ -55,17 +58,36 @@ Security issues: see [SECURITY.md](SECURITY.md) for the private disclosure path.
 
 ## Claude Code permissions
 
-This repo ships a committed `.claude/settings.json` that pre-approves the
-read-only SimpleMDM MCP tools and a handful of safe shell utilities (`jq`,
-`awk`, `git status`/`diff`/`log`, `npm run`, `docker build`, etc.). That
-means contributors using Claude Code don't see a prompt for every
-`list_devices` or `git status` call.
+This repo ships two permission profiles:
 
-Deliberately **not** pre-approved:
-- Write tools: `lock_device`, `wipe_device`, `unenroll_device`, all
-  `create_*` / `update_*` / `delete_*` / `clear_*` / `rotate_*`, and
-  anything that mutates fleet state. These still prompt per call.
-- Destructive git (`git reset --hard`, `git push --force`, `git rebase`).
+- **`.claude/settings.json`** (committed, conservative) — pre-approves the
+  read-only SimpleMDM MCP tools and a handful of safe shell utilities (`jq`,
+  `awk`, `git status`/`diff`/`log`, `npm run`, `docker build`, etc.).
+  Contributors using Claude Code don't see a prompt for every
+  `list_devices` or `git status` call.
+- **`.claude/settings.auto.example.json`** (template, opt-in) — same allow
+  set plus `defaultMode: "auto"` and a deny list covering data-loss shell
+  (`rm`, `sudo`, `dd`, `mkfs`, `shutdown`), destructive git (`reset --hard`,
+  `clean -f*`, `checkout .`, `branch -D`, `tag -d`, `filter-branch`),
+  force-push (`push --force*`, `push --delete`), `npm publish/unpublish`,
+  `docker system prune`/`volume rm`, `gh pr/issue/release/repo delete`, and
+  the SimpleMDM tools that can impact devices (`wipe_device`,
+  `unenroll_device`, all `delete_*`, all `clear_*` password tools). Copy to
+  `.claude/settings.local.json` (gitignored) or `~/.claude/settings.json`
+  to use it.
+
+  Common dev-workflow commands are deliberately **allowed** in the template
+  even though they sound scary: `git commit --amend`, `git rebase`,
+  `git restore --staged`, `killall`/`pkill`/`kill -9`, `docker rm`/`rmi`,
+  `chmod -R`/`chown -R`. None of these lose data on their own, and
+  `git push --force*` is still denied so rewritten local history can't
+  overwrite the remote.
+
+Deliberately **not** pre-approved anywhere:
+- SimpleMDM writes that mutate fleet state (`lock_device`, `create_*`,
+  `update_*`, `rotate_*`, etc.) — these prompt per call.
+- Hard data-loss git (`reset --hard`, `clean -f*`, `checkout .`,
+  `push --force*`).
 
 Personal overrides go in `.claude/settings.local.json` (gitignored). Don't
 commit destructive allows to the tracked `.claude/settings.json`.

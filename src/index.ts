@@ -26,22 +26,62 @@ const MR_HNAME   = process.env.MUNKIREPORT_AUTH_HEADER_NAME ?? "";
 const MR_HVALUE  = process.env.MUNKIREPORT_AUTH_HEADER_VALUE ?? "";
 const MR_COOKIE  = process.env.MUNKIREPORT_COOKIE ?? "";
 
-if (!USE_LOCAL_APP && !API_KEY) {
-  console.error("ERROR: SIMPLEMDM_API_KEY is required unless LOCAL_APP_MODE=true.");
-  process.exit(1);
-}
-if (USE_LOCAL_APP) await checkLocalApp();
+const REQUEST_TIMEOUT_MS = Number(process.env.SIMPLEMDM_TIMEOUT_MS ?? 30_000);
+const MAX_RETRIES        = Number(process.env.SIMPLEMDM_MAX_RETRIES ?? 3);
+const MAX_PAGES          = Number(process.env.SIMPLEMDM_MAX_PAGES ?? 200);
+
+// Pre-computed auth header — avoids re-encoding on every request.
+const AUTH_HEADER = API_KEY ? `Basic ${Buffer.from(`${API_KEY}:`).toString("base64")}` : "";
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
+class HttpError extends Error {
+  constructor(readonly upstream: string, readonly status: number, readonly bodyExcerpt: string) {
+    super(`${upstream} ${status}`);
+  }
+}
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+async function fetchWithRetry(upstream: string, url: string, init: RequestInit): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      // Retry 429 and 5xx with Retry-After / exponential backoff.
+      if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : Math.min(1000 * 2 ** attempt, 10_000);
+        await sleep(delayMs);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (attempt >= MAX_RETRIES) break;
+      await sleep(Math.min(1000 * 2 ** attempt, 10_000));
+    }
+  }
+  throw new Error(`${upstream} request failed after ${MAX_RETRIES + 1} attempts: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
+}
+
+async function throwForStatus(upstream: string, res: Response): Promise<never> {
+  const body = await res.text().catch(() => "");
+  // Cap body excerpt to avoid leaking large upstream payloads into client errors.
+  const excerpt = body.slice(0, 500);
+  throw new HttpError(upstream, res.status, excerpt);
+}
+
 async function simpleMDM(path: string, opts: RequestInit = {}): Promise<unknown> {
-  const creds = Buffer.from(`${API_KEY}:`).toString("base64");
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/json", ...(opts.headers ?? {}) },
-  });
-  if (!res.ok) throw new Error(`SimpleMDM ${res.status}: ${await res.text()}`);
-  // 204 No Content — return success object
+  const headers: Record<string, string> = {
+    Authorization: AUTH_HEADER,
+    ...(opts.headers as Record<string, string> ?? {}),
+  };
+  if (opts.body != null) headers["Content-Type"] = "application/json";
+  const res = await fetchWithRetry("SimpleMDM", `${BASE}${path}`, { ...opts, headers });
+  if (!res.ok) await throwForStatus("SimpleMDM", res);
   if (res.status === 204) return { success: true };
   return res.json();
 }
@@ -50,9 +90,12 @@ async function munkiReport(route: string): Promise<unknown> {
   if (!MR_BASE) throw new Error("MunkiReport not configured — set MUNKIREPORT_BASE_URL.");
   const headers: Record<string, string> = {};
   if (MR_COOKIE) headers["Cookie"] = MR_COOKIE;
-  if (MR_HNAME)  headers[MR_HNAME] = MR_HVALUE || API_KEY;
-  const res = await fetch(`${MR_BASE}${MR_PREFIX}${route}`, { headers });
-  if (!res.ok) throw new Error(`MunkiReport ${res.status}: ${await res.text()}`);
+  if (MR_HNAME) {
+    if (!MR_HVALUE) throw new Error("MunkiReport auth header set (MUNKIREPORT_AUTH_HEADER_NAME) but MUNKIREPORT_AUTH_HEADER_VALUE is empty.");
+    headers[MR_HNAME] = MR_HVALUE;
+  }
+  const res = await fetchWithRetry("MunkiReport", `${MR_BASE}${MR_PREFIX}${route}`, { headers });
+  if (!res.ok) await throwForStatus("MunkiReport", res);
   return res.json();
 }
 
@@ -69,6 +112,19 @@ function requireWrites(): void {
 
 function j(body: unknown): string { return JSON.stringify(body); }
 
+// seg() — encode an untrusted value for use as a single URL path segment.
+// Rejects non-string/number values and values containing "/" or control chars,
+// preventing path traversal and query injection via tool arguments.
+function seg(value: unknown, name = "path segment"): string {
+  if (typeof value !== "string" && typeof value !== "number")
+    throw new Error(`Invalid ${name}: expected string or number, got ${typeof value}`);
+  const s = String(value);
+  if (s.length === 0) throw new Error(`Invalid ${name}: empty`);
+  // eslint-disable-next-line no-control-regex
+  if (/[\/\?\#\x00-\x1f]/.test(s)) throw new Error(`Invalid ${name}: contains disallowed characters`);
+  return encodeURIComponent(s);
+}
+
 type DeviceAttributes = {
   status?: string | null;
   enrollment_status?: string | null;
@@ -76,6 +132,7 @@ type DeviceAttributes = {
   is_supervised?: boolean | null;
   dep_enrolled?: boolean | null;
   filevault_enabled?: boolean | null;
+  [key: string]: unknown;
 };
 
 type DeviceRecord = {
@@ -90,6 +147,27 @@ type PaginatedResponse<T> = {
 
 function getDeviceStatus(attributes: DeviceAttributes): string {
   return attributes.status ?? attributes.enrollment_status ?? "unknown";
+}
+
+// Paginate SimpleMDM /devices bypassing the local-app shortcut (used by derived
+// fleet rollups). Hard-capped by MAX_PAGES to bound memory/time.
+async function* paginateDevices(): AsyncGenerator<DeviceRecord> {
+  let cursor: string | number | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
+    const p = await simpleMDM(`/devices?limit=100${q}`) as PaginatedResponse<DeviceRecord>;
+    for (const d of p.data) yield d;
+    if (!p.has_more) return;
+    cursor = p.data.at(-1)?.id;
+    if (cursor == null) return;
+  }
+  throw new Error(`paginateDevices: exceeded ${MAX_PAGES}-page cap; set SIMPLEMDM_MAX_PAGES to raise.`);
+}
+
+async function collectDevices(): Promise<DeviceRecord[]> {
+  const out: DeviceRecord[] = [];
+  for await (const d of paginateDevices()) out.push(d);
+  return out;
 }
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
@@ -403,7 +481,7 @@ const TOOLS: Tool[] = [
   { name: "list_apps",
     description: "All apps in the catalog including App Store, enterprise, and shared.",
     inputSchema: { type: "object", properties: {
-      include_shared: { type: "boolean" },
+      include_shared: { type: "boolean", description: "Include shared apps. Defaults to true when omitted." },
     }}},
 
   { name: "get_app",
@@ -845,15 +923,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     // ── Fleet summary (derived) ──────────────────────────────────────────────
     case "get_fleet_summary": {
       if (USE_LOCAL_APP) return api("/fleet/summary");
-      let all: DeviceRecord[] = [];
-      let cursor: string | number | undefined;
-      let more = true;
-      while (more) {
-        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord>;
-        all = all.concat(p.data);
-        more = p.has_more;
-        cursor = p.data.at(-1)?.id;
-      }
+      const all = await collectDevices();
       const statusCounts: Record<string, number> = {};
       const osCounts: Record<string, number> = {};
       for (const d of all) {
@@ -880,7 +950,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 
     // ── Compound: device full profile ────────────────────────────────────────
     case "get_device_full_profile": {
-      let deviceId = args.device_id as string | undefined;
+      let deviceId = typeof args.device_id === "string" ? args.device_id : undefined;
       if (!deviceId && args.serial_number) {
         const found = await api(`/devices?search=${encodeURIComponent(String(args.serial_number))}&limit=10`) as PaginatedResponse<DeviceRecord>;
         const match = found.data.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number) ?? found.data[0];
@@ -888,14 +958,16 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
         deviceId = String(match.id);
       }
       if (!deviceId) throw new Error("get_device_full_profile requires device_id or serial_number");
+      const id = seg(deviceId, "device_id");
 
+      const devicePromise = api(`/devices/${id}`);
       const [device, profiles, installedApps, users, logs] = await Promise.allSettled([
-        api(`/devices/${deviceId}`),
-        api(`/devices/${deviceId}/profiles`),
-        api(`/devices/${deviceId}/installed_apps`),
-        api(`/devices/${deviceId}/users`),
+        devicePromise,
+        api(`/devices/${id}/profiles`),
+        api(`/devices/${id}/installed_apps`),
+        api(`/devices/${id}/users`),
         (async () => {
-          const d = await api(`/devices/${deviceId}`) as { data?: { attributes?: { serial_number?: string } } };
+          const d = await devicePromise as { data?: { attributes?: { serial_number?: string } } };
           const sn = d?.data?.attributes?.serial_number;
           if (!sn) return { data: [] };
           return api(`/logs?serial_number=${encodeURIComponent(sn)}&limit=25`);
@@ -915,37 +987,31 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     // ── Compound: security posture ───────────────────────────────────────────
     case "get_security_posture": {
       if (USE_LOCAL_APP) return api("/fleet/security_posture");
-      let all: DeviceRecord[] = [];
-      let cursor: string | number | undefined;
-      let more = true;
-      while (more) {
-        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: Record<string, unknown> }>;
-        all = all.concat(p.data);
-        more = p.has_more;
-        cursor = p.data.at(-1)?.id;
-      }
+      const all = await collectDevices();
       const enrolled = all.filter(d => getDeviceStatus(d.attributes) === "enrolled");
       const n = enrolled.length || 1;
-      const count = (pred: (a: Record<string, unknown>) => boolean) =>
-        enrolled.filter(d => pred(d.attributes as Record<string, unknown>)).length;
       const pct = (v: number) => Math.round((v / n) * 1000) / 10;
+      const metric = (key: string) => {
+        const c = enrolled.filter(d => d.attributes[key] === true).length;
+        return { count: c, pct: pct(c) };
+      };
 
       return {
         total_enrolled: enrolled.length,
         total_devices: all.length,
         posture: {
-          supervised:              { count: count(a => a.is_supervised === true),                     pct: pct(count(a => a.is_supervised === true)) },
-          dep_enrolled:            { count: count(a => a.dep_enrolled === true),                      pct: pct(count(a => a.dep_enrolled === true)) },
-          filevault_enabled:       { count: count(a => a.filevault_enabled === true),                 pct: pct(count(a => a.filevault_enabled === true)) },
-          firmware_password:       { count: count(a => a.firmware_password_enabled === true),         pct: pct(count(a => a.firmware_password_enabled === true)) },
-          recovery_lock_password:  { count: count(a => a.recovery_lock_password_enabled === true),    pct: pct(count(a => a.recovery_lock_password_enabled === true)) },
-          activation_lock:         { count: count(a => a.is_activation_lock_enabled === true),        pct: pct(count(a => a.is_activation_lock_enabled === true)) },
-          user_approved_mdm:       { count: count(a => a.is_user_approved_enrollment === true),       pct: pct(count(a => a.is_user_approved_enrollment === true)) },
-          passcode_compliant:      { count: count(a => a.passcode_compliant === true),                pct: pct(count(a => a.passcode_compliant === true)) },
-          remote_desktop_enabled:  { count: count(a => a.remote_desktop_enabled === true),            pct: pct(count(a => a.remote_desktop_enabled === true)) },
+          supervised:              metric("is_supervised"),
+          dep_enrolled:            metric("dep_enrolled"),
+          filevault_enabled:       metric("filevault_enabled"),
+          firmware_password:       metric("firmware_password_enabled"),
+          recovery_lock_password:  metric("recovery_lock_password_enabled"),
+          activation_lock:         metric("is_activation_lock_enabled"),
+          user_approved_mdm:       metric("is_user_approved_enrollment"),
+          passcode_compliant:      metric("passcode_compliant"),
+          remote_desktop_enabled:  metric("remote_desktop_enabled"),
         },
         os_major_breakdown: enrolled.reduce<Record<string, number>>((acc, d) => {
-          const v = (d.attributes as { os_version?: string }).os_version ?? "unknown";
+          const v = d.attributes.os_version ?? "unknown";
           const major = v.split(".")[0];
           acc[major] = (acc[major] ?? 0) + 1;
           return acc;
@@ -955,21 +1021,14 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 
     // ── Devices read ─────────────────────────────────────────────────────────
     case "list_devices": return api(`/devices${qs(args, ["search", "include_awaiting_enrollment", "limit", "starting_after"])}`);
-    case "get_device": return api(`/devices/${args.device_id}`);
-    case "get_device_profiles": return api(`/devices/${args.device_id}/profiles`);
-    case "get_device_installed_apps": return api(`/devices/${args.device_id}/installed_apps`);
-    case "get_device_users": return api(`/devices/${args.device_id}/users`);
+    case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
+    case "get_device_profiles": return api(`/devices/${seg(args.device_id, "device_id")}/profiles`);
+    case "get_device_installed_apps": return api(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
+    case "get_device_users": return api(`/devices/${seg(args.device_id, "device_id")}/users`);
     case "get_device_logs":
-    case "list_logs": {
-      const p = new URLSearchParams();
-      const sn = (args.serial_number ?? (name === "get_device_logs" ? args.serial_number : undefined)) as string | undefined;
-      if (sn) p.set("serial_number", sn);
-      if (args.limit) p.set("limit", String(args.limit));
-      if (args.starting_after) p.set("starting_after", String(args.starting_after));
-      const s = p.toString();
-      return api(`/logs${s ? `?${s}` : ""}`);
-    }
-    case "get_log": return api(`/logs/${args.log_id}`);
+    case "list_logs":
+      return api(`/logs${qs(args, ["serial_number", "limit", "starting_after"])}`);
+    case "get_log": return api(`/logs/${seg(args.log_id, "log_id")}`);
 
     // ── Devices write ────────────────────────────────────────────────────────
     case "create_device":
@@ -977,183 +1036,183 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api("/devices", { method: "POST", body: j({ name: args.name, group_id: args.group_id }) });
     case "update_device":
       requireWrites();
-      return api(`/devices/${args.device_id}`, { method: "PATCH", body: j({ name: args.name, device_name: args.device_name }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}`, { method: "PATCH", body: j({ name: args.name, device_name: args.device_name }) });
     case "delete_device":
       requireWrites();
-      return api(`/devices/${args.device_id}`, { method: "DELETE" });
+      return api(`/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
     case "delete_device_user":
       requireWrites();
-      return api(`/devices/${args.device_id}/users/${args.user_id}`, { method: "DELETE" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/users/${seg(args.user_id, "user_id")}`, { method: "DELETE" });
 
     // ── Device actions ───────────────────────────────────────────────────────
     case "lock_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/lock`, { method: "POST", body: j({ message: args.message, pin: args.pin }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}/lock`, { method: "POST", body: j({ message: args.message, pin: args.pin }) });
     case "wipe_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/wipe`, { method: "POST", body: j({ pin: args.pin }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}/wipe`, { method: "POST", body: j({ pin: args.pin }) });
     case "sync_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/push_apps`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/push_apps`, { method: "POST" });
     case "restart_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/restart`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/restart`, { method: "POST" });
     case "shutdown_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/shutdown`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/shutdown`, { method: "POST" });
     case "unenroll_device":
       requireWrites();
-      return api(`/devices/${args.device_id}/unenroll`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/unenroll`, { method: "POST" });
     case "clear_passcode":
       requireWrites();
-      return api(`/devices/${args.device_id}/clear_passcode`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/clear_passcode`, { method: "POST" });
     case "clear_restrictions_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/clear_restrictions_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/clear_restrictions_password`, { method: "POST" });
     case "update_os":
       requireWrites();
-      return api(`/devices/${args.device_id}/update_os`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/update_os`, { method: "POST" });
     case "enable_lost_mode":
       requireWrites();
-      return api(`/devices/${args.device_id}/lost_mode`, { method: "POST", body: j({ message: args.message, phone_number: args.phone_number, footnote: args.footnote }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}/lost_mode`, { method: "POST", body: j({ message: args.message, phone_number: args.phone_number, footnote: args.footnote }) });
     case "disable_lost_mode":
       requireWrites();
-      return api(`/devices/${args.device_id}/lost_mode`, { method: "DELETE" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/lost_mode`, { method: "DELETE" });
     case "play_lost_mode_sound":
       requireWrites();
-      return api(`/devices/${args.device_id}/lost_mode/play_sound`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/lost_mode/play_sound`, { method: "POST" });
     case "update_lost_mode_location":
       requireWrites();
-      return api(`/devices/${args.device_id}/lost_mode/update_location`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/lost_mode/update_location`, { method: "POST" });
     case "clear_firmware_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/clear_firmware_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/clear_firmware_password`, { method: "POST" });
     case "rotate_firmware_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/rotate_firmware_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/rotate_firmware_password`, { method: "POST" });
     case "clear_recovery_lock_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/clear_recovery_lock_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/clear_recovery_lock_password`, { method: "POST" });
     case "rotate_recovery_lock_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/rotate_recovery_lock_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/rotate_recovery_lock_password`, { method: "POST" });
     case "rotate_filevault_recovery_key":
       requireWrites();
-      return api(`/devices/${args.device_id}/rotate_filevault_recovery_key`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/rotate_filevault_recovery_key`, { method: "POST" });
     case "set_admin_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/set_admin_password`, { method: "POST", body: j({ new_password: args.new_password }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}/set_admin_password`, { method: "POST", body: j({ new_password: args.new_password }) });
     case "rotate_admin_password":
       requireWrites();
-      return api(`/devices/${args.device_id}/rotate_admin_password`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/rotate_admin_password`, { method: "POST" });
     case "enable_remote_desktop":
       requireWrites();
-      return api(`/devices/${args.device_id}/enable_remote_desktop`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/enable_remote_desktop`, { method: "POST" });
     case "disable_remote_desktop":
       requireWrites();
-      return api(`/devices/${args.device_id}/disable_remote_desktop`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/disable_remote_desktop`, { method: "POST" });
     case "enable_bluetooth":
       requireWrites();
-      return api(`/devices/${args.device_id}/enable_bluetooth`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/enable_bluetooth`, { method: "POST" });
     case "disable_bluetooth":
       requireWrites();
-      return api(`/devices/${args.device_id}/disable_bluetooth`, { method: "POST" });
+      return api(`/devices/${seg(args.device_id, "device_id")}/disable_bluetooth`, { method: "POST" });
     case "set_time_zone":
       requireWrites();
-      return api(`/devices/${args.device_id}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
+      return api(`/devices/${seg(args.device_id, "device_id")}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
 
     // ── Assignment groups ────────────────────────────────────────────────────
     case "list_assignment_groups": return api("/assignment_groups");
-    case "get_assignment_group": return api(`/assignment_groups/${args.group_id}`);
+    case "get_assignment_group": return api(`/assignment_groups/${seg(args.group_id, "group_id")}`);
     case "create_assignment_group":
       requireWrites();
       return api("/assignment_groups", { method: "POST", body: j({ name: args.name, auto_deploy: args.auto_deploy }) });
     case "update_assignment_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}`, { method: "PATCH", body: j({ name: args.name, auto_deploy: args.auto_deploy }) });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "PATCH", body: j({ name: args.name, auto_deploy: args.auto_deploy }) });
     case "delete_assignment_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}`, { method: "DELETE" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "DELETE" });
     case "assign_device_to_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/devices/${args.device_id}`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "POST" });
     case "unassign_device_from_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/devices/${args.device_id}`, { method: "DELETE" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
     case "assign_app_to_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/apps/${args.app_id}`, { method: "POST", body: j({ deployment_type: args.deployment_type, install_type: args.install_type }) });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/apps/${seg(args.app_id, "app_id")}`, { method: "POST", body: j({ deployment_type: args.deployment_type, install_type: args.install_type }) });
     case "unassign_app_from_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/apps/${args.app_id}`, { method: "DELETE" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/apps/${seg(args.app_id, "app_id")}`, { method: "DELETE" });
     case "assign_profile_to_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/profiles/${args.profile_id}`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/profiles/${seg(args.profile_id, "profile_id")}`, { method: "POST" });
     case "unassign_profile_from_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/profiles/${args.profile_id}`, { method: "DELETE" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/profiles/${seg(args.profile_id, "profile_id")}`, { method: "DELETE" });
     case "push_apps_to_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/push_apps`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/push_apps`, { method: "POST" });
     case "update_apps_in_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/update_apps`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/update_apps`, { method: "POST" });
     case "sync_profiles_in_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/sync_profiles`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/sync_profiles`, { method: "POST" });
     case "clone_assignment_group":
       requireWrites();
-      return api(`/assignment_groups/${args.group_id}/clone`, { method: "POST" });
+      return api(`/assignment_groups/${seg(args.group_id, "group_id")}/clone`, { method: "POST" });
 
     // ── Apps ─────────────────────────────────────────────────────────────────
     case "list_apps": return api(`/apps?include_shared=${args.include_shared !== false}`);
-    case "get_app": return api(`/apps/${args.app_id}`);
+    case "get_app": return api(`/apps/${seg(args.app_id, "app_id")}`);
     case "create_app":
       requireWrites();
       return api("/apps", { method: "POST", body: j({ app_store_id: args.app_store_id, bundle_id: args.bundle_id, name: args.name }) });
     case "update_app":
       requireWrites();
-      return api(`/apps/${args.app_id}`, { method: "PATCH", body: j({ name: args.name, deploy_to: args.deploy_to }) });
+      return api(`/apps/${seg(args.app_id, "app_id")}`, { method: "PATCH", body: j({ name: args.name, deploy_to: args.deploy_to }) });
     case "delete_app":
       requireWrites();
-      return api(`/apps/${args.app_id}`, { method: "DELETE" });
-    case "list_app_installs": return api(`/apps/${args.app_id}/installs${qs(args, ["limit", "starting_after"])}`);
+      return api(`/apps/${seg(args.app_id, "app_id")}`, { method: "DELETE" });
+    case "list_app_installs": return api(`/apps/${seg(args.app_id, "app_id")}/installs${qs(args, ["limit", "starting_after"])}`);
 
     // ── Installed apps ────────────────────────────────────────────────────────
-    case "get_installed_app": return api(`/installed_apps/${args.installed_app_id}`);
+    case "get_installed_app": return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}`);
     case "request_app_management":
       requireWrites();
-      return api(`/installed_apps/${args.installed_app_id}/request_management`, { method: "POST" });
+      return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}/request_management`, { method: "POST" });
     case "update_installed_app":
       requireWrites();
-      return api(`/installed_apps/${args.installed_app_id}/update`, { method: "POST" });
+      return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}/update`, { method: "POST" });
     case "uninstall_app":
       requireWrites();
-      return api(`/installed_apps/${args.installed_app_id}`, { method: "DELETE" });
+      return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}`, { method: "DELETE" });
 
     // ── Custom attributes ─────────────────────────────────────────────────────
     case "list_custom_attributes": return api("/custom_attributes");
-    case "get_custom_attribute": return api(`/custom_attributes/${args.attribute_name}`);
+    case "get_custom_attribute": return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}`);
     case "create_custom_attribute":
       requireWrites();
       return api("/custom_attributes", { method: "POST", body: j({ name: args.name, default_value: args.default_value }) });
     case "update_custom_attribute":
       requireWrites();
-      return api(`/custom_attributes/${args.attribute_name}`, { method: "PATCH", body: j({ default_value: args.default_value }) });
+      return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}`, { method: "PATCH", body: j({ default_value: args.default_value }) });
     case "delete_custom_attribute":
       requireWrites();
-      return api(`/custom_attributes/${args.attribute_name}`, { method: "DELETE" });
-    case "get_device_attribute_values": return api(`/custom_attributes/devices/${args.device_id}`);
+      return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}`, { method: "DELETE" });
+    case "get_device_attribute_values": return api(`/custom_attributes/devices/${seg(args.device_id, "device_id")}`);
     case "set_device_attribute_value":
       requireWrites();
-      return api(`/custom_attributes/${args.attribute_name}/devices/${args.device_id}`, { method: "PUT", body: j({ value: args.value }) });
+      return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/devices/${seg(args.device_id, "device_id")}`, { method: "PUT", body: j({ value: args.value }) });
     case "set_attribute_for_multiple_devices":
       requireWrites();
-      return api(`/custom_attributes/${args.attribute_name}/devices`, { method: "PUT", body: j({ device_ids: args.device_ids, value: args.value }) });
-    case "get_group_attribute_values": return api(`/custom_attributes/assignment_groups/${args.group_id}`);
+      return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/devices`, { method: "PUT", body: j({ device_ids: args.device_ids, value: args.value }) });
+    case "get_group_attribute_values": return api(`/custom_attributes/assignment_groups/${seg(args.group_id, "group_id")}`);
     case "set_group_attribute_value":
       requireWrites();
-      return api(`/custom_attributes/${args.attribute_name}/assignment_groups/${args.group_id}`, { method: "PUT", body: j({ value: args.value }) });
+      return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "PUT", body: j({ value: args.value }) });
 
     // ── Custom configuration profiles ─────────────────────────────────────────
     case "list_custom_configuration_profiles": return api("/custom_configuration_profiles");
@@ -1162,80 +1221,80 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api("/custom_configuration_profiles", { method: "POST", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope, attribute_support: args.attribute_support }) });
     case "update_custom_configuration_profile":
       requireWrites();
-      return api(`/custom_configuration_profiles/${args.profile_id}`, { method: "PATCH", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope }) });
+      return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}`, { method: "PATCH", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope }) });
     case "delete_custom_configuration_profile":
       requireWrites();
-      return api(`/custom_configuration_profiles/${args.profile_id}`, { method: "DELETE" });
+      return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}`, { method: "DELETE" });
     case "assign_custom_profile_to_device":
       requireWrites();
-      return api(`/custom_configuration_profiles/${args.profile_id}/devices/${args.device_id}`, { method: "POST" });
+      return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "POST" });
     case "unassign_custom_profile_from_device":
       requireWrites();
-      return api(`/custom_configuration_profiles/${args.profile_id}/devices/${args.device_id}`, { method: "DELETE" });
+      return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Custom declarations ───────────────────────────────────────────────────
     case "list_custom_declarations": return api("/custom_declarations");
-    case "get_custom_declaration": return api(`/custom_declarations/${args.declaration_id}`);
+    case "get_custom_declaration": return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`);
     case "create_custom_declaration":
       requireWrites();
       return api("/custom_declarations", { method: "POST", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update, user_scope: args.user_scope }) });
     case "update_custom_declaration":
       requireWrites();
-      return api(`/custom_declarations/${args.declaration_id}`, { method: "PATCH", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update }) });
+      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "PATCH", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update }) });
     case "delete_custom_declaration":
       requireWrites();
-      return api(`/custom_declarations/${args.declaration_id}`, { method: "DELETE" });
+      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "DELETE" });
     case "assign_declaration_to_device":
       requireWrites();
-      return api(`/custom_declarations/${args.declaration_id}/devices/${args.device_id}`, { method: "POST" });
+      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "POST" });
     case "unassign_declaration_from_device":
       requireWrites();
-      return api(`/custom_declarations/${args.declaration_id}/devices/${args.device_id}`, { method: "DELETE" });
+      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Profiles ─────────────────────────────────────────────────────────────
     case "list_profiles": return api("/profiles");
-    case "get_profile": return api(`/profiles/${args.profile_id}`);
+    case "get_profile": return api(`/profiles/${seg(args.profile_id, "profile_id")}`);
     case "assign_profile_to_device":
       requireWrites();
-      return api(`/profiles/${args.profile_id}/devices/${args.device_id}`, { method: "POST" });
+      return api(`/profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "POST" });
     case "unassign_profile_from_device":
       requireWrites();
-      return api(`/profiles/${args.profile_id}/devices/${args.device_id}`, { method: "DELETE" });
+      return api(`/profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── DEP servers ───────────────────────────────────────────────────────────
     case "list_dep_servers": return api("/dep_servers");
-    case "get_dep_server": return api(`/dep_servers/${args.dep_server_id}`);
+    case "get_dep_server": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}`);
     case "sync_dep_server":
       requireWrites();
-      return api(`/dep_servers/${args.dep_server_id}/sync`, { method: "POST" });
-    case "list_dep_devices": return api(`/dep_servers/${args.dep_server_id}/dep_devices${qs(args, ["limit", "starting_after"])}`);
-    case "get_dep_device": return api(`/dep_servers/${args.dep_server_id}/dep_devices/${args.dep_device_id}`);
+      return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/sync`, { method: "POST" });
+    case "list_dep_devices": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices${qs(args, ["limit", "starting_after"])}`);
+    case "get_dep_device": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices/${seg(args.dep_device_id, "dep_device_id")}`);
 
     // ── Device groups (legacy) ────────────────────────────────────────────────
     case "list_device_groups": return api("/device_groups");
-    case "get_device_group": return api(`/device_groups/${args.group_id}`);
+    case "get_device_group": return api(`/device_groups/${seg(args.group_id, "group_id")}`);
 
     // ── Enrollments ───────────────────────────────────────────────────────────
     case "list_enrollments": return api("/enrollments");
-    case "get_enrollment": return api(`/enrollments/${args.enrollment_id}`);
+    case "get_enrollment": return api(`/enrollments/${seg(args.enrollment_id, "enrollment_id")}`);
     case "send_enrollment_invitation":
       requireWrites();
-      return api(`/enrollments/${args.enrollment_id}/invitations`, { method: "POST", body: j({ contact: args.contact }) });
+      return api(`/enrollments/${seg(args.enrollment_id, "enrollment_id")}/invitations`, { method: "POST", body: j({ contact: args.contact }) });
     case "delete_enrollment":
       requireWrites();
-      return api(`/enrollments/${args.enrollment_id}`, { method: "DELETE" });
+      return api(`/enrollments/${seg(args.enrollment_id, "enrollment_id")}`, { method: "DELETE" });
 
     // ── Managed app configs ───────────────────────────────────────────────────
-    case "list_managed_app_configs": return api(`/apps/${args.app_id}/managed_configs`);
+    case "list_managed_app_configs": return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs`);
     case "create_managed_app_config":
       requireWrites();
-      return api(`/apps/${args.app_id}/managed_configs`, { method: "POST", body: j({ key: args.key, value: args.value, kind: args.kind }) });
+      return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs`, { method: "POST", body: j({ key: args.key, value: args.value, kind: args.kind }) });
     case "delete_managed_app_config":
       requireWrites();
-      return api(`/apps/${args.app_id}/managed_configs/${args.config_id}`, { method: "DELETE" });
+      return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs/${seg(args.config_id, "config_id")}`, { method: "DELETE" });
     case "push_managed_app_configs":
       requireWrites();
-      return api(`/apps/${args.app_id}/managed_configs/push`, { method: "POST" });
+      return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs/push`, { method: "POST" });
 
     // ── Push certificate ──────────────────────────────────────────────────────
     case "get_push_certificate": return api("/push_certificate");
@@ -1243,26 +1302,26 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 
     // ── Scripts ───────────────────────────────────────────────────────────────
     case "list_scripts": return api("/scripts");
-    case "get_script": return api(`/scripts/${args.script_id}`);
+    case "get_script": return api(`/scripts/${seg(args.script_id, "script_id")}`);
     case "create_script":
       requireWrites();
       return api("/scripts", { method: "POST", body: j({ name: args.name, content: args.content }) });
     case "update_script":
       requireWrites();
-      return api(`/scripts/${args.script_id}`, { method: "PATCH", body: j({ name: args.name, content: args.content }) });
+      return api(`/scripts/${seg(args.script_id, "script_id")}`, { method: "PATCH", body: j({ name: args.name, content: args.content }) });
     case "delete_script":
       requireWrites();
-      return api(`/scripts/${args.script_id}`, { method: "DELETE" });
+      return api(`/scripts/${seg(args.script_id, "script_id")}`, { method: "DELETE" });
 
     // ── Script jobs ───────────────────────────────────────────────────────────
     case "list_script_jobs": return api(`/script_jobs${qs(args, ["status", "limit", "starting_after"])}`);
-    case "get_script_job": return api(`/script_jobs/${args.job_id}`);
+    case "get_script_job": return api(`/script_jobs/${seg(args.job_id, "job_id")}`);
     case "create_script_job":
       requireWrites();
       return api("/script_jobs", { method: "POST", body: j({ script_id: args.script_id, device_ids: args.device_ids }) });
     case "cancel_script_job":
       requireWrites();
-      return api(`/script_jobs/${args.job_id}`, { method: "DELETE" });
+      return api(`/script_jobs/${seg(args.job_id, "job_id")}`, { method: "DELETE" });
 
     // ── MunkiReport enrichment ────────────────────────────────────────────────
     case "get_munkireport_sync_health":       return USE_LOCAL_APP ? api("/enrichment/sync_health")          : munkiReport("/data/sync_health");
@@ -1276,9 +1335,41 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 }
 
 // ─── Tool annotations (applied once at startup) ───────────────────────────────
-// MCP spec annotations inform clients how to render/guard each tool. Our
-// convention: any tool whose description starts with "⚠️ WRITE" is a mutation;
-// a subset of those are flagged destructive for extra client confirmation.
+// MCP spec annotations inform clients how to render/guard each tool. A tool is
+// a write if its handler calls requireWrites(); DESTRUCTIVE is a subset flagged
+// for extra client confirmation.
+
+const WRITE_TOOLS = new Set<string>([
+  "update_account",
+  "create_device", "update_device", "delete_device", "delete_device_user",
+  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device",
+  "unenroll_device", "clear_passcode", "clear_restrictions_password", "update_os",
+  "enable_lost_mode", "disable_lost_mode", "play_lost_mode_sound", "update_lost_mode_location",
+  "clear_firmware_password", "rotate_firmware_password",
+  "clear_recovery_lock_password", "rotate_recovery_lock_password",
+  "rotate_filevault_recovery_key", "set_admin_password", "rotate_admin_password",
+  "enable_remote_desktop", "disable_remote_desktop",
+  "enable_bluetooth", "disable_bluetooth", "set_time_zone",
+  "create_assignment_group", "update_assignment_group", "delete_assignment_group",
+  "assign_device_to_group", "unassign_device_from_group",
+  "assign_app_to_group", "unassign_app_from_group",
+  "assign_profile_to_group", "unassign_profile_from_group",
+  "push_apps_to_group", "update_apps_in_group", "sync_profiles_in_group", "clone_assignment_group",
+  "create_app", "update_app", "delete_app",
+  "request_app_management", "update_installed_app", "uninstall_app",
+  "create_custom_attribute", "update_custom_attribute", "delete_custom_attribute",
+  "set_device_attribute_value", "set_attribute_for_multiple_devices", "set_group_attribute_value",
+  "create_custom_configuration_profile", "update_custom_configuration_profile", "delete_custom_configuration_profile",
+  "assign_custom_profile_to_device", "unassign_custom_profile_from_device",
+  "create_custom_declaration", "update_custom_declaration", "delete_custom_declaration",
+  "assign_declaration_to_device", "unassign_declaration_from_device",
+  "assign_profile_to_device", "unassign_profile_from_device",
+  "sync_dep_server",
+  "send_enrollment_invitation", "delete_enrollment",
+  "create_managed_app_config", "delete_managed_app_config", "push_managed_app_configs",
+  "create_script", "update_script", "delete_script",
+  "create_script_job", "cancel_script_job",
+]);
 
 const DESTRUCTIVE = new Set<string>([
   "wipe_device",
@@ -1304,7 +1395,7 @@ function titleCase(name: string): string {
 }
 
 for (const t of TOOLS) {
-  const isWrite = typeof t.description === "string" && t.description.startsWith("⚠️");
+  const isWrite = WRITE_TOOLS.has(t.name);
   t.annotations = {
     title: titleCase(t.name),
     readOnlyHint: !isWrite,
@@ -1337,19 +1428,16 @@ async function readResource(uri: string): Promise<unknown> {
     }
     case "simplemdm://reports/enrollment": {
       const summary = await handleTool("get_fleet_summary", {}) as { total?: number; enrolled?: number; unenrolled?: number };
-      let unenrolled: Array<{ id: string | number; name?: string; serial?: string }> = [];
+      const unenrolled: Array<{ id: string | number; name?: string; serial?: string }> = [];
       if (!USE_LOCAL_APP) {
-        let cursor: string | number | undefined;
-        let more = true;
-        while (more) {
-          const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: { name?: string; serial_number?: string } }>;
-          for (const d of p.data) {
-            if (getDeviceStatus(d.attributes) !== "enrolled") {
-              unenrolled.push({ id: d.id, name: d.attributes.name, serial: d.attributes.serial_number });
-            }
+        for await (const d of paginateDevices()) {
+          if (getDeviceStatus(d.attributes) !== "enrolled") {
+            unenrolled.push({
+              id: d.id,
+              name: d.attributes.name as string | undefined,
+              serial: d.attributes.serial_number as string | undefined,
+            });
           }
-          more = p.has_more;
-          cursor = p.data.at(-1)?.id;
         }
       }
       return { total: summary.total, enrolled: summary.enrolled, unenrolled: summary.unenrolled, unenrolled_devices: unenrolled };
@@ -1357,18 +1445,17 @@ async function readResource(uri: string): Promise<unknown> {
     case "simplemdm://reports/filevault": {
       if (USE_LOCAL_APP) return api("/reports/filevault");
       const rows: Array<{ id: string | number; name?: string; serial?: string; os?: string; filevault_enabled: boolean }> = [];
-      let cursor: string | number | undefined;
-      let more = true;
-      while (more) {
-        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: { name?: string; serial_number?: string; os_version?: string; filevault_enabled?: boolean } }>;
-        for (const d of p.data) {
-          if (getDeviceStatus(d.attributes) !== "enrolled") continue;
-          if (!d.attributes.os_version || !d.attributes.os_version.match(/^(1\d|2\d)\./)) continue; // macOS major ≥ 10
-          if ((d.attributes as { model_name?: string }).model_name && !String((d.attributes as { model_name?: string }).model_name).match(/Mac/i)) continue;
-          rows.push({ id: d.id, name: d.attributes.name, serial: d.attributes.serial_number, os: d.attributes.os_version, filevault_enabled: d.attributes.filevault_enabled === true });
-        }
-        more = p.has_more;
-        cursor = p.data.at(-1)?.id;
+      for await (const d of paginateDevices()) {
+        if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+        const model = d.attributes.model_name as string | undefined;
+        if (!model || !/Mac/i.test(model)) continue;
+        rows.push({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          os: d.attributes.os_version ?? undefined,
+          filevault_enabled: d.attributes.filevault_enabled === true,
+        });
       }
       const on  = rows.filter(r => r.filevault_enabled).length;
       const off = rows.length - on;
@@ -1444,10 +1531,43 @@ function promptBody(name: string, args: Record<string, string> | undefined): str
   }
 }
 
+// ─── Input validation (from declared inputSchema) ─────────────────────────────
+// Lightweight guard: required presence + primitive type checks. Not a full
+// JSON Schema validator — keeps the dependency surface small — but catches the
+// common "arg missing" / "wrong type" cases before they hit upstream.
+
+const TOOL_SCHEMAS = new Map(TOOLS.map(t => [t.name, t.inputSchema]));
+
+function validateArgs(toolName: string, args: Args): void {
+  const schema = TOOL_SCHEMAS.get(toolName);
+  if (!schema) return;
+  const required = (schema as { required?: string[] }).required ?? [];
+  const props = (schema as { properties?: Record<string, { type?: string | string[] }> }).properties ?? {};
+
+  for (const r of required) {
+    if (args[r] == null || args[r] === "") throw new Error(`${toolName}: missing required argument "${r}"`);
+  }
+  for (const [key, spec] of Object.entries(props)) {
+    if (args[key] == null) continue;
+    const expected = Array.isArray(spec.type) ? spec.type : spec.type ? [spec.type] : [];
+    if (expected.length === 0) continue;
+    const actual = Array.isArray(args[key]) ? "array" : typeof args[key];
+    if (!expected.includes(actual)) {
+      throw new Error(`${toolName}: argument "${key}" must be ${expected.join("|")}, got ${actual}`);
+    }
+  }
+}
+
+function formatError(err: unknown): string {
+  if (err instanceof HttpError) return `${err.upstream} ${err.status}${err.bodyExcerpt ? `: ${err.bodyExcerpt}` : ""}`;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "simplemdm-mcp", version: "0.3.0" },
+  { name: "simplemdm-mcp", version: "0.4.0" },
   { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
@@ -1456,10 +1576,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
   try {
+    validateArgs(name, args as Args);
     const result = await handleTool(name, args as Args);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (err) {
-    return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+    return { content: [{ type: "text", text: `Error: ${formatError(err)}` }], isError: true };
   }
 });
 
@@ -1469,7 +1590,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
   const uri = req.params.uri;
   const data = await readResource(uri);
   return {
-    contents: [{ uri, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
+    contents: [{ uri, mimeType: "application/json", text: JSON.stringify(data) }],
   };
 });
 
@@ -1486,4 +1607,25 @@ server.setRequestHandler(GetPromptRequestSchema, async (req) => {
   };
 });
 
-await server.connect(new StdioServerTransport());
+async function main(): Promise<void> {
+  if (!USE_LOCAL_APP && !API_KEY) {
+    throw new Error("SIMPLEMDM_API_KEY is required unless LOCAL_APP_MODE=true.");
+  }
+  if (USE_LOCAL_APP) await checkLocalApp();
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+
+  const shutdown = async (signal: string) => {
+    console.error(`Received ${signal}, shutting down.`);
+    try { await server.close(); } catch { /* best-effort */ }
+    process.exit(0);
+  };
+  process.on("SIGINT",  () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+main().catch(err => {
+  console.error(`Fatal: ${formatError(err)}`);
+  process.exit(1);
+});
