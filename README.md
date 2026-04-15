@@ -19,6 +19,8 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Use With Other MCP Clients](#use-with-other-mcp-clients)
 - [Enable write actions](#enable-write-actions)
 - [Tools](#tools)
+- [Resources](#resources)
+- [Prompts](#prompts)
 - [API key permissions](#api-key-permissions)
 - [Environment variables](#environment-variables)
 - [Security](#security)
@@ -345,6 +347,8 @@ The server registers ~115 tools covering the full SimpleMDM API surface. Reads a
 |------|-------------|
 | `get_account` | Account info: name, App Store country, subscription license counts |
 | `get_fleet_summary` | Total devices, enrolled/unenrolled, posture counts, OS breakdown |
+| `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
+| `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 
 **Devices**
 | Tool | Description |
@@ -507,6 +511,42 @@ All tools below modify fleet state. The API permission column tells you what the
 | Tool | API Permission |
 |------|---------------|
 | `update_account` | Account: write |
+
+---
+
+## Resources
+
+Alongside tools, this server exposes canonical **MCP resources** that clients can browse independently of the tool surface. Each returns JSON.
+
+| URI | What it returns |
+|---|---|
+| `simplemdm://fleet/summary` | Fleet KPIs (alias for `get_fleet_summary`) |
+| `simplemdm://reports/security-posture` | Fleet-wide posture percentages (alias for `get_security_posture`) |
+| `simplemdm://reports/os-versions` | OS version distribution across the fleet |
+| `simplemdm://reports/enrollment` | Enrolled/unenrolled totals plus the list of unenrolled devices |
+| `simplemdm://reports/filevault` | FileVault on/off per enrolled Mac (for compliance review) |
+| `simplemdm://inventory/devices` | First page of the device list |
+| `simplemdm://inventory/assignment-groups` | All assignment groups with membership |
+| `simplemdm://inventory/apps` | First page of the app catalog |
+
+Resources are loaded via the client's resource picker (Claude Desktop/Code → `Resources` menu; ChatGPT connectors → resource references in a chat). Tools remain the right choice when you need to pass parameters or perform mutations.
+
+---
+
+## Prompts
+
+The server ships workflow **prompts** — templated starting points selectable from the MCP client's prompt picker. Each produces a ready-to-run instruction that composes the right tools for the task.
+
+| Prompt | Arguments | What it does |
+|---|---|---|
+| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture`, summarizes posture, lists outliers, proposes up to 3 actions |
+| `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
+| `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
+| `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
+| `patch-compliance-review` | — | OS version distribution, flags devices >1 major version behind, recommends groups to prioritize |
+| `stale-devices-cleanup` | `days` (default 14) | Finds devices not checked in, proposes sync → lock ladder without auto-wipe |
+
+Destructive prompts (offboarding, stale cleanup) include explicit guards: the LLM is told **not** to call write tools without you typing `CONFIRM`.
 
 ---
 

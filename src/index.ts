@@ -5,6 +5,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { localApp, checkLocalApp } from "./localAppClient.js";
@@ -111,6 +115,17 @@ const TOOLS: Tool[] = [
   // ══════════════════════════════════════════════════════════════════════════
   { name: "get_fleet_summary",
     description: "Derived fleet KPIs: total devices, enrolled/unenrolled counts, supervised/DEP/FileVault posture counts, plus OS and device status breakdowns. In local app mode this is instant.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_device_full_profile",
+    description: "Compound tool — fetches device detail, installed profiles, installed apps, users, and recent logs in parallel for a single device. Accepts either device_id or serial_number (serial is resolved first).",
+    inputSchema: { type: "object", properties: {
+      device_id: { type: "string", description: "SimpleMDM device ID. Preferred when known." },
+      serial_number: { type: "string", description: "Device serial — resolved to an ID via list_devices before the parallel fetch." },
+    }}},
+
+  { name: "get_security_posture",
+    description: "Compound tool — fleet-wide security rollup. Returns percentages and raw counts for supervised, DEP-enrolled, FileVault-enabled, recovery-lock, firmware-password, activation-lock, and user-approved-MDM posture across all enrolled devices, plus OS currency buckets (macOS / iOS / iPadOS).",
     inputSchema: { type: "object", properties: {} } },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -863,6 +878,81 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       };
     }
 
+    // ── Compound: device full profile ────────────────────────────────────────
+    case "get_device_full_profile": {
+      let deviceId = args.device_id as string | undefined;
+      if (!deviceId && args.serial_number) {
+        const found = await api(`/devices?search=${encodeURIComponent(String(args.serial_number))}&limit=10`) as PaginatedResponse<DeviceRecord>;
+        const match = found.data.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number) ?? found.data[0];
+        if (!match) throw new Error(`No device found for serial_number=${args.serial_number}`);
+        deviceId = String(match.id);
+      }
+      if (!deviceId) throw new Error("get_device_full_profile requires device_id or serial_number");
+
+      const [device, profiles, installedApps, users, logs] = await Promise.allSettled([
+        api(`/devices/${deviceId}`),
+        api(`/devices/${deviceId}/profiles`),
+        api(`/devices/${deviceId}/installed_apps`),
+        api(`/devices/${deviceId}/users`),
+        (async () => {
+          const d = await api(`/devices/${deviceId}`) as { data?: { attributes?: { serial_number?: string } } };
+          const sn = d?.data?.attributes?.serial_number;
+          if (!sn) return { data: [] };
+          return api(`/logs?serial_number=${encodeURIComponent(sn)}&limit=25`);
+        })(),
+      ]);
+      const unwrap = <T>(r: PromiseSettledResult<T>) => r.status === "fulfilled" ? r.value : { error: String((r as PromiseRejectedResult).reason) };
+      return {
+        device_id: deviceId,
+        device: unwrap(device),
+        profiles: unwrap(profiles),
+        installed_apps: unwrap(installedApps),
+        users: unwrap(users),
+        recent_logs: unwrap(logs),
+      };
+    }
+
+    // ── Compound: security posture ───────────────────────────────────────────
+    case "get_security_posture": {
+      if (USE_LOCAL_APP) return api("/fleet/security_posture");
+      let all: DeviceRecord[] = [];
+      let cursor: string | number | undefined;
+      let more = true;
+      while (more) {
+        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: Record<string, unknown> }>;
+        all = all.concat(p.data);
+        more = p.has_more;
+        cursor = p.data.at(-1)?.id;
+      }
+      const enrolled = all.filter(d => getDeviceStatus(d.attributes) === "enrolled");
+      const n = enrolled.length || 1;
+      const count = (pred: (a: Record<string, unknown>) => boolean) =>
+        enrolled.filter(d => pred(d.attributes as Record<string, unknown>)).length;
+      const pct = (v: number) => Math.round((v / n) * 1000) / 10;
+
+      return {
+        total_enrolled: enrolled.length,
+        total_devices: all.length,
+        posture: {
+          supervised:              { count: count(a => a.is_supervised === true),                     pct: pct(count(a => a.is_supervised === true)) },
+          dep_enrolled:            { count: count(a => a.dep_enrolled === true),                      pct: pct(count(a => a.dep_enrolled === true)) },
+          filevault_enabled:       { count: count(a => a.filevault_enabled === true),                 pct: pct(count(a => a.filevault_enabled === true)) },
+          firmware_password:       { count: count(a => a.firmware_password_enabled === true),         pct: pct(count(a => a.firmware_password_enabled === true)) },
+          recovery_lock_password:  { count: count(a => a.recovery_lock_password_enabled === true),    pct: pct(count(a => a.recovery_lock_password_enabled === true)) },
+          activation_lock:         { count: count(a => a.is_activation_lock_enabled === true),        pct: pct(count(a => a.is_activation_lock_enabled === true)) },
+          user_approved_mdm:       { count: count(a => a.is_user_approved_enrollment === true),       pct: pct(count(a => a.is_user_approved_enrollment === true)) },
+          passcode_compliant:      { count: count(a => a.passcode_compliant === true),                pct: pct(count(a => a.passcode_compliant === true)) },
+          remote_desktop_enabled:  { count: count(a => a.remote_desktop_enabled === true),            pct: pct(count(a => a.remote_desktop_enabled === true)) },
+        },
+        os_major_breakdown: enrolled.reduce<Record<string, number>>((acc, d) => {
+          const v = (d.attributes as { os_version?: string }).os_version ?? "unknown";
+          const major = v.split(".")[0];
+          acc[major] = (acc[major] ?? 0) + 1;
+          return acc;
+        }, {}),
+      };
+    }
+
     // ── Devices read ─────────────────────────────────────────────────────────
     case "list_devices": return api(`/devices${qs(args, ["search", "include_awaiting_enrollment", "limit", "starting_after"])}`);
     case "get_device": return api(`/devices/${args.device_id}`);
@@ -1185,11 +1275,180 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
   }
 }
 
+// ─── Tool annotations (applied once at startup) ───────────────────────────────
+// MCP spec annotations inform clients how to render/guard each tool. Our
+// convention: any tool whose description starts with "⚠️ WRITE" is a mutation;
+// a subset of those are flagged destructive for extra client confirmation.
+
+const DESTRUCTIVE = new Set<string>([
+  "wipe_device",
+  "unenroll_device",
+  "delete_device",
+  "delete_device_user",
+  "delete_app",
+  "delete_assignment_group",
+  "delete_custom_attribute",
+  "delete_custom_configuration_profile",
+  "delete_custom_declaration",
+  "delete_enrollment",
+  "delete_managed_app_config",
+  "delete_script",
+  "clear_passcode",
+  "clear_restrictions_password",
+  "clear_firmware_password",
+  "clear_recovery_lock_password",
+]);
+
+function titleCase(name: string): string {
+  return name.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+for (const t of TOOLS) {
+  const isWrite = typeof t.description === "string" && t.description.startsWith("⚠️");
+  t.annotations = {
+    title: titleCase(t.name),
+    readOnlyHint: !isWrite,
+    destructiveHint: DESTRUCTIVE.has(t.name),
+    idempotentHint: !isWrite,
+    openWorldHint: true,
+  };
+}
+
+// ─── Resources (canonical report URIs) ────────────────────────────────────────
+
+const RESOURCES = [
+  { uri: "simplemdm://fleet/summary",          name: "Fleet summary",          description: "Total devices, enrolled/unenrolled, supervised/DEP/FileVault posture, OS breakdown.",               mimeType: "application/json" },
+  { uri: "simplemdm://reports/security-posture", name: "Security posture",     description: "Fleet-wide percentages and counts for supervised, DEP, FileVault, firmware/recovery/activation lock, UAMDM, passcode compliance.", mimeType: "application/json" },
+  { uri: "simplemdm://reports/os-versions",    name: "OS version report",      description: "Device count by OS major/minor version across the fleet.",                                         mimeType: "application/json" },
+  { uri: "simplemdm://reports/enrollment",     name: "Enrollment status",      description: "Enrolled vs unenrolled counts and the list of unenrolled devices for cleanup.",                    mimeType: "application/json" },
+  { uri: "simplemdm://reports/filevault",      name: "FileVault status",       description: "Which enrolled Macs have FileVault on vs off (name, serial, OS).",                                 mimeType: "application/json" },
+  { uri: "simplemdm://inventory/devices",      name: "Device inventory",       description: "First page of the device list. For paging, call the list_devices tool with starting_after.",       mimeType: "application/json" },
+  { uri: "simplemdm://inventory/assignment-groups", name: "Assignment groups", description: "Full list of assignment groups with their apps/devices/profiles.",                                  mimeType: "application/json" },
+  { uri: "simplemdm://inventory/apps",         name: "App catalog",            description: "First page of the app catalog (list_apps does not paginate).",                                     mimeType: "application/json" },
+];
+
+async function readResource(uri: string): Promise<unknown> {
+  switch (uri) {
+    case "simplemdm://fleet/summary":                 return handleTool("get_fleet_summary", {});
+    case "simplemdm://reports/security-posture":      return handleTool("get_security_posture", {});
+    case "simplemdm://reports/os-versions": {
+      const summary = await handleTool("get_fleet_summary", {}) as { os_version_breakdown?: Record<string, number> };
+      return { os_version_breakdown: summary.os_version_breakdown ?? {} };
+    }
+    case "simplemdm://reports/enrollment": {
+      const summary = await handleTool("get_fleet_summary", {}) as { total?: number; enrolled?: number; unenrolled?: number };
+      let unenrolled: Array<{ id: string | number; name?: string; serial?: string }> = [];
+      if (!USE_LOCAL_APP) {
+        let cursor: string | number | undefined;
+        let more = true;
+        while (more) {
+          const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: { name?: string; serial_number?: string } }>;
+          for (const d of p.data) {
+            if (getDeviceStatus(d.attributes) !== "enrolled") {
+              unenrolled.push({ id: d.id, name: d.attributes.name, serial: d.attributes.serial_number });
+            }
+          }
+          more = p.has_more;
+          cursor = p.data.at(-1)?.id;
+        }
+      }
+      return { total: summary.total, enrolled: summary.enrolled, unenrolled: summary.unenrolled, unenrolled_devices: unenrolled };
+    }
+    case "simplemdm://reports/filevault": {
+      if (USE_LOCAL_APP) return api("/reports/filevault");
+      const rows: Array<{ id: string | number; name?: string; serial?: string; os?: string; filevault_enabled: boolean }> = [];
+      let cursor: string | number | undefined;
+      let more = true;
+      while (more) {
+        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord & { attributes: { name?: string; serial_number?: string; os_version?: string; filevault_enabled?: boolean } }>;
+        for (const d of p.data) {
+          if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+          if (!d.attributes.os_version || !d.attributes.os_version.match(/^(1\d|2\d)\./)) continue; // macOS major ≥ 10
+          if ((d.attributes as { model_name?: string }).model_name && !String((d.attributes as { model_name?: string }).model_name).match(/Mac/i)) continue;
+          rows.push({ id: d.id, name: d.attributes.name, serial: d.attributes.serial_number, os: d.attributes.os_version, filevault_enabled: d.attributes.filevault_enabled === true });
+        }
+        more = p.has_more;
+        cursor = p.data.at(-1)?.id;
+      }
+      const on  = rows.filter(r => r.filevault_enabled).length;
+      const off = rows.length - on;
+      return { macs_total: rows.length, filevault_on: on, filevault_off: off, devices: rows };
+    }
+    case "simplemdm://inventory/devices":             return handleTool("list_devices", { limit: 100 });
+    case "simplemdm://inventory/assignment-groups":   return handleTool("list_assignment_groups", {});
+    case "simplemdm://inventory/apps":                return handleTool("list_apps", {});
+    default: throw new Error(`Unknown resource: ${uri}`);
+  }
+}
+
+// ─── Prompts (workflow templates) ─────────────────────────────────────────────
+
+const PROMPTS = [
+  {
+    name: "fleet-health-dashboard",
+    description: "Comprehensive fleet health snapshot — enrollment, security posture, OS currency, recent unenrolled devices.",
+    arguments: [],
+  },
+  {
+    name: "security-audit",
+    description: "Full security posture audit — FileVault, supervised, DEP, firmware/recovery-lock, activation-lock, user-approved MDM, with outliers.",
+    arguments: [],
+  },
+  {
+    name: "new-device-onboarding",
+    description: "Verify a newly enrolled device: profiles assigned, apps installed, group membership, and recent MDM command log.",
+    arguments: [
+      { name: "device_ref", description: "Device ID or serial number of the newly enrolled device.", required: true },
+    ],
+  },
+  {
+    name: "device-offboarding",
+    description: "Prepare a device for offboarding: unscope from assignment groups, lock or wipe (destructive — requires confirmation), and note remaining profiles.",
+    arguments: [
+      { name: "device_ref", description: "Device ID or serial number to offboard.", required: true },
+    ],
+  },
+  {
+    name: "patch-compliance-review",
+    description: "Review OS version distribution across the fleet and identify devices more than one major version behind the latest observed.",
+    arguments: [],
+  },
+  {
+    name: "stale-devices-cleanup",
+    description: "Find devices that appear enrolled but have not checked in recently; propose sync, lock, or unenroll actions per device.",
+    arguments: [
+      { name: "days", description: "Number of days since last check-in to consider stale. Default 14.", required: false },
+    ],
+  },
+];
+
+function promptBody(name: string, args: Record<string, string> | undefined): string {
+  const a = args ?? {};
+  switch (name) {
+    case "fleet-health-dashboard":
+      return "Give me a fleet health dashboard. Call get_fleet_summary and get_security_posture in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, and any obvious posture outliers. End with up to 3 concrete recommendations.";
+    case "security-audit":
+      return "Run a full security audit. Call get_security_posture. For each posture metric below 80%, note it as an outlier. Specifically check: supervised, dep_enrolled, filevault_enabled, firmware_password, recovery_lock_password, activation_lock, user_approved_mdm, passcode_compliant. For macOS specifically, if FileVault enablement is under 80%, list the Macs that are off (call the simplemdm://reports/filevault resource). End with a prioritized remediation plan.";
+    case "new-device-onboarding":
+      return `Verify new-device onboarding for ${a.device_ref || "the specified device"}. Call get_device_full_profile with device_id or serial_number = ${a.device_ref || "{device_ref}"}. Then report: assigned configuration profiles, installed managed apps vs still-pending apps, assignment group memberships, supervised status, DEP status, and the most recent 5 MDM commands with timestamps and status. Flag anything unusual.`;
+    case "device-offboarding":
+      return `Prepare ${a.device_ref || "the specified device"} for offboarding. First call get_device_full_profile to confirm the device. List its current assignment groups, installed profiles, and any outstanding MDM commands. Propose (but do not execute) the offboarding steps: 1) unassign from each assignment group, 2) clear sensitive profiles, 3) lock or wipe (destructive — require explicit confirmation from the user before calling). Do not call any write tools without the user typing CONFIRM.`;
+    case "patch-compliance-review":
+      return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
+    case "stale-devices-cleanup": {
+      const days = a.days || "14";
+      return `Find devices enrolled but not checked in for over ${days} days. Use list_devices with pagination and inspect last_seen_at in get_device for candidates. Group stale devices by device_group or assignment_group, then propose remediation per group: sync_device first, escalate to lock_device only if still unreachable. Do not unenroll or wipe anything automatically.`;
+    }
+    default:
+      throw new Error(`Unknown prompt: ${name}`);
+  }
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "simplemdm-mcp", version: "0.2.0" },
-  { capabilities: { tools: {} } }
+  { name: "simplemdm-mcp", version: "0.3.0" },
+  { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
@@ -1202,6 +1461,29 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   } catch (err) {
     return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
   }
+});
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: RESOURCES }));
+
+server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+  const uri = req.params.uri;
+  const data = await readResource(uri);
+  return {
+    contents: [{ uri, mimeType: "application/json", text: JSON.stringify(data, null, 2) }],
+  };
+});
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: PROMPTS }));
+
+server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+  const name = req.params.name;
+  const args = req.params.arguments as Record<string, string> | undefined;
+  const text = promptBody(name, args);
+  const prompt = PROMPTS.find(p => p.name === name);
+  return {
+    description: prompt?.description,
+    messages: [{ role: "user", content: { type: "text", text } }],
+  };
 });
 
 await server.connect(new StdioServerTransport());
