@@ -30,28 +30,20 @@ Claude decides which tools to call and in what combination. You just ask the que
 
 ## Quick Start
 
-Fastest path with Claude Code:
+Fastest path with Claude Code + Docker:
 
 ```bash
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
-cp .env.example .env
-```
-
-Edit `.env` and set:
-```bash
-SIMPLEMDM_API_KEY=your-api-key-here
-```
-
-Then run:
-```bash
 docker build -t simplemdm-mcp .
 claude mcp add simplemdm \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   -- docker run --rm -i simplemdm-mcp
 ```
 
-If you do not want Docker, use the npm or source options below instead.
+Replace `your-api-key-here` with a key from **SimpleMDM > Settings > API Keys**. Use a read-only key unless you plan to enable writes.
+
+If you don't want Docker, use the npm or source options below.
 
 ---
 
@@ -242,46 +234,177 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ## Tools
 
+The server registers ~115 tools covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`.
+
 ### Read tools (always available)
 
+**Account & fleet**
 | Tool | Description |
 |------|-------------|
+| `get_account` | Account info: name, App Store country, subscription license counts |
 | `get_fleet_summary` | Total devices, enrolled/unenrolled, posture counts, OS breakdown |
-| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC |
+
+**Devices**
+| Tool | Description |
+|------|-------------|
+| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (paginated) |
 | `get_device` | Full device detail — hardware, OS, posture, battery, storage |
-| `get_device_profiles` | Installed profiles on a device |
+| `get_device_profiles` | Installed configuration profiles on a device |
 | `get_device_installed_apps` | Installed apps with managed/unmanaged state |
-| `get_device_users` | Users associated with a device |
-| `get_device_logs` | MDM command logs by serial number |
-| `list_assignment_groups` | All assignment groups |
-| `get_assignment_group` | Group detail including membership |
-| `list_apps` | Full app catalog |
+| `get_device_users` | User accounts on a device (macOS) |
+| `get_device_logs` | MDM command logs for a device by serial |
+| `list_device_groups` | Legacy device groups |
+| `get_device_group` | Detail for a legacy device group |
+
+**Apps**
+| Tool | Description |
+|------|-------------|
+| `list_apps` | Full app catalog (App Store, enterprise, shared) |
 | `get_app` | Single app detail |
+| `list_app_installs` | Install records for an app across the fleet |
+| `get_installed_app` | Detail for a specific installed-app record |
+| `list_managed_app_configs` | Managed app configurations |
+
+**Profiles & declarations**
+| Tool | Description |
+|------|-------------|
 | `list_profiles` | All profiles |
-| `list_custom_configuration_profiles` | Custom config profiles |
+| `get_profile` | Single profile detail |
+| `list_custom_configuration_profiles` | Custom `.mobileconfig` profiles |
 | `list_custom_declarations` | DDM declarations |
-| `get_custom_declaration` | Single declaration detail |
+| `get_custom_declaration` | Single DDM declaration detail |
+
+**Assignment groups**
+| Tool | Description |
+|------|-------------|
+| `list_assignment_groups` | All assignment groups |
+| `get_assignment_group` | Group detail including apps/devices/profiles |
+
+**Custom attributes**
+| Tool | Description |
+|------|-------------|
+| `list_custom_attributes` | All custom attributes |
+| `get_custom_attribute` | Single attribute definition |
+| `get_device_attribute_values` | Attribute values set on a device |
+| `get_group_attribute_values` | Attribute values set on a group |
+
+**Scripts**
+| Tool | Description |
+|------|-------------|
 | `list_scripts` | Script library |
+| `get_script` | Single script detail |
 | `list_script_jobs` | Script jobs, filterable by status |
+| `get_script_job` | Single script job detail |
+
+**Enrollment & DEP**
+| Tool | Description |
+|------|-------------|
 | `list_enrollments` | Active enrollment configs |
-| `list_dep_servers` | Registered DEP servers |
-| `get_dep_devices` | DEP devices for a server |
+| `get_enrollment` | Single enrollment detail |
+| `list_dep_servers` | Registered DEP/ABM servers |
+| `get_dep_server` | Single DEP server detail |
+| `list_dep_devices` | DEP devices for a server |
+| `get_dep_device` | Single DEP device detail |
+
+**Logs & certificates**
+| Tool | Description |
+|------|-------------|
+| `list_logs` | Account-wide audit logs |
+| `get_log` | Single log entry |
+| `get_push_certificate` | APNs push certificate info |
+| `get_signed_csr` | Signed CSR for push certificate renewal |
 
 ### Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
 
-| Tool | SimpleMDM Permission |
-|------|---------------------|
-| `lock_device` | Devices: write |
+All tools below modify fleet state. The API permission column tells you what the SimpleMDM API key must be scoped to.
+
+**Device actions**
+| Tool | API Permission |
+|------|---------------|
+| `lock_device` · `unlock` via passcode — send lock MDM cmd | Devices: write |
 | `sync_device` | Devices: write |
 | `restart_device` | Devices: write |
 | `shutdown_device` | Devices: write |
-| `enable_lost_mode` | Devices: write |
-| `disable_lost_mode` | Devices: write |
+| `wipe_device` ⚠️ destructive | Devices: write |
+| `unenroll_device` ⚠️ destructive | Devices: write |
 | `update_os` | Devices: write |
-| `assign_device_to_group` | Assignment Groups: write |
-| `unassign_device_from_group` | Assignment Groups: write |
-| `push_apps_to_group` | Assignment Groups: write |
-| `create_script_job` | Devices: write |
+| `set_time_zone` | Devices: write |
+| `enable_lost_mode` / `disable_lost_mode` | Devices: write |
+| `play_lost_mode_sound` / `update_lost_mode_location` | Devices: write |
+| `enable_remote_desktop` / `disable_remote_desktop` | Devices: write |
+| `enable_bluetooth` / `disable_bluetooth` | Devices: write |
+| `clear_passcode` | Devices: write |
+| `clear_restrictions_password` | Devices: write |
+| `clear_firmware_password` / `rotate_firmware_password` | Devices: write |
+| `clear_recovery_lock_password` / `rotate_recovery_lock_password` | Devices: write |
+| `rotate_filevault_recovery_key` | Devices: write |
+| `rotate_admin_password` / `set_admin_password` | Devices: write |
+
+**Device CRUD**
+| Tool | API Permission |
+|------|---------------|
+| `create_device` | Devices: write |
+| `update_device` | Devices: write |
+| `delete_device` ⚠️ destructive | Devices: write |
+| `delete_device_user` | Devices: write |
+
+**Apps**
+| Tool | API Permission |
+|------|---------------|
+| `create_app` · `update_app` · `delete_app` | Apps: write |
+| `uninstall_app` | Apps: write |
+| `update_installed_app` | Apps: write |
+| `request_app_management` | Apps: write |
+| `create_managed_app_config` · `delete_managed_app_config` | Apps: write |
+| `push_managed_app_configs` | Apps: write |
+
+**Profiles**
+| Tool | API Permission |
+|------|---------------|
+| `assign_profile_to_device` / `unassign_profile_from_device` | Profiles: write |
+| `assign_custom_profile_to_device` / `unassign_custom_profile_from_device` | Profiles: write |
+| `create_custom_configuration_profile` · `update_custom_configuration_profile` · `delete_custom_configuration_profile` | Profiles: write |
+
+**Declarations (DDM)**
+| Tool | API Permission |
+|------|---------------|
+| `assign_declaration_to_device` / `unassign_declaration_from_device` | Profiles: write |
+| `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` | Profiles: write |
+
+**Assignment groups**
+| Tool | API Permission |
+|------|---------------|
+| `create_assignment_group` · `update_assignment_group` · `delete_assignment_group` | Assignment Groups: write |
+| `clone_assignment_group` | Assignment Groups: write |
+| `assign_device_to_group` / `unassign_device_from_group` | Assignment Groups: write |
+| `assign_app_to_group` / `unassign_app_from_group` | Assignment Groups: write |
+| `assign_profile_to_group` / `unassign_profile_from_group` | Assignment Groups: write |
+| `update_apps_in_group` · `push_apps_to_group` · `sync_profiles_in_group` | Assignment Groups: write |
+
+**Custom attributes**
+| Tool | API Permission |
+|------|---------------|
+| `create_custom_attribute` · `update_custom_attribute` · `delete_custom_attribute` | Attributes: write |
+| `set_device_attribute_value` · `set_group_attribute_value` | Attributes: write |
+| `set_attribute_for_multiple_devices` | Attributes: write |
+
+**Scripts**
+| Tool | API Permission |
+|------|---------------|
+| `create_script` · `update_script` · `delete_script` | Scripts: write |
+| `create_script_job` · `cancel_script_job` | Scripts: write |
+
+**Enrollment & DEP**
+| Tool | API Permission |
+|------|---------------|
+| `delete_enrollment` | Enrollment: write |
+| `send_enrollment_invitation` | Enrollment: write |
+| `sync_dep_server` | Enrollment: write |
+
+**Account**
+| Tool | API Permission |
+|------|---------------|
+| `update_account` | Account: write |
 
 ---
 
