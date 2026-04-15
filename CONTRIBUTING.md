@@ -53,6 +53,23 @@ of the error. Do **not** paste raw API keys.
 
 Security issues: see [SECURITY.md](SECURITY.md) for the private disclosure path.
 
+## Claude Code permissions
+
+This repo ships a committed `.claude/settings.json` that pre-approves the
+read-only SimpleMDM MCP tools and a handful of safe shell utilities (`jq`,
+`awk`, `git status`/`diff`/`log`, `npm run`, `docker build`, etc.). That
+means contributors using Claude Code don't see a prompt for every
+`list_devices` or `git status` call.
+
+Deliberately **not** pre-approved:
+- Write tools: `lock_device`, `wipe_device`, `unenroll_device`, all
+  `create_*` / `update_*` / `delete_*` / `clear_*` / `rotate_*`, and
+  anything that mutates fleet state. These still prompt per call.
+- Destructive git (`git reset --hard`, `git push --force`, `git rebase`).
+
+Personal overrides go in `.claude/settings.local.json` (gitignored). Don't
+commit destructive allows to the tracked `.claude/settings.json`.
+
 ## Scope
 
 This repo wraps the SimpleMDM REST API as an MCP server. Changes that

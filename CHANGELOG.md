@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- Committed `.claude/settings.json` pre-approving all read-only SimpleMDM
+  MCP tools and safe shell helpers for Claude Code contributors. Write
+  and destructive tools still prompt per call.
+- `CONTRIBUTING.md` section documenting the permission policy.
+
 ## [0.3.0]
 
 ### Added
