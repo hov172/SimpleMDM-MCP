@@ -29,7 +29,7 @@ All notable changes to this project are documented here. Format follows
     + recent logs in parallel (accepts device_id or serial_number).
   - `get_security_posture` — fleet-wide percentages and counts for every
     posture metric + OS-major breakdown in one call.
-- Full tool catalog documentation in README (~117 tools grouped by domain).
+- Full tool catalog documentation in README (~125 tools grouped by domain).
 - Setup instructions for Claude Code CLI, Codex CLI, and ChatGPT connectors.
 - Rate-limit guidance and error-behavior notes.
 - `LICENSE` file (MIT) at repo root.

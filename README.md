@@ -338,7 +338,7 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ## Tools
 
-The server registers ~115 tools covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`.
+The server registers ~125 tools covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`.
 
 ### Read tools (always available)
 
