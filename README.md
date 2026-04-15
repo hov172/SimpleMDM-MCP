@@ -45,6 +45,27 @@ npm install
 npm run build
 ```
 
+### Option C — Docker container
+```bash
+docker build -t simplemdm-mcp .
+```
+
+Run it with your env file:
+```bash
+docker run --rm -i --env-file .env simplemdm-mcp
+```
+
+Or pass vars directly:
+```bash
+docker run --rm -i \
+  -e SIMPLEMDM_API_KEY=your-api-key-here \
+  simplemdm-mcp
+```
+
+Notes:
+- Use `-i` so the MCP server can stay attached to stdio.
+- Docker is a good fit for direct API mode. `LOCAL_APP_MODE=true` usually does not make sense unless the container can reach the host app and you override `LOCAL_APP_BASE_URL`.
+
 ---
 
 ## Connect to Claude Desktop
@@ -107,6 +128,13 @@ Or from source:
 claude mcp add simplemdm \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   -- node /path/to/SimpleMDM-MCP/dist/index.js
+```
+
+From Docker:
+```bash
+claude mcp add simplemdm \
+  -e SIMPLEMDM_API_KEY=your-api-key-here \
+  -- docker run --rm -i simplemdm-mcp
 ```
 
 ---
