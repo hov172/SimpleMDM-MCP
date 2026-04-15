@@ -195,6 +195,39 @@ claude mcp add simplemdm \
 
 ---
 
+## Use With Other MCP Clients
+
+This server is not Claude-specific. It is a standard MCP server over `stdio`, so any MCP-capable client or agent can use it if that client supports registering local MCP servers.
+
+Use one of these commands as the MCP server process:
+
+With Docker:
+```bash
+docker run --rm -i --env-file /absolute/path/to/SimpleMDM-MCP/.env simplemdm-mcp
+```
+
+From source:
+```bash
+node /absolute/path/to/SimpleMDM-MCP/dist/index.js
+```
+
+Generic stdio MCP configuration should include:
+- command: `docker` or `node`
+- args: the command arguments needed to launch the server
+- env: either inline environment variables or an env-file mechanism if the client supports it
+
+Minimum required environment:
+- `SIMPLEMDM_API_KEY`
+
+Optional environment:
+- `SIMPLEMDM_ALLOW_WRITES=true`
+- MunkiReport settings
+- Local app mode settings
+
+If your client supports MCP but has a different config format, map the same command, args, and env values into that client’s schema.
+
+---
+
 ## Enable write actions
 
 By default the server is **read-only** — all query tools work, but lock/sync/restart/assign/script actions are blocked even if your API key has write permissions. This is intentional.
