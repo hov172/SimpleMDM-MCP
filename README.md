@@ -2,8 +2,6 @@
 
 An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) that lets you query and manage your fleet using natural language through Claude Desktop, Claude Code, or any MCP-compatible client.
 
-Companion to [Report-SimpleMDM](https://github.com/hov172/Report-SimpleMDM) and [SimpleMDM-MunkiReport](https://github.com/hov172/SimpleMDM-MunkiReport).
-
 ---
 
 ## What this lets you do
@@ -97,7 +95,6 @@ docker run --rm -i \
 
 Notes:
 - Use `-i` so the MCP server can stay attached to stdio.
-- Docker is a good fit for direct API mode. `LOCAL_APP_MODE=true` usually does not make sense unless the container can reach the host app and you override `LOCAL_APP_BASE_URL`.
 
 ---
 
@@ -221,8 +218,6 @@ Minimum required environment:
 
 Optional environment:
 - `SIMPLEMDM_ALLOW_WRITES=true`
-- MunkiReport settings
-- Local app mode settings
 
 If your client supports MCP but has a different config format, map the same command, args, and env values into that client’s schema.
 
@@ -242,49 +237,6 @@ To enable write actions, add `SIMPLEMDM_ALLOW_WRITES=true` to your config:
 ```
 
 See [API key permissions](#api-key-permissions) below for what each action requires.
-
----
-
-## MunkiReport enrichment (optional)
-
-If you run the [SimpleMDM-MunkiReport](https://github.com/hov172/SimpleMDM-MunkiReport) module, add these to your env to enable compliance, AppleCare, sync health, and per-device enrichment tools:
-
-```json
-"env": {
-  "SIMPLEMDM_API_KEY": "your-api-key-here",
-  "MUNKIREPORT_BASE_URL": "https://munkireport.example.com",
-  "MUNKIREPORT_MODULE_PREFIX": "/module/simplemdm",
-  "MUNKIREPORT_AUTH_HEADER_NAME": "X-SIMPLEMDM-API-KEY"
-}
-```
-
-For cookie-authenticated MunkiReport deployments, use `MUNKIREPORT_COOKIE` instead of the header vars.
-
----
-
-## Local app mode (Report-SimpleMDM users only)
-
-If you're already running [Report-SimpleMDM](https://github.com/hov172/Report-SimpleMDM), you can connect the MCP server to the app instead of the SimpleMDM API directly. Benefits:
-
-- **Instant responses** — data is already cached by the app, no API calls needed
-- **Free fleet summary** — no pagination overhead
-- **Automatic MunkiReport enrichment** — if the app is in hybrid mode, enrichment tools just work
-- **No rate limit exposure**
-
-**Setup:**
-
-1. In Report-SimpleMDM, go to **Settings > Developer > Enable Local API** and turn it on
-2. Copy the Bearer token shown in that screen
-3. Add to your MCP config:
-
-```json
-"env": {
-  "LOCAL_APP_MODE": "true",
-  "LOCAL_APP_TOKEN": "token-from-the-app"
-}
-```
-
-The app must be running on the same machine. If it quits, the MCP server will return an error until it restarts.
 
 ---
 
@@ -331,16 +283,6 @@ The app must be running on the same machine. If it quits, the MCP server will re
 | `push_apps_to_group` | Assignment Groups: write |
 | `create_script_job` | Devices: write |
 
-### MunkiReport enrichment tools (require module config)
-
-| Tool | Description |
-|------|-------------|
-| `get_munkireport_sync_health` | Sync health telemetry |
-| `get_munkireport_compliance` | Fleet compliance stats |
-| `get_munkireport_device_resources` | Per-device connected resources |
-| `get_munkireport_apple_care` | AppleCare coverage stats |
-| `get_munkireport_supplemental_overview` | Supplemental fleet overview |
-
 ---
 
 ## API key permissions
@@ -363,16 +305,8 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SIMPLEMDM_API_KEY` | Yes (direct mode) | SimpleMDM API key |
+| `SIMPLEMDM_API_KEY` | Yes | SimpleMDM API key |
 | `SIMPLEMDM_ALLOW_WRITES` | No | Set `true` to enable write actions. Off by default. |
-| `MUNKIREPORT_BASE_URL` | No | MunkiReport site root (enables enrichment tools) |
-| `MUNKIREPORT_MODULE_PREFIX` | No | Default: `/module/simplemdm` |
-| `MUNKIREPORT_AUTH_HEADER_NAME` | No | Auth header name for MunkiReport |
-| `MUNKIREPORT_AUTH_HEADER_VALUE` | No | Auth header value (falls back to API key if name is `X-SIMPLEMDM-API-KEY` and value is blank) |
-| `MUNKIREPORT_COOKIE` | No | Session cookie for cookie-authenticated MunkiReport |
-| `LOCAL_APP_MODE` | No | Set `true` to use Report-SimpleMDM as the data source |
-| `LOCAL_APP_TOKEN` | Required if local mode | Bearer token from Report-SimpleMDM > Settings > Developer |
-| `LOCAL_APP_BASE_URL` | No | Default: `http://127.0.0.1:49552` |
 
 ---
 
@@ -408,21 +342,6 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 **Write action returns 403**
 - The API key lacks the required permission domain. Check the tool's required permission in the Tools table above and update the key's permissions in SimpleMDM.
-
-**Local app mode: "Could not reach Report-SimpleMDM"**
-- Make sure the app is open
-- Go to Settings > Developer and confirm Enable Local API is turned on
-- Confirm the token in your MCP config matches what the app shows
-
-**MunkiReport tools return "not configured"**
-- `MUNKIREPORT_BASE_URL` is not set. Add it to the `env` block in your config.
-
----
-
-## Related projects
-
-- [Report-SimpleMDM](https://github.com/hov172/Report-SimpleMDM) — Native SwiftUI MDM client for macOS and iOS
-- [SimpleMDM-MunkiReport](https://github.com/hov172/SimpleMDM-MunkiReport) — PHP/Python MunkiReport module for MDM device inventory sync
 
 ---
 
