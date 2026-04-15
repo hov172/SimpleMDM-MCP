@@ -23,6 +23,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Prompts](#prompts)
 - [API key permissions](#api-key-permissions)
 - [Environment variables](#environment-variables)
+- [Claude Code permissions (settings.json)](#claude-code-permissions-settingsjson)
 - [Security](#security)
 - [Rate limits and error behavior](#rate-limits-and-error-behavior)
 - [Troubleshooting](#troubleshooting)
@@ -338,7 +339,7 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ## Tools
 
-The server registers ~125 tools covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`.
+The server registers **126 tools** covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -568,10 +569,115 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 ## Environment variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SIMPLEMDM_API_KEY` | Yes | SimpleMDM API key |
-| `SIMPLEMDM_ALLOW_WRITES` | No | Set `true` to enable write actions. Off by default. |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SIMPLEMDM_API_KEY` | Yes | — | SimpleMDM API key |
+| `SIMPLEMDM_ALLOW_WRITES` | No | `false` | Set `true` to enable write actions. Off by default. |
+| `SIMPLEMDM_TIMEOUT_MS` | No | `30000` | Per-request timeout in milliseconds. Requests that exceed this are aborted. |
+| `SIMPLEMDM_MAX_RETRIES` | No | `3` | Retry count for `429` and `5xx` responses. Uses Retry-After when present, otherwise exponential backoff. |
+| `SIMPLEMDM_MAX_PAGES` | No | `200` | Safety cap on fleet-wide pagination (`get_fleet_summary`, `get_security_posture`, filevault/enrollment resources). Raise for very large fleets. |
+| `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
+
+---
+
+## Claude Code permissions (settings.json)
+
+This repo ships two permission profiles for [Claude Code](https://docs.claude.com/claude-code):
+
+| File | Scope | When to use |
+|---|---|---|
+| `.claude/settings.json` | Committed, team-wide | Conservative default — pre-approves read-only tools and safe shell helpers. Writes and destructive git still prompt. |
+| `.claude/settings.auto.example.json` | Template | Opt-in "auto mode" profile — fewer prompts, with a deny list covering destructive shell, history-rewriting git, and SimpleMDM write tools (`wipe_device`, `delete_*`, `clear_*`). |
+
+**To activate auto mode for your user:**
+
+```bash
+# Copy the template into your personal Claude config
+cp .claude/settings.auto.example.json ~/.claude/settings.json
+# …or as a project-local override (gitignored)
+cp .claude/settings.auto.example.json .claude/settings.local.json
+```
+
+Key settings in the auto template:
+
+- `"permissions.defaultMode": "auto"` — Claude Code's classifier approves routine commands without prompting and still asks for genuinely risky ones
+- `allow` — all read-only MCP tools (`mcp__simplemdm__get_*`, `mcp__simplemdm__list_*`), read-only file tools, safe Bash prefixes, plus dev-workflow niceties like `git commit --amend`, `git rebase`, `git restore --staged`, `killall`/`pkill`/`kill -9`, `docker rm`/`rmi`, `chmod -R`/`chown -R`
+- `deny` — destructive shell (`rm`, `sudo`, `dd`, `mkfs`, `shutdown`), data-loss git (`reset --hard`, `clean -f*`, `checkout .`, `branch -D`, `tag -d`, `filter-branch`, `reflog delete`), force-push (`push --force*`, `push --delete`), `npm publish/unpublish`, `docker system prune`/`volume rm`, `gh pr/issue/release/repo delete` — **and** SimpleMDM write tools that could impact devices (`wipe_device`, `unenroll_device`, all `delete_*`, all `clear_*` password tools)
+
+No read tool is denied anywhere — information-gathering across the SimpleMDM surface (account, devices, apps, groups, profiles, DEP, logs, posture, MunkiReport enrichment) always flows without prompting.
+
+### Customizing the rules
+
+Rules are strings matched by prefix. `deny` always wins over `allow`, and both win over `defaultMode`.
+
+**Syntax examples:**
+
+| Rule | Meaning |
+|---|---|
+| `"Bash"` | All Bash commands |
+| `"Bash(git status)"` | Exactly `git status`, no arguments |
+| `"Bash(git status:*)"` | `git status` with any arguments |
+| `"Bash(npm run:*)"` | Any `npm run <something>` |
+| `"mcp__simplemdm__list_*"` | All SimpleMDM list tools (wildcard) |
+| `"mcp__simplemdm__wipe_device"` | Exact tool name |
+| `"Read"` | All Read tool calls |
+| `"WebFetch(domain:github.com)"` | Only fetches to github.com |
+
+**Add an allow rule** (open the right file, append a string to the `allow` array):
+
+```bash
+# Personal / global
+$EDITOR ~/.claude/settings.json
+
+# Project-local, gitignored
+$EDITOR .claude/settings.local.json
+```
+
+```jsonc
+{
+  "permissions": {
+    "allow": [
+      "Bash(terraform:*)",           // new: allow terraform commands
+      "mcp__simplemdm__lock_device"  // new: allow a specific MCP write
+    ]
+  }
+}
+```
+
+**Add a deny rule:**
+
+```jsonc
+{
+  "permissions": {
+    "deny": [
+      "Bash(gh auth logout:*)",     // new: never auto-log out of gh
+      "mcp__simplemdm__wipe_device" // new: never auto-wipe a device
+    ]
+  }
+}
+```
+
+**Remove a rule** — delete the matching line from the `allow` or `deny` array. Don't leave a trailing comma on the previous line, or JSON parse will fail and *all* rules in that file are silently ignored.
+
+**Validate after editing:**
+
+```bash
+python3 -m json.tool ~/.claude/settings.json > /dev/null && echo ok
+```
+
+**Which file to edit:**
+
+| Goal | File |
+|---|---|
+| Personal default across all projects | `~/.claude/settings.json` |
+| Team-wide for this repo (committed) | `.claude/settings.json` |
+| My overrides for this repo (gitignored) | `.claude/settings.local.json` |
+
+Claude Code hot-reloads these files during a session — no restart needed.
+
+**Settings files never contain API keys.** Secrets belong in the MCP server's `env` block in your Claude Desktop / Claude Code CLI / Codex config — not in `settings.json`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md#claude-code-permissions) for the contributor-facing permission policy.
 
 ---
 
@@ -585,6 +691,10 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 **Writes are off by default.** You must explicitly set `SIMPLEMDM_ALLOW_WRITES=true` to enable any action that modifies fleet state. Using a read-only key with writes disabled means the worst outcome from any unexpected query is a list of devices — not a remote wipe.
 
+**Input is validated server-side.** Every tool call is checked against its declared JSON schema for required fields and primitive types before dispatch, and every URL path segment is validated + `encodeURIComponent`-encoded to block path traversal or query injection via tool arguments.
+
+**Network calls are hardened.** All upstream requests enforce a timeout (default 30s) with automatic retry and exponential backoff on `429` / `5xx`. Upstream error bodies are truncated before being surfaced to the client so large payloads can't leak through.
+
 **For environments with strict data requirements** — healthcare, government, finance — use Claude for Enterprise with a BAA or DPA in place before connecting fleet data, or consult your compliance team first.
 
 ---
@@ -593,20 +703,25 @@ Start with read-only. Add write permissions only if you need them, and only for 
 
 SimpleMDM enforces an API rate limit of roughly **60 requests per minute** per account. Tools that fan out across the fleet (bulk `list_devices` pagination, `push_apps_to_group`, `create_script_job` on large groups) can hit this quickly.
 
+The server now handles this automatically: on `429` responses it honors the `Retry-After` header when present, otherwise falls back to exponential backoff. Retries are capped by `SIMPLEMDM_MAX_RETRIES` (default 3). Only if retries are exhausted does the error reach Claude.
+
 How the server behaves on common API responses:
 
 | API response | Server behavior |
 |---|---|
 | `200 OK` | Returned to Claude as tool output |
+| `204 No Content` | Returned as `{ "success": true }` |
 | `401 Unauthorized` | Surfaced as an error — API key is invalid or revoked |
 | `403 Forbidden` | Surfaced as an error — API key lacks the required permission domain for that tool |
 | `404 Not Found` | Returned as an error with the resource identifier |
-| `429 Too Many Requests` | Returned as an error; Claude will typically retry with a different approach or wait |
-| `5xx` | Surfaced as a server error; retry the question after a short wait |
+| `429 Too Many Requests` | Retried automatically with Retry-After / exponential backoff (up to `SIMPLEMDM_MAX_RETRIES`) |
+| `5xx` | Retried automatically with exponential backoff; surfaced as an error only if retries exhausted |
+| Timeout | Aborted after `SIMPLEMDM_TIMEOUT_MS` (default 30s) and retried |
 
 **Tips for large fleets**
 - Prefer `get_fleet_summary` over `list_devices` for posture/KPI questions — it's one call.
 - When iterating over devices, let Claude paginate naturally rather than asking for "all 5000 devices at once."
+- Fleet-wide pagination is capped at `SIMPLEMDM_MAX_PAGES` pages (default 200 × 100 = 20k devices). Raise it if your fleet is larger.
 - For writes that touch many devices (e.g. `push_apps_to_group`), SimpleMDM queues server-side — check `list_script_jobs` / app install status a minute later rather than re-triggering.
 
 ---
