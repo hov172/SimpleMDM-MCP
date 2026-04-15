@@ -30,6 +30,33 @@ Claude decides which tools to call and in what combination. You just ask the que
 
 ---
 
+## Quick Start
+
+Fastest path with Claude Code:
+
+```bash
+git clone https://github.com/hov172/SimpleMDM-MCP
+cd SimpleMDM-MCP
+cp .env.example .env
+```
+
+Edit `.env` and set:
+```bash
+SIMPLEMDM_API_KEY=your-api-key-here
+```
+
+Then run:
+```bash
+docker build -t simplemdm-mcp .
+claude mcp add simplemdm \
+  -e SIMPLEMDM_API_KEY=your-api-key-here \
+  -- docker run --rm -i simplemdm-mcp
+```
+
+If you do not want Docker, use the npm or source options below instead.
+
+---
+
 ## Install
 
 ### Option A — From npm (recommended)
@@ -41,14 +68,20 @@ npm install -g simplemdm-mcp
 ```bash
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
+cp .env.example .env
 npm install
 npm run build
 ```
 
 ### Option C — Docker container
 ```bash
+git clone https://github.com/hov172/SimpleMDM-MCP
+cd SimpleMDM-MCP
+cp .env.example .env
 docker build -t simplemdm-mcp .
 ```
+
+Edit `.env` and set your required values before running the container.
 
 Run it with your env file:
 ```bash
@@ -109,6 +142,23 @@ If you installed from source instead of npm, replace `"simplemdm-mcp"` with `"no
 }
 ```
 
+If you want Claude Desktop to launch the Docker container instead:
+```json
+{
+  "mcpServers": {
+    "simplemdm": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--env-file", "/absolute/path/to/SimpleMDM-MCP/.env", "simplemdm-mcp"]
+    }
+  }
+}
+```
+
+Build the image first:
+```bash
+docker build -t simplemdm-mcp /absolute/path/to/SimpleMDM-MCP
+```
+
 **3. Restart Claude Desktop**
 
 Quit and reopen the app. You should see a tools icon in the chat input bar — click it to confirm SimpleMDM tools are listed.
@@ -135,6 +185,12 @@ From Docker:
 claude mcp add simplemdm \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   -- docker run --rm -i simplemdm-mcp
+```
+
+If you want to keep secrets in a file instead of repeating `-e` flags:
+```bash
+claude mcp add simplemdm \
+  -- docker run --rm -i --env-file /absolute/path/to/SimpleMDM-MCP/.env simplemdm-mcp
 ```
 
 ---
