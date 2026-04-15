@@ -65,6 +65,29 @@ function requireWrites(): void {
 
 function j(body: unknown): string { return JSON.stringify(body); }
 
+type DeviceAttributes = {
+  status?: string | null;
+  enrollment_status?: string | null;
+  os_version?: string | null;
+  is_supervised?: boolean | null;
+  dep_enrolled?: boolean | null;
+  filevault_enabled?: boolean | null;
+};
+
+type DeviceRecord = {
+  id: string | number;
+  attributes: DeviceAttributes;
+};
+
+type PaginatedResponse<T> = {
+  data: T[];
+  has_more: boolean;
+};
+
+function getDeviceStatus(attributes: DeviceAttributes): string {
+  return attributes.status ?? attributes.enrollment_status ?? "unknown";
+}
+
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
 const TOOLS: Tool[] = [
@@ -87,7 +110,7 @@ const TOOLS: Tool[] = [
   // FLEET SUMMARY (derived)
   // ══════════════════════════════════════════════════════════════════════════
   { name: "get_fleet_summary",
-    description: "Derived fleet KPIs: total devices, enrolled/unenrolled counts, supervised/DEP/FileVault posture counts, and OS version breakdown. In local app mode this is instant.",
+    description: "Derived fleet KPIs: total devices, enrolled/unenrolled counts, supervised/DEP/FileVault posture counts, plus OS and device status breakdowns. In local app mode this is instant.",
     inputSchema: { type: "object", properties: {} } },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -807,26 +830,35 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     // ── Fleet summary (derived) ──────────────────────────────────────────────
     case "get_fleet_summary": {
       if (USE_LOCAL_APP) return api("/fleet/summary");
-      type Page = { data: Array<{ id: string; attributes: { enrollment_status: string; os_version: string; is_supervised: boolean; dep_enrolled: boolean; filevault_enabled: boolean } }>; has_more: boolean };
-      let all: Page["data"] = [];
-      let cursor = "";
+      let all: DeviceRecord[] = [];
+      let cursor: string | number | undefined;
       let more = true;
       while (more) {
-        const p = await simpleMDM(`/devices?limit=100${cursor ? `&starting_after=${cursor}` : ""}`) as Page;
+        const p = await simpleMDM(`/devices?limit=100${cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : ""}`) as PaginatedResponse<DeviceRecord>;
         all = all.concat(p.data);
         more = p.has_more;
-        cursor = p.data.at(-1)?.id ?? "";
+        cursor = p.data.at(-1)?.id;
       }
-      const enrolled = all.filter(d => d.attributes.enrollment_status === "enrolled").length;
+      const statusCounts: Record<string, number> = {};
       const osCounts: Record<string, number> = {};
-      for (const d of all) { const v = d.attributes.os_version || "unknown"; osCounts[v] = (osCounts[v] ?? 0) + 1; }
+      for (const d of all) {
+        const status = getDeviceStatus(d.attributes);
+        statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+        const v = d.attributes.os_version || "unknown";
+        osCounts[v] = (osCounts[v] ?? 0) + 1;
+      }
+      const enrolled = statusCounts.enrolled ?? 0;
+      const unenrolled = statusCounts.unenrolled ?? 0;
       return {
-        total: all.length, enrolled, unenrolled: all.length - enrolled,
+        total: all.length,
+        enrolled,
+        unenrolled,
         posture: {
-          supervised: all.filter(d => d.attributes.is_supervised).length,
-          dep_enrolled: all.filter(d => d.attributes.dep_enrolled).length,
-          filevault_enabled: all.filter(d => d.attributes.filevault_enabled).length,
+          supervised: all.filter(d => d.attributes.is_supervised === true).length,
+          dep_enrolled: all.filter(d => d.attributes.dep_enrolled === true).length,
+          filevault_enabled: all.filter(d => d.attributes.filevault_enabled === true).length,
         },
+        device_status_breakdown: statusCounts,
         os_version_breakdown: osCounts,
       };
     }
@@ -1102,9 +1134,6 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "delete_enrollment":
       requireWrites();
       return api(`/enrollments/${args.enrollment_id}`, { method: "DELETE" });
-
-    // ── Logs ─────────────────────────────────────────────────────────────────
-    case "get_log": return api(`/logs/${args.log_id}`);
 
     // ── Managed app configs ───────────────────────────────────────────────────
     case "list_managed_app_configs": return api(`/apps/${args.app_id}/managed_configs`);
