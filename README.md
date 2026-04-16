@@ -100,10 +100,8 @@ npm run build
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
 cp .env.example .env
-docker build --build-arg VERSION=0.5.0 -t simplemdm-mcp:0.5.0 .
+docker build -t simplemdm-mcp .
 ```
-
-The `VERSION` build-arg is baked into the image's `org.opencontainers.image.version` label so you can confirm what's installed with `docker inspect simplemdm-mcp:0.5.0 | grep version`. Default is `dev` if omitted.
 
 Edit `.env` and set your required values before running the container.
 
@@ -118,6 +116,16 @@ docker run --rm -i \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   simplemdm-mcp
 ```
+
+**Optional — bake the version into the image label** for `docker inspect` traceability:
+
+```bash
+docker build --build-arg VERSION=$(node -p "require('./package.json').version") \
+  -t simplemdm-mcp:$(node -p "require('./package.json').version") .
+docker inspect simplemdm-mcp:$(node -p "require('./package.json').version") | grep version
+```
+
+The `VERSION` build-arg defaults to `dev` when omitted, so the basic `docker build` above is fine for local-only use.
 
 Notes:
 - Use `-i` so the MCP server can stay attached to stdio.
