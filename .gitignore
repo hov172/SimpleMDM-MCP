@@ -8,4 +8,6 @@ dist/
 .smoke.*
 .top_apps.*
 .build.out
+.docker.out
+.verify.out
 .DS_Store
