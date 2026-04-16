@@ -2,3 +2,10 @@ node_modules/
 dist/
 .env
 *.js.map
+.claude/settings.local.json
+
+# Local smoke-test / one-off scripts and their output
+.smoke.*
+.top_apps.*
+.build.out
+.DS_Store

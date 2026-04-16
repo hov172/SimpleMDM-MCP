@@ -4,6 +4,68 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `get_compliance_violators` OS-lag check now uses a stable per-platform
+  baseline (`CURRENT_SUPPORTED_OS`, defaults macOS 15 / iOS 18 / iPadOS 18,
+  override via `CURRENT_SUPPORTED_OS_OVERRIDE` env var) instead of the
+  fleet's highest observed OS. A single device on a beta or future major
+  no longer skews the result for the rest of the fleet.
+- `get_compliance_violators` default `max_os_major_lag` raised from 1 to
+  2 (one major behind is normal during a transition window).
+- `get_compliance_violators` adds `skip_os_check` boolean and
+  `unsupported_lag_threshold` (default 3) — devices past Apple's typical
+  support window are now labeled `os_unsupported` instead of a numeric
+  `os_N_majors_behind`, making the output filterable.
+- `get_compliance_violators` response now includes `baseline_supported_major`
+  (the per-platform baseline used) and `failure_counts` (rollup so callers
+  can act on the dominant failure type without re-iterating).
+
+## [0.5.0]
+
+Fleet-analytics release. Adds 28 derived/aggregation tools that iterate the
+fleet to answer questions the raw SimpleMDM API can't in a single call. All
+new tools are read-only and idempotent. No breaking changes — existing
+`tools/list` entries, resource URIs, and prompt names are unchanged.
+
+### Added
+- 28 derived fleet-analytics tools across four maturity tiers
+  (`get_top_installed_apps`, `get_app_coverage`, `get_compliance_violators`,
+  `get_app_version_drift`, `get_pending_commands`, `get_dep_drift`,
+  `get_os_eligibility`, and 21 more — see
+  `docs/aggregation-tools-roadmap.md`).
+- 4 new resources: `simplemdm://reports/{top-apps,unmanaged-apps,stale-devices,storage-health}`.
+- 3 new prompts: `app-inventory-audit`, `compliance-violators-remediation`,
+  `profile-coverage-remediation`.
+- `SIMPLEMDM_FLEET_CONCURRENCY` env var (default 8) tuning worker count
+  for fleet-iteration tools. Lower it on tenants seeing 429s.
+- `MAC_OS_ELIGIBILITY_OVERRIDE` env var — JSON map of model-prefix →
+  max-macOS-major to patch the built-in support table without redeploying.
+- Static macOS support table (last updated 2024-11) used by
+  `get_os_eligibility`.
+
+### Changed
+- `collectInstalledApps` now throws on `MAX_PAGES` exhaustion (previously
+  silently truncated, producing wrong rollups in aggregations).
+- `get_assignment_group_drift` rewritten from a sequential per-device loop
+  into a bounded worker pool — uses the same concurrency knob as the
+  other fleet tools.
+- README tool count updated from 125 → 153.
+
+### Notes
+- Several Tier 1/2 tools depend on optionally-populated SimpleMDM fields
+  (`install_status`, `battery_cycle_count`, `last_used_at` on enrollments,
+  `current_carrier_network`, `default_assignment_profile_uuid` on dep_servers).
+  They degrade gracefully (return empty) when the upstream field isn't
+  populated for your tenant — verify on a sample before relying on them in
+  production.
+- Two tools were drafted but **not shipped** after senior-dev review:
+  `get_filevault_recovery_key_audit` (no verified read endpoint) and
+  `get_kernel_extension_inventory` (MDM API doesn't expose KEXTs; needs
+  a MunkiReport hardware module not in this codebase). See
+  `docs/aggregation-tools-roadmap.md`.
+
 ## [0.4.0]
 
 Security-hardening and reliability release. No breaking changes for

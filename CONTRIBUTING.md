@@ -29,7 +29,9 @@ npm run dev      # runs src/index.ts via tsx (no build step)
 - If you add a new MCP tool, update:
   - the tool definition + `case` handler in `src/index.ts`
   - the Tools table in `README.md` under the right domain heading
+  - the tool count in `README.md` (search for "tools covering the full SimpleMDM API surface")
   - a line in `CHANGELOG.md` under `[Unreleased]`
+  - if it's a derived/aggregation tool, also add it to `docs/aggregation-tools-roadmap.md` with `[shipped]` and the appropriate tier
 - If you change or remove a tool, note it in `CHANGELOG.md` and call out any
   breaking behavior in the PR description.
 
