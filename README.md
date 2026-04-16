@@ -469,7 +469,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 | `get_battery_health_report` | Battery rollup (level + cycle/capacity flags when populated). Returns `_agent_hint` when only level data is available, warning that aging batteries may be missed. |
 | `get_network_summary` | Wi-Fi MAC, ethernet MACs, last IP, carrier breakdown |
 | `get_user_attribution` | Device → primary user mapping via custom attribute |
-| `get_os_eligibility` | Mac model → max supported macOS major (static table, 2024-11). Returns `_agent_hint` when unknown models are found, directing the AI to web-search for compatibility info. |
+| `get_os_eligibility` | Mac model → max supported macOS major (static table, 2026-04, macOS 26 Tahoe). Returns `_agent_hint` when unknown models are found, directing the AI to web-search for compatibility info. |
 | `get_inactive_assignment_groups` | Assignment groups with zero devices |
 | `get_orphaned_profiles` | Profiles not attached to any assignment group |
 | `get_orphaned_apps` | Catalog apps not attached to any assignment group |

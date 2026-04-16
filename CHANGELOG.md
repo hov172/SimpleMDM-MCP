@@ -4,6 +4,30 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.7.1] - 2026-04-15
+
+### Changed
+- **`MACOS_SUPPORT_TABLE` refreshed for macOS 26 Tahoe** (shipped 2025-09).
+  All Apple Silicon Mac families bumped from 15 → 26. Four Intel models
+  added/bumped to 26 (the only Intel Macs that get Tahoe): `MacPro7,`,
+  `iMac20,`, `MacBookPro16,1/2/4` (16,3 explicitly capped at 15).
+- **`CURRENT_SUPPORTED_OS` defaults bumped** from `{mac:15, ios:18, ipad:18}`
+  to `{mac:26, ios:26, ipad:26}` to match Apple's unified year-based
+  versioning introduced at WWDC25.
+
+### Added
+- Missing legacy Apple Silicon entries that use pre-`Mac{N},` naming:
+  `Macmini9,` (M1 Mac mini 2020), and explicit notes on `MacBookAir10,`,
+  `MacBookPro17,`, `MacBookPro18,`, `iMac21,` all bumping to 26.
+- Pre-Sequoia entries the table previously omitted: `iMac14,1/2/3` (Catalina),
+  `iMac14,4` (Big Sur), `iMac15,` (Big Sur), `iMac16,` (Monterey).
+
+### Fixed
+- `iMac17,` (iMac 27" Retina 5K Late 2015) max corrected from `11` (Big Sur)
+  to `12` (Monterey) — Apple's official support list extends through Monterey.
+- `table_last_updated` and all `_agent_hint` strings referencing `2024-11`
+  bumped to `2026-04`.
+
 ## [0.7.0] - 2026-04-15
 
 ### Added
