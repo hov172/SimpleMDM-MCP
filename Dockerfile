@@ -3,7 +3,7 @@
 #   FROM node:22-alpine@sha256:<digest> AS build
 # Resolve the current digest with: docker buildx imagetools inspect node:22-alpine
 
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ COPY src ./src
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:22-alpine
+FROM node:25-alpine
 
 # Override at build time. Recommended: derive from package.json so the
 # example never goes stale:
