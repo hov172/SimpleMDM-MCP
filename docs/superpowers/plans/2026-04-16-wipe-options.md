@@ -1,6 +1,21 @@
 # Extended `wipe_device` Options Implementation Plan
 
+> **Status:** Shipped in v0.8.0, corrected in v0.8.1. See the post-ship notes below before editing this plan — two changes diverged from what is written here.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+## Post-ship notes (v0.8.1)
+
+After the initial ship of v0.8.0 this plan specified, the implementation was cross-checked against SimpleMDM's published API docs. Two corrections:
+
+1. **`wifi_network_id` type is `integer`, not `string`.** Everywhere this plan shows `wifi_network_id: { type: "string", ... }`, `"42"`, or describes it as a string, read "integer ≥ 1". The shipped schema is `{ type: "integer", minimum: 1, ... }` and the tests use the numeric literal `42`.
+2. **Two additional parameters were added:** `clear_custom_attributes` and `unassign_direct_profiles` — both optional booleans (server default `false`), already supported by the endpoint but not listed in the original user-supplied feature description. Now exposed in the schema and `buildWipeBody`.
+
+Also, Task 2's `test` script was written as `npm run build && node --test test/` in this plan; the implementer switched to `node --test test/*.mjs` because bare directory discovery fails on Node 25.2.1 (`MODULE_NOT_FOUND`). The glob form is what shipped.
+
+The design spec (`docs/superpowers/specs/2026-04-16-wipe-options-design.md`) carries the amended schema and test samples — use that as the source of truth for field shapes. This plan is preserved as-written for a chronology of the decisions; the v0.8.1 follow-up is a separate ad-hoc commit rather than a revised plan.
+
+---
 
 **Goal:** Extend the `wipe_device` MCP tool with five optional parameters (`preserve_data_plan`, `disable_activation_lock`, `disallow_proximity_setup`, `return_to_service` + `wifi_network_id`, `obliteration_behavior`) to reach parity with the SimpleMDM admin portal's wipe dialog.
 

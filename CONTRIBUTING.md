@@ -45,10 +45,24 @@ npm run dev      # runs src/index.ts via tsx (no build step)
 
 ```bash
 npm run build          # must succeed on Node 18 / 20 / 22
+npm test               # runs unit tests via node:test
 npm pack --dry-run     # inspect tarball contents if packaging changed
 ```
 
 CI runs `npm run build` across the Node version matrix on every push and PR.
+
+## Tests
+
+Unit tests live in `test/` and run via Node's built-in `node:test` runner — no
+test framework dependency. The `test` script builds first and then runs
+`node --test test/*.mjs`, so tests always exercise the compiled `dist/` output.
+
+Current coverage is scoped to pure helpers that can be tested without a live
+SimpleMDM tenant (see `test/wipe_device.test.mjs` for the pattern). If you add
+a helper that makes sense to test in isolation, prefer extracting it to a
+sibling module under `src/` and adding a `*.test.mjs` file. Do **not** add live
+API tests here — integration testing against SimpleMDM is manual and requires
+a sandbox tenant.
 
 ## Commit style
 
