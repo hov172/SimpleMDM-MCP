@@ -32,6 +32,12 @@ npm run dev      # runs src/index.ts via tsx (no build step)
   - the tool count in `README.md` (search for "tools covering the full SimpleMDM API surface")
   - a line in `CHANGELOG.md` under `[Unreleased]`
   - if it's a derived/aggregation tool, also add it to `docs/aggregation-tools-roadmap.md` with `[shipped]` and the appropriate tier
+- If your tool depends on static knowledge (e.g. a hardcoded table) or could
+  return an empty result that the AI might misread as "all clear," add an
+  `_agent_hint` string to the response in that condition. Document it in the
+  tool's README description and the "Agent hints" table in
+  `docs/aggregation-tools-roadmap.md`. See existing examples in
+  `get_os_eligibility` and `get_app_install_failures`.
 - If you change or remove a tool, note it in `CHANGELOG.md` and call out any
   breaking behavior in the PR description.
 

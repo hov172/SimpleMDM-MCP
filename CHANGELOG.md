@@ -4,6 +4,45 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-04-15
+
+### Added
+- **Response slimming on heavy list endpoints.** `list_devices`, `list_apps`,
+  `list_assignment_groups`, `list_custom_configuration_profiles`, and
+  `list_custom_declarations` now collapse oversized relationship arrays
+  (>200 IDs) into a `count`-only summary, and strip extra per-item fields
+  from kept arrays. Prevents MCP transport truncation on large fleets where
+  raw payloads exceeded ~350K characters.
+- **Agent hints on knowledge gaps and silent-empty results.** Several tools
+  now return an `_agent_hint` field directing the AI to either look up missing
+  info or warn the admin when results may be misleading:
+  - `get_os_eligibility` — when Mac model identifiers are not in the built-in
+    support table, hints the AI to web-search for compatibility and suggests
+    setting `MAC_OS_ELIGIBILITY_OVERRIDE`.
+  - `get_compliance_violators` — when devices are running a higher OS major
+    than the configured baseline, prompts the AI to verify the current
+    shipping OS and suggest updating `CURRENT_SUPPORTED_OS_OVERRIDE`.
+  - `get_app_install_failures` — when zero failures are returned, warns that
+    this may mean the `install_status` field isn't populated for the tenant
+    rather than no actual failures.
+  - `get_battery_health_report` — when only `battery_level` is present
+    (no `battery_cycle_count` / `battery_max_capacity_pct`), warns that
+    aging batteries with degraded capacity will not be flagged.
+  - `get_pending_commands` — when log entries are scanned but no command
+    events are paired, warns that the tenant's `/logs` endpoint may not
+    surface command-level events.
+- README now documents all 5 MunkiReport enrichment tools (`get_munkireport_*`)
+  and the MunkiReport-related environment variables (`MUNKIREPORT_BASE_URL`,
+  `MUNKIREPORT_MODULE_PREFIX`, `MUNKIREPORT_AUTH_HEADER_NAME`,
+  `MUNKIREPORT_AUTH_HEADER_VALUE`, `MUNKIREPORT_COOKIE`). These tools were
+  always registered but previously undocumented (removed from README in 0.3.0).
+
+### Fixed
+- `docs/aggregation-tools-roadmap.md` status and release plan updated to
+  reflect 0.6.0 shipping.
+- Fixed incorrect `skillOverrides` reference in roadmap doc — replaced with
+  the correct Claude Code `permissions.deny` mechanism.
+
 ## [0.6.0]
 
 ### Fixed

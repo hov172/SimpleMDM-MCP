@@ -295,6 +295,37 @@ async function collectInstalledApps(deviceId: string | number): Promise<Installe
   throw new Error(`collectInstalledApps(${deviceId}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
 }
 
+// ─── Response slimming for list endpoints ────────────────────────────────────
+// Some SimpleMDM list endpoints embed full relationship arrays (every device ID,
+// profile ID, etc.) on each record.  For endpoints with 100+ records this blows
+// up the payload and causes MCP transport truncation.  slimRelationships()
+// replaces heavy arrays with a count, while keeping lightweight ones (apps) as
+// full ID lists so callers can still map names without a per-group fetch.
+
+type RelBlock = { data?: Array<{ id: string | number; type?: string; [k: string]: unknown }> };
+type AnyRecord = { id: string | number; attributes?: Record<string, unknown>; relationships?: Record<string, RelBlock | unknown> };
+
+const KEEP_IDS_THRESHOLD = 200; // relationship arrays ≤ this keep full IDs
+
+function slimRelationships<T extends AnyRecord>(records: T[]): T[] {
+  return records.map(r => {
+    if (!r.relationships) return r;
+    const slim: Record<string, unknown> = {};
+    for (const [key, rel] of Object.entries(r.relationships)) {
+      const block = rel as RelBlock | undefined;
+      if (!block?.data || !Array.isArray(block.data)) { slim[key] = rel; continue; }
+      if (block.data.length <= KEEP_IDS_THRESHOLD) {
+        // Keep just IDs — strip any extra fields per item to save space
+        slim[key] = { data: block.data.map(d => ({ type: d.type, id: d.id })), count: block.data.length };
+      } else {
+        // Too many — collapse to count only
+        slim[key] = { count: block.data.length };
+      }
+    }
+    return { ...r, relationships: slim };
+  });
+}
+
 // ─── In-memory TTL cache for paginated list results ──────────────────────────
 // Keyed by request path (includes query-string filters). Entries auto-expire
 // after CACHE_TTL_MS. Write operations invalidate related entries via prefix
@@ -1805,7 +1836,20 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
         }
       }
       violators.sort((a, b) => b.failures.length - a.failures.length);
-      return {
+      // Detect if any enrolled device is running a higher OS major than the
+      // baseline — signals Apple shipped a new OS and the defaults are stale.
+      const observedMax: Record<string, number> = {};
+      for (const d of enrolled) {
+        const a = d.attributes;
+        const mn = a.model_name as string | undefined ?? "";
+        const plat: "mac" | "ios" | "ipad" = mn.includes("Mac") ? "mac" : mn.includes("iPad") ? "ipad" : "ios";
+        const major = parseInt((a.os_version ?? "").split(".")[0] ?? "", 10);
+        if (Number.isFinite(major) && major > (observedMax[plat] ?? 0)) observedMax[plat] = major;
+      }
+      const stalePlatforms = (Object.keys(CURRENT_SUPPORTED_OS) as Array<"mac"|"ios"|"ipad">)
+        .filter(p => (observedMax[p] ?? 0) > CURRENT_SUPPORTED_OS[p]);
+
+      const result: Record<string, unknown> = {
         total_enrolled: enrolled.length,
         violator_count: violators.length,
         baseline_supported_major: CURRENT_SUPPORTED_OS,
@@ -1813,6 +1857,13 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
         failure_counts: failureCounts,
         violators,
       };
+      if (stalePlatforms.length > 0) {
+        const details = stalePlatforms.map(p => `${p}: baseline=${CURRENT_SUPPORTED_OS[p]} but devices running ${observedMax[p]}`).join("; ");
+        result._agent_hint = `The OS baseline appears stale for: ${details}. `
+          + `Apple has likely shipped a newer OS version. Search the web for the current shipping version of ${stalePlatforms.map(p => p === "mac" ? "macOS" : p === "ios" ? "iOS" : "iPadOS").join(", ")} `
+          + `and tell the admin to update the CURRENT_SUPPORTED_OS_OVERRIDE env var — for example: CURRENT_SUPPORTED_OS_OVERRIDE='${JSON.stringify(Object.fromEntries(stalePlatforms.map(p => [p, observedMax[p]])))}'.`;
+      }
+      return result;
     }
 
     case "get_devices_missing_profile": {
@@ -1890,13 +1941,19 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
         else perDevice.set(k, { device_id: s.device_id, pending_count: 1, oldest_sent_at: iso });
       }
       const devices = [...perDevice.values()].sort((a, b) => b.pending_count - a.pending_count);
-      return {
+      const result: Record<string, unknown> = {
         min_age_hours: minAgeHours,
         log_entries_scanned: entries.length,
         commands_observed: sent.size,
         devices_with_pending: devices.length,
         devices,
       };
+      if (entries.length > 0 && sent.size === 0) {
+        result._agent_hint = `Scanned ${entries.length} log entries but found no MDM command events to pair. `
+          + "This typically means the SimpleMDM /logs endpoint isn't surfacing command-level events for this tenant — the tool can't detect pending commands without them. "
+          + "Tell the admin: verify by calling list_logs and checking whether any entry has an event/namespace containing 'command'. If not, this tool will always return zero.";
+      }
+      return result;
     }
 
     case "get_dep_drift": {
@@ -1950,13 +2007,21 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       }
       const upgradable = rows.filter(r => r.upgrade_available === true);
       const unknownModel = rows.filter(r => r.max_supported_major === null);
-      return {
+      const unknownPrefixes = [...new Set(unknownModel.map(r => r.model?.replace(/,\d+$/, ",") ?? "unknown").filter(Boolean))];
+      const result: Record<string, unknown> = {
         table_last_updated: "2024-11",
         mac_count: rows.length,
         upgradable_count: upgradable.length,
         unknown_model_count: unknownModel.length,
         devices: rows,
       };
+      if (unknownPrefixes.length > 0) {
+        result.unknown_model_prefixes = unknownPrefixes;
+        result._agent_hint = `${unknownPrefixes.length} model identifier${unknownPrefixes.length > 1 ? "s are" : " is"} not in the built-in support table (last updated 2024-11): ${unknownPrefixes.join(", ")}. `
+          + `Search the web for each (e.g. "Apple ${unknownPrefixes[0]} macOS compatibility") to determine the maximum supported macOS version. `
+          + `Once found, tell the admin to set the MAC_OS_ELIGIBILITY_OVERRIDE env var to patch the table without redeploying — for example: MAC_OS_ELIGIBILITY_OVERRIDE='{"${unknownPrefixes[0]}":16}'.`;
+      }
+      return result;
     }
 
     case "get_dep_unassigned": {
@@ -2042,7 +2107,12 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
           }
         }
       });
-      return { ...stats, failure_count: failed.length, failures: failed };
+      const result: Record<string, unknown> = { ...stats, failure_count: failed.length, failures: failed };
+      if (failed.length === 0 && stats.devices_processed > 0) {
+        result._agent_hint = "Zero install failures were found, but this may mean the SimpleMDM API is not populating the install_status field for this tenant rather than there being no failures. "
+          + "Tell the admin: verify by running get_device_installed_apps on a single device and checking whether install_status is present in the response. If the field is missing, this tool cannot detect failures.";
+      }
+      return result;
     }
 
     case "get_battery_health_report": {
@@ -2074,7 +2144,17 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
                 : "high_cycles",
         });
       }
-      return { low_threshold_pct: lowPct, flagged_count: rows.length, devices: rows };
+      const hasCycleData = rows.some(r => r.cycles !== undefined);
+      const hasCapData = rows.some(r => r.max_capacity_pct !== undefined);
+      const enrolled = all.filter(d => getDeviceStatus(d.attributes) === "enrolled");
+      const withBattery = enrolled.filter(d => d.attributes.battery_level != null);
+      const result: Record<string, unknown> = { low_threshold_pct: lowPct, flagged_count: rows.length, devices_with_battery: withBattery.length, devices: rows };
+      if (withBattery.length > 0 && !hasCycleData && !hasCapData) {
+        result._agent_hint = "Battery level data is present but cycle_count and max_capacity fields are not populated for any device. "
+          + "Results only reflect low charge level, not battery health degradation. "
+          + "Tell the admin: these fields require MDM profile settings that enable battery health reporting — without them, aging batteries with low max capacity will not be flagged.";
+      }
+      return result;
     }
 
     case "get_network_summary": {
@@ -2354,7 +2434,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     }
 
     // ── Devices read ─────────────────────────────────────────────────────────
-    case "list_devices": return collectAllPages(`/devices${qs(args, ["search", "include_awaiting_enrollment"])}`);
+    case "list_devices": {
+      const r = await collectAllPages<AnyRecord>(`/devices${qs(args, ["search", "include_awaiting_enrollment"])}`);
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
     case "get_device_profiles": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/profiles`);
     case "get_device_installed_apps": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
@@ -2456,7 +2539,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/devices/${seg(args.device_id, "device_id")}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
 
     // ── Assignment groups ────────────────────────────────────────────────────
-    case "list_assignment_groups": return collectAllPages("/assignment_groups");
+    case "list_assignment_groups": {
+      const r = await collectAllPages<AnyRecord>("/assignment_groups");
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_assignment_group": return api(`/assignment_groups/${seg(args.group_id, "group_id")}`);
     case "create_assignment_group":
       requireWrites();
@@ -2499,7 +2585,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/assignment_groups/${seg(args.group_id, "group_id")}/clone`, { method: "POST" });
 
     // ── Apps ─────────────────────────────────────────────────────────────────
-    case "list_apps": return collectAllPages(`/apps?include_shared=${args.include_shared !== false}`);
+    case "list_apps": {
+      const r = await collectAllPages<AnyRecord>(`/apps?include_shared=${args.include_shared !== false}`);
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_app": return api(`/apps/${seg(args.app_id, "app_id")}`);
     case "create_app":
       requireWrites();
@@ -2549,7 +2638,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "PUT", body: j({ value: args.value }) });
 
     // ── Custom configuration profiles ─────────────────────────────────────────
-    case "list_custom_configuration_profiles": return collectAllPages("/custom_configuration_profiles");
+    case "list_custom_configuration_profiles": {
+      const r = await collectAllPages<AnyRecord>("/custom_configuration_profiles");
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "create_custom_configuration_profile":
       requireWrites();
       return api("/custom_configuration_profiles", { method: "POST", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope, attribute_support: args.attribute_support }) });
@@ -2567,7 +2659,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Custom declarations ───────────────────────────────────────────────────
-    case "list_custom_declarations": return collectAllPages("/custom_declarations");
+    case "list_custom_declarations": {
+      const r = await collectAllPages<AnyRecord>("/custom_declarations");
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_custom_declaration": return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`);
     case "create_custom_declaration":
       requireWrites();
@@ -2586,7 +2681,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Profiles ─────────────────────────────────────────────────────────────
-    case "list_profiles": return collectAllPages("/profiles");
+    case "list_profiles": {
+      const r = await collectAllPages<AnyRecord>("/profiles");
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_profile": return api(`/profiles/${seg(args.profile_id, "profile_id")}`);
     case "assign_profile_to_device":
       requireWrites();
@@ -2605,7 +2703,10 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_dep_device": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices/${seg(args.dep_device_id, "dep_device_id")}`);
 
     // ── Device groups (legacy) ────────────────────────────────────────────────
-    case "list_device_groups": return collectAllPages("/device_groups");
+    case "list_device_groups": {
+      const r = await collectAllPages<AnyRecord>("/device_groups");
+      return { data: slimRelationships(r.data), has_more: r.has_more };
+    }
     case "get_device_group": return api(`/device_groups/${seg(args.group_id, "group_id")}`);
 
     // ── Enrollments ───────────────────────────────────────────────────────────
