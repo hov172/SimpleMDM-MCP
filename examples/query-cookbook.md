@@ -126,3 +126,4 @@ These show what a question looks like to a user — Claude figures out which too
 - Reference fields by their natural names ("FileVault", "supervision", "OS major version") — Claude maps these to the right tool inputs.
 - For potentially destructive actions, Claude will surface a confirmation; this is the MCP `destructiveHint` annotation in action.
 - If a tool returns "field not populated for this tenant", the underlying SimpleMDM data isn't there for your account — see the sparse-fields table in [`../docs/aggregation-tools-roadmap.md`](../docs/aggregation-tools-roadmap.md).
+- Some tools include an `_agent_hint` field when they hit a knowledge gap (unknown Mac model, stale OS baseline, or empty results that could be misread as "all clear"). Claude follows these hints automatically — typically by web-searching for the missing info, then telling you the env-var override to set (`MAC_OS_ELIGIBILITY_OVERRIDE`, `CURRENT_SUPPORTED_OS_OVERRIDE`).

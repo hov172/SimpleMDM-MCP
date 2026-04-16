@@ -364,7 +364,7 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 ## Tools
 
-The server registers **153 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **153 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -455,31 +455,43 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 | `get_top_installed_apps` | Apps ranked by install count across the fleet |
 | `get_app_coverage` | For one bundle ID: install pct + list of devices missing it |
 | `get_app_version_drift` | Version distribution + per-device rows for one bundle ID |
-| `get_app_install_failures` | Devices where managed app pushes failed (sparse if `install_status` not populated) |
+| `get_app_install_failures` | Devices where managed app pushes failed (sparse if `install_status` not populated). Returns `_agent_hint` when zero failures may indicate missing data rather than no problems. |
 | `get_apps_by_publisher` | Top installs grouped by publisher prefix |
 | `get_app_size_footprint` | Fleet-wide storage cost per app |
 | `get_unmanaged_apps` | Apps installed on the fleet but not in the SimpleMDM catalog (shadow IT) |
-| `get_compliance_violators` | Single call returning enrolled devices failing one or more checks |
+| `get_compliance_violators` | Single call returning enrolled devices failing one or more checks. Returns `_agent_hint` when the OS baseline appears stale (devices running a higher major than the configured baseline). |
 | `get_devices_missing_profile` | Coverage check for a configuration profile |
 | `get_assignment_group_drift` | Devices whose installed apps diverge from their group's assigned set |
 | `get_stale_devices` | Enrolled devices not seen in N days |
 | `get_recently_enrolled` | Devices enrolled in the last N days |
 | `get_lost_mode_devices` | Devices currently in lost mode + last known location |
 | `get_storage_health` | Devices with low disk and/or low battery |
-| `get_battery_health_report` | Battery rollup (level + cycle/capacity flags when populated) |
+| `get_battery_health_report` | Battery rollup (level + cycle/capacity flags when populated). Returns `_agent_hint` when only level data is available, warning that aging batteries may be missed. |
 | `get_network_summary` | Wi-Fi MAC, ethernet MACs, last IP, carrier breakdown |
 | `get_user_attribution` | Device → primary user mapping via custom attribute |
-| `get_os_eligibility` | Mac model → max supported macOS major (static table, 2024-11) |
+| `get_os_eligibility` | Mac model → max supported macOS major (static table, 2024-11). Returns `_agent_hint` when unknown models are found, directing the AI to web-search for compatibility info. |
 | `get_inactive_assignment_groups` | Assignment groups with zero devices |
 | `get_orphaned_profiles` | Profiles not attached to any assignment group |
 | `get_orphaned_apps` | Catalog apps not attached to any assignment group |
 | `get_dep_unassigned` | DEP devices not yet mapped to a SimpleMDM enrollment |
 | `get_dep_drift` | DEP devices whose `profile_uuid` ≠ their dep_server's default |
-| `get_pending_commands` | MDM commands sent but not acknowledged in N hours |
+| `get_pending_commands` | MDM commands sent but not acknowledged in N hours. Returns `_agent_hint` when the logs API isn't surfacing command events for the tenant. |
 | `get_supervision_drift` | DEP-enrolled devices that lost supervision |
 | `get_device_user_count_outliers` | Macs with unusually many local user accounts |
 | `get_certificate_expiration_audit` | APNs push cert renewal warning bands |
 | `get_enrollment_token_audit` | Stale enrollment URLs (no use in N days) |
+
+**MunkiReport enrichment (require MunkiReport configuration)**
+
+These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php) instance for data the SimpleMDM API doesn't expose. Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
+
+| Tool | Description |
+|------|-------------|
+| `get_munkireport_sync_health` | Sync health telemetry from the MunkiReport simplemdm module |
+| `get_munkireport_compliance` | Fleet compliance stats from the MunkiReport simplemdm module |
+| `get_munkireport_device_resources` | Per-device connected-resource context (by serial number) |
+| `get_munkireport_apple_care` | AppleCare coverage stats from the MunkiReport module |
+| `get_munkireport_supplemental_overview` | Supplemental fleet overview from the MunkiReport module |
 
 ### Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
 
@@ -648,6 +660,11 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
 | `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":15,"ios":18,"ipad":18}`. Update on each Apple major release. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
+| `MUNKIREPORT_BASE_URL` | No | — | Base URL of your MunkiReport instance (e.g. `https://munkireport.example.com`). Required for `get_munkireport_*` tools when not using the local app bridge. |
+| `MUNKIREPORT_MODULE_PREFIX` | No | `/module/simplemdm` | Path prefix for the MunkiReport simplemdm module endpoints. |
+| `MUNKIREPORT_AUTH_HEADER_NAME` | No | — | HTTP header name for MunkiReport authentication (e.g. `Authorization`). |
+| `MUNKIREPORT_AUTH_HEADER_VALUE` | No | — | HTTP header value for MunkiReport authentication (e.g. `Bearer <token>`). |
+| `MUNKIREPORT_COOKIE` | No | — | Cookie string for MunkiReport session-based authentication (alternative to header auth). |
 
 ---
 

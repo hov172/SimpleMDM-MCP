@@ -2,7 +2,7 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.5.0):** 28 derived tools shipped. 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL) with automatic invalidation on writes.
+> **Status (0.6.0):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
 
 Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 
@@ -109,22 +109,36 @@ Drafted but removed before merge — would have produced misleading or empty out
 ### Sparse fields
 The tools below depend on fields that SimpleMDM populates only when the device's MDM payload includes them, the integration is configured, or your tenant has the relevant feature enabled. They return empty when the field isn't there:
 
-| Tool | Field |
-|------|-------|
-| `get_app_install_failures` | `installed_apps[].install_status` |
-| `get_battery_health_report` | `battery_cycle_count`, `battery_max_capacity_pct` |
-| `get_network_summary` (carrier section) | `current_carrier_network` |
-| `get_enrollment_token_audit` | `enrollments[].last_used_at` |
-| `get_dep_drift` | `dep_servers[].default_assignment_profile_uuid` |
-| `get_app_size_footprint` | `installed_apps[].app_size` |
+| Tool | Field | Agent hint? |
+|------|-------|-------------|
+| `get_app_install_failures` | `installed_apps[].install_status` | yes — when 0 failures returned |
+| `get_battery_health_report` | `battery_cycle_count`, `battery_max_capacity_pct` | yes — when only level data present |
+| `get_network_summary` (carrier section) | `current_carrier_network` | no — null carriers are obvious |
+| `get_enrollment_token_audit` | `enrollments[].last_used_at` | no — documented fallback to never-used |
+| `get_dep_drift` | `dep_servers[].default_assignment_profile_uuid` | no — null defaults are obvious |
+| `get_app_size_footprint` | `installed_apps[].app_size` | no — missing sizes are obvious |
 
 Verify on one device via `get_device` / `get_device_installed_apps` before relying on these in production.
+
+### Agent hints
+
+When a tool detects a knowledge gap or a result that could mislead the AI, it returns an `_agent_hint` string field directing the AI to either look up missing info or warn the admin. Hints appear only when the condition is met — normal responses are unchanged.
+
+| Tool | Trigger | Hint directs AI to |
+|------|---------|--------------------|
+| `get_os_eligibility` | Mac model identifier not in built-in support table | Web-search for compatibility, suggest `MAC_OS_ELIGIBILITY_OVERRIDE` |
+| `get_compliance_violators` | Any device running OS major higher than baseline | Web-search current shipping OS, suggest `CURRENT_SUPPORTED_OS_OVERRIDE` |
+| `get_app_install_failures` | Zero failures returned despite devices being processed | Warn admin that `install_status` may be missing for tenant |
+| `get_battery_health_report` | Only `battery_level` data present, no cycle/capacity | Warn admin that aging batteries with degraded capacity won't be flagged |
+| `get_pending_commands` | Log entries scanned but no command events paired | Warn admin that `/logs` endpoint may not surface command events |
+
+When adding a new tool, consider whether an empty/null result could be misinterpreted as "all clear." If yes, add an `_agent_hint` for that condition.
 
 ---
 
 ## Testing strategy
 
-There is **no automated test suite** for the analytics tools as of 0.5.0 — they hit a live SimpleMDM tenant, and recording fixtures for 153 tools is not yet justified by team size.
+There is **no automated test suite** for the analytics tools — they hit a live SimpleMDM tenant, and recording fixtures for 153 tools is not yet justified by team size.
 
 Until that changes, the validation contract is:
 
@@ -140,7 +154,8 @@ Open work (not yet started):
 
 ## Release plan
 
-- **0.5.0** (this release): 28 derived tools. Minor bump (additive, no breaking changes).
+- **0.5.0**: 28 derived tools shipped. Minor bump (additive, no breaking changes).
+- **0.6.0**: Auto-pagination on all list tools, in-memory TTL cache with automatic write-invalidation, response slimming for heavy list endpoints, stable OS-lag baseline for `get_compliance_violators`.
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
 - **Tool-count drift**: the README quotes a count (`153`); update it in the same commit that adds/removes a tool. There is no script to enforce this — discipline only.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
@@ -152,7 +167,7 @@ Open work (not yet started):
 The catalog is now **153 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
-- **Per-tool hide via `skillOverrides`** (Claude Code): users can hide individual tools in their `~/.claude/settings.json` without modifying this server. Useful for clients that never use the analytics surface.
+- **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.
 - **Plugin split (future)**: the analytics tools could move to a sibling MCP server (e.g. `simplemdm-analytics-mcp`) that's enabled only in admin contexts. Not done in 0.5.0 — single server is simpler to install — but the Tier-0/1/2/3 boundary maps cleanly to a future split if catalog size becomes a problem.
 - **Description discipline**: keep tool descriptions tight. Every word in a description ships on every conversation.
 - **Caching**: in-memory TTL cache means repeated tool calls within a session cost zero API calls and return minimal tokens. The cache also deduplicates concurrent identical requests.
