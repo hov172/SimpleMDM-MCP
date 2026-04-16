@@ -21,7 +21,7 @@ test("validateWipeArgs — return_to_service=true without wifi_network_id throws
 
 test("validateWipeArgs — return_to_service=true with wifi_network_id passes", () => {
   assert.doesNotThrow(() =>
-    validateWipeArgs({ return_to_service: true, wifi_network_id: "42" })
+    validateWipeArgs({ return_to_service: true, wifi_network_id: 42 })
   );
 });
 
@@ -41,8 +41,10 @@ test("buildWipeBody — all fields serialize verbatim", () => {
     disable_activation_lock: false,
     disallow_proximity_setup: true,
     return_to_service: true,
-    wifi_network_id: "42",
+    wifi_network_id: 42,
     obliteration_behavior: "DoNotObliterate",
+    clear_custom_attributes: true,
+    unassign_direct_profiles: true,
   })));
   assert.deepEqual(body, {
     pin: "123456",
@@ -50,9 +52,20 @@ test("buildWipeBody — all fields serialize verbatim", () => {
     disable_activation_lock: false,
     disallow_proximity_setup: true,
     return_to_service: true,
-    wifi_network_id: "42",
+    wifi_network_id: 42,
     obliteration_behavior: "DoNotObliterate",
+    clear_custom_attributes: true,
+    unassign_direct_profiles: true,
   });
+});
+
+test("buildWipeBody — wifi_network_id serializes as unquoted integer", () => {
+  const body = JSON.stringify(buildWipeBody({
+    device_id: "1",
+    return_to_service: true,
+    wifi_network_id: 42,
+  }));
+  assert.equal(body, '{"return_to_service":true,"wifi_network_id":42}');
 });
 
 test("buildWipeBody — undefined fields are dropped by JSON.stringify", () => {
@@ -61,4 +74,20 @@ test("buildWipeBody — undefined fields are dropped by JSON.stringify", () => {
     preserve_data_plan: true,
   })));
   assert.deepEqual(body, { preserve_data_plan: true });
+});
+
+test("buildWipeBody — clear_custom_attributes alone serializes", () => {
+  const body = JSON.stringify(buildWipeBody({
+    device_id: "1",
+    clear_custom_attributes: true,
+  }));
+  assert.equal(body, '{"clear_custom_attributes":true}');
+});
+
+test("buildWipeBody — unassign_direct_profiles alone serializes", () => {
+  const body = JSON.stringify(buildWipeBody({
+    device_id: "1",
+    unassign_direct_profiles: true,
+  }));
+  assert.equal(body, '{"unassign_direct_profiles":true}');
 });

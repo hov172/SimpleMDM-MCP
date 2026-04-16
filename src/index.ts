@@ -852,9 +852,11 @@ const TOOLS: Tool[] = [
       disable_activation_lock: { type: "boolean", description: "iOS/macOS. Server default: true. Pass false to retain Activation Lock." },
       disallow_proximity_setup: { type: "boolean", description: "iOS. Suppress Proximity Setup on the wiped device." },
       return_to_service: { type: "boolean", description: "iOS 17+/tvOS 18+. Auto re-enrolls after wipe. Requires wifi_network_id." },
-      wifi_network_id: { type: "string", description: "SimpleMDM id of a WiFi profile attached to the device's assignment group. Required when return_to_service=true. Not an SSID, UUID, or profile name." },
+      wifi_network_id: { type: "integer", minimum: 1, description: "Integer id of a WiFi configuration profile assigned to the device. Required when return_to_service=true. Not an SSID, UUID, or profile name." },
       obliteration_behavior: { type: "string", enum: ["DoNotObliterate", "ObliterateWithWarning"],
         description: "macOS 12+ (T2/Apple Silicon). Server default: ObliterateWithWarning." },
+      clear_custom_attributes: { type: "boolean", description: "Clear custom attribute values on the device record. Defaults to false." },
+      unassign_direct_profiles: { type: "boolean", description: "Remove directly assigned profiles from the device record. Defaults to false." },
     }}},
 
   { name: "sync_device",
