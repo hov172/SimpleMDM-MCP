@@ -504,7 +504,7 @@ All tools below modify fleet state. The API permission column tells you what the
 | `sync_device` | Devices: write |
 | `restart_device` | Devices: write |
 | `shutdown_device` | Devices: write |
-| `wipe_device` ⚠️ destructive | Devices: write |
+| `wipe_device` ⚠️ destructive | Devices: write — supports `preserve_data_plan`, `disable_activation_lock`, `disallow_proximity_setup`, `return_to_service` (+ `wifi_network_id`), `obliteration_behavior` |
 | `unenroll_device` ⚠️ destructive | Devices: write |
 | `update_os` | Devices: write |
 | `set_time_zone` | Devices: write |
