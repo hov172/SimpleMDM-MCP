@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.8.0] - 2026-04-16
+
+### Added
+- **`wipe_device` parity with the SimpleMDM admin portal wipe dialog.** Five
+  new optional parameters:
+  - `preserve_data_plan` — preserves eSIM / cellular data plan (iOS).
+  - `disable_activation_lock` — controls whether Activation Lock is disabled
+    during wipe (iOS/macOS). Server default: `true`.
+  - `disallow_proximity_setup` — suppresses Proximity Setup on the wiped
+    device (iOS).
+  - `return_to_service` + `wifi_network_id` — auto re-enrolls the device
+    after wipe (iOS 17+/tvOS 18+). `wifi_network_id` refers to a WiFi profile
+    attached to the device's assignment group. Client-side validation rejects
+    `return_to_service=true` without `wifi_network_id` before the HTTP call.
+  - `obliteration_behavior` — `DoNotObliterate` | `ObliterateWithWarning`
+    for macOS 12+ (T2/Apple Silicon). Server default: `ObliterateWithWarning`.
+- **`src/wipe.ts`** — pure-function module extracting body-building and
+  validation, enabling unit tests via Node's built-in `node:test` runner.
+- **`test/wipe_device.test.mjs`** — first unit tests in the repo; run with
+  `npm test`.
+
+### Changed
+- `package.json`: new `test` script (`npm run build && node --test test/*.mjs`).
+
+### Backwards compatibility
+- Existing `wipe_device` calls (`device_id` ± `pin`) produce identical request
+  bodies. All new parameters are optional; when omitted they are not serialized,
+  so SimpleMDM applies its documented server-side defaults.
+
 ## [0.7.1] - 2026-04-15
 
 ### Changed
