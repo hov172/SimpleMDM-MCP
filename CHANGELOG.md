@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- Dockerfile `VERSION` build-arg, baked into the image's
+  `org.opencontainers.image.version` label. Inspect via
+  `docker inspect simplemdm-mcp | grep version`. Defaults to `dev`.
+
 ### Changed
 - `get_compliance_violators` OS-lag check now uses a stable per-platform
   baseline (`CURRENT_SUPPORTED_OS`, defaults macOS 15 / iOS 18 / iPadOS 18,
