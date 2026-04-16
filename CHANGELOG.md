@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0]
 
 ### Fixed
 - Server version reported via MCP `initialize` was hardcoded and would
@@ -16,6 +16,29 @@ All notable changes to this project are documented here. Format follows
 - Dockerfile `VERSION` build-arg, baked into the image's
   `org.opencontainers.image.version` label. Inspect via
   `docker inspect simplemdm-mcp | grep version`. Defaults to `dev`.
+- **Auto-pagination on all list tools.** Every list endpoint now
+  automatically fetches all pages (100 records per page) until the full
+  result set is collected. No more `starting_after` / `limit` params —
+  callers always get the complete list. Applies to all 16 `list_*` tools,
+  plus derived tools that previously truncated at 100 records
+  (`get_inactive_assignment_groups`, `get_orphaned_profiles`,
+  `get_orphaned_apps`, `get_assignment_group_drift`, `get_dep_drift`,
+  `get_dep_unassigned`, `get_enrollment_token_audit`, `get_unmanaged_apps`).
+- **In-memory TTL cache** for all paginated list results, `collectDevices()`
+  fleet iterations, and per-device `collectInstalledApps()` calls. Default
+  TTL is 5 minutes, configurable via `SIMPLEMDM_CACHE_TTL_MS`. Repeated
+  calls within the TTL window return instantly from cache with zero API
+  calls, significantly reducing token usage and API load.
+- **Automatic cache invalidation** — all 78 write tools are mapped to
+  cache key prefixes. When a write succeeds, affected cache entries are
+  cleared so subsequent reads return fresh data. Cross-resource
+  invalidation is handled (e.g. `assign_app_to_group` invalidates both
+  `/assignment_groups` and `/apps` caches).
+- **Stampede protection** — concurrent identical `collectAllPages()`
+  requests are deduplicated so only one fetch runs; all callers share the
+  result.
+- `SIMPLEMDM_CACHE_TTL_MS` env var (default `300000` / 5 min). Set to `0`
+  to disable caching.
 
 ### Changed
 - `get_compliance_violators` OS-lag check now uses a stable per-platform
