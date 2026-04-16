@@ -1,0 +1,11 @@
+# Codex CLI MCP server configuration.
+# Add this block to ~/.codex/config.toml then restart codex.
+
+[mcp_servers.simplemdm]
+command = "node"
+args = ["/absolute/path/to/SimpleMDM-MCP/dist/index.js"]
+
+[mcp_servers.simplemdm.env]
+SIMPLEMDM_API_KEY = "your-api-key-here"
+# Uncomment to enable writes:
+# SIMPLEMDM_ALLOW_WRITES = "true"

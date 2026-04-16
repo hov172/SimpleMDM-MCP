@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "simplemdm": {
+      "command": "node",
+      "args": ["/absolute/path/to/SimpleMDM-MCP/dist/index.js"],
+      "env": {
+        "SIMPLEMDM_API_KEY": "your-api-key-here",
+        "MUNKIREPORT_BASE_URL": "https://munkireport.example.com",
+        "MUNKIREPORT_AUTH_HEADER_NAME": "X-SIMPLEMDM-API-KEY",
+        "SIMPLEMDM_FLEET_CONCURRENCY": "8"
+      }
+    }
+  }
+}
