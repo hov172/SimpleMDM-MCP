@@ -229,9 +229,14 @@ Run: `npm run build && node --test test/`. Add script `"test": "npm run build &&
 
 Before release, against a sandbox tenant with one throwaway device:
 
-1. Dry call (no wipe trigger needed) — validate tool schema appears correctly in an MCP client's tool list.
-2. Happy path: `wipe_device { device_id, return_to_service: true, wifi_network_id: <real id> }` — confirm device re-enrolls.
-3. Error path: invalid `wifi_network_id` — confirm SimpleMDM's 422 surfaces verbatim.
+1. ✅ **Done (2026-04-16, v0.8.1).** Dry call — tool schema appears correctly in an MCP client's tool list: all 10 properties present, `wifi_network_id` is `integer` with `minimum: 1`, both new booleans wired.
+2. ⏳ **Not yet done** — requires a write-scoped API key. Happy path: `wipe_device { device_id, return_to_service: true, wifi_network_id: <real id> }`. Confirm device re-enrolls.
+3. ⏳ **Not yet done** — requires a write-scoped API key. Error path: invalid `wifi_network_id`. Confirm SimpleMDM's 422 surfaces verbatim.
+
+### 6.4 What was verified live with a read-only key (2026-04-16)
+
+- **Client-side validator fires before HTTP.** `wipe_device { device_id, return_to_service: true }` (no `wifi_network_id`) throws `validateWipeArgs`'s error without reaching SimpleMDM. Device untouched.
+- **Full request path reaches SimpleMDM.** `wipe_device { device_id, preserve_data_plan: true }` with a read-only key returns SimpleMDM `403: This API Key does not have access to this resource.` — i.e. our code serialized the body, POSTed it, and SimpleMDM authenticated the key and rejected on scope. Body-shape acceptance is still not confirmed (auth fires before body parse), but the full code path on our side is exercised.
 
 ## 7. Documentation
 
