@@ -339,7 +339,7 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ## Tools
 
-The server registers **126 tools** covering the full SimpleMDM API surface. Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **153 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -420,6 +420,41 @@ The server registers **126 tools** covering the full SimpleMDM API surface. Read
 | `get_log` | Single log entry |
 | `get_push_certificate` | APNs push certificate info |
 | `get_signed_csr` | Signed CSR for push certificate renewal |
+
+**Fleet analytics (derived — iterate the fleet)**
+
+These tools answer questions the raw API can't in a single call. They iterate every enrolled device under a bounded worker pool (`SIMPLEMDM_FLEET_CONCURRENCY`, default 8). Slow on large fleets but bounded; results are not cached between calls. Full per-tool reference: [`docs/aggregation-tools-roadmap.md`](docs/aggregation-tools-roadmap.md).
+
+| Tool | Description |
+|------|-------------|
+| `get_top_installed_apps` | Apps ranked by install count across the fleet |
+| `get_app_coverage` | For one bundle ID: install pct + list of devices missing it |
+| `get_app_version_drift` | Version distribution + per-device rows for one bundle ID |
+| `get_app_install_failures` | Devices where managed app pushes failed (sparse if `install_status` not populated) |
+| `get_apps_by_publisher` | Top installs grouped by publisher prefix |
+| `get_app_size_footprint` | Fleet-wide storage cost per app |
+| `get_unmanaged_apps` | Apps installed on the fleet but not in the SimpleMDM catalog (shadow IT) |
+| `get_compliance_violators` | Single call returning enrolled devices failing one or more checks |
+| `get_devices_missing_profile` | Coverage check for a configuration profile |
+| `get_assignment_group_drift` | Devices whose installed apps diverge from their group's assigned set |
+| `get_stale_devices` | Enrolled devices not seen in N days |
+| `get_recently_enrolled` | Devices enrolled in the last N days |
+| `get_lost_mode_devices` | Devices currently in lost mode + last known location |
+| `get_storage_health` | Devices with low disk and/or low battery |
+| `get_battery_health_report` | Battery rollup (level + cycle/capacity flags when populated) |
+| `get_network_summary` | Wi-Fi MAC, ethernet MACs, last IP, carrier breakdown |
+| `get_user_attribution` | Device → primary user mapping via custom attribute |
+| `get_os_eligibility` | Mac model → max supported macOS major (static table, 2024-11) |
+| `get_inactive_assignment_groups` | Assignment groups with zero devices |
+| `get_orphaned_profiles` | Profiles not attached to any assignment group |
+| `get_orphaned_apps` | Catalog apps not attached to any assignment group |
+| `get_dep_unassigned` | DEP devices not yet mapped to a SimpleMDM enrollment |
+| `get_dep_drift` | DEP devices whose `profile_uuid` ≠ their dep_server's default |
+| `get_pending_commands` | MDM commands sent but not acknowledged in N hours |
+| `get_supervision_drift` | DEP-enrolled devices that lost supervision |
+| `get_device_user_count_outliers` | Macs with unusually many local user accounts |
+| `get_certificate_expiration_audit` | APNs push cert renewal warning bands |
+| `get_enrollment_token_audit` | Stale enrollment URLs (no use in N days) |
 
 ### Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
 
@@ -526,6 +561,10 @@ Alongside tools, this server exposes canonical **MCP resources** that clients ca
 | `simplemdm://reports/os-versions` | OS version distribution across the fleet |
 | `simplemdm://reports/enrollment` | Enrolled/unenrolled totals plus the list of unenrolled devices |
 | `simplemdm://reports/filevault` | FileVault on/off per enrolled Mac (for compliance review) |
+| `simplemdm://reports/top-apps` | Apps ranked by install count across the fleet (alias for `get_top_installed_apps`) |
+| `simplemdm://reports/unmanaged-apps` | Apps installed on the fleet but missing from the catalog |
+| `simplemdm://reports/stale-devices` | Enrolled devices not checked in for >14 days |
+| `simplemdm://reports/storage-health` | Devices below disk/battery thresholds |
 | `simplemdm://inventory/devices` | First page of the device list |
 | `simplemdm://inventory/assignment-groups` | All assignment groups with membership |
 | `simplemdm://inventory/apps` | First page of the app catalog |
@@ -546,6 +585,9 @@ The server ships workflow **prompts** — templated starting points selectable f
 | `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
 | `patch-compliance-review` | — | OS version distribution, flags devices >1 major version behind, recommends groups to prioritize |
 | `stale-devices-cleanup` | `days` (default 14) | Finds devices not checked in, proposes sync → lock ladder without auto-wipe |
+| `app-inventory-audit` | `limit` (default 25) | Cross-fleet top-apps + unmanaged-apps audit; recommends catalog additions/removals |
+| `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Calls `get_compliance_violators`, groups by failure type, proposes remediation tools per group |
+| `profile-coverage-remediation` | `profile_id` (required) | Calls `get_devices_missing_profile`, recommends bulk vs per-device assignment based on gap size |
 
 Destructive prompts (offboarding, stale cleanup) include explicit guards: the LLM is told **not** to call write tools without you typing `CONFIRM`.
 
@@ -575,7 +617,10 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `SIMPLEMDM_ALLOW_WRITES` | No | `false` | Set `true` to enable write actions. Off by default. |
 | `SIMPLEMDM_TIMEOUT_MS` | No | `30000` | Per-request timeout in milliseconds. Requests that exceed this are aborted. |
 | `SIMPLEMDM_MAX_RETRIES` | No | `3` | Retry count for `429` and `5xx` responses. Uses Retry-After when present, otherwise exponential backoff. |
-| `SIMPLEMDM_MAX_PAGES` | No | `200` | Safety cap on fleet-wide pagination (`get_fleet_summary`, `get_security_posture`, filevault/enrollment resources). Raise for very large fleets. |
+| `SIMPLEMDM_MAX_PAGES` | No | `200` | Safety cap on fleet-wide pagination (`get_fleet_summary`, `get_security_posture`, all fleet-analytics tools, filevault/enrollment resources). Raise for very large fleets. |
+| `SIMPLEMDM_FLEET_CONCURRENCY` | No | `8` | Worker count for fleet-iteration analytics tools. Lower (`4`) if you see 429s; raise (`16`) only if your tenant tolerates it. |
+| `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
+| `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":15,"ios":18,"ipad":18}`. Update on each Apple major release. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
 
 ---
@@ -723,6 +768,7 @@ How the server behaves on common API responses:
 - When iterating over devices, let Claude paginate naturally rather than asking for "all 5000 devices at once."
 - Fleet-wide pagination is capped at `SIMPLEMDM_MAX_PAGES` pages (default 200 × 100 = 20k devices). Raise it if your fleet is larger.
 - For writes that touch many devices (e.g. `push_apps_to_group`), SimpleMDM queues server-side — check `list_script_jobs` / app install status a minute later rather than re-triggering.
+- The fleet-analytics tools (`get_top_installed_apps`, `get_app_coverage`, `get_compliance_violators`, etc.) issue 1 HTTP per device under a bounded worker pool. Tune `SIMPLEMDM_FLEET_CONCURRENCY` (default 8) up or down based on your tenant's rate-limit headroom. Results are not cached — chain calls via prompts to keep the result in conversation context rather than re-invoking the tool.
 
 ---
 

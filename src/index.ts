@@ -30,6 +30,74 @@ const REQUEST_TIMEOUT_MS = Number(process.env.SIMPLEMDM_TIMEOUT_MS ?? 30_000);
 const MAX_RETRIES        = Number(process.env.SIMPLEMDM_MAX_RETRIES ?? 3);
 const MAX_PAGES          = Number(process.env.SIMPLEMDM_MAX_PAGES ?? 200);
 
+// macOS support matrix keyed by Apple model identifier prefix.
+// Source: Apple support docs as of 2024-11. Update on each macOS major release.
+// Keys are matched as prefixes against the device's `model` attribute
+// (e.g. "MacBookPro18,1", "Mac14,2"). The first matching prefix wins, so the
+// list is ordered most-specific → least-specific.
+const MACOS_SUPPORT_TABLE: ReadonlyArray<{ prefix: string; max_macos_major: number }> = [
+  // Apple Silicon — every Mac{N},{M} family supports the macOS that shipped
+  // with it and every subsequent release through current (15 Sequoia, 11/2024).
+  { prefix: "Mac16,",       max_macos_major: 15 }, // M4 (2024)
+  { prefix: "Mac15,",       max_macos_major: 15 }, // M3 (2023-24)
+  { prefix: "Mac14,",       max_macos_major: 15 }, // M2 (2022-23)
+  { prefix: "Mac13,",       max_macos_major: 15 }, // M1 Pro/Max/Ultra (2021-22)
+  { prefix: "Mac11,",       max_macos_major: 15 }, // M1 (2020)
+  // Intel — macOS 15 Sequoia supports 2018+ in most product lines.
+  { prefix: "iMacPro1,",    max_macos_major: 15 },
+  { prefix: "MacPro7,",     max_macos_major: 15 },
+  { prefix: "Macmini8,",    max_macos_major: 15 },
+  { prefix: "MacBookAir8,", max_macos_major: 15 }, { prefix: "MacBookAir9,",  max_macos_major: 15 }, { prefix: "MacBookAir10,", max_macos_major: 15 },
+  { prefix: "MacBookPro15,",max_macos_major: 15 }, { prefix: "MacBookPro16,", max_macos_major: 15 }, { prefix: "MacBookPro17,", max_macos_major: 15 }, { prefix: "MacBookPro18,", max_macos_major: 15 },
+  { prefix: "iMac19,",      max_macos_major: 15 }, { prefix: "iMac20,",       max_macos_major: 15 }, { prefix: "iMac21,",       max_macos_major: 15 },
+  // Ventura (13) cut: roughly 2017 hardware.
+  { prefix: "iMac18,",      max_macos_major: 13 },
+  { prefix: "MacBookPro13,",max_macos_major: 13 }, { prefix: "MacBookPro14,", max_macos_major: 13 },
+  { prefix: "MacBookAir7,", max_macos_major: 12 }, { prefix: "Macmini7,",     max_macos_major: 12 }, { prefix: "MacPro6,", max_macos_major: 12 },
+  // Older — Big Sur (11) or earlier; sparse, listed as a coarse bucket.
+  { prefix: "iMac17,",      max_macos_major: 11 }, { prefix: "MacBookPro11,", max_macos_major: 11 }, { prefix: "MacBookPro12,", max_macos_major: 11 },
+];
+
+// Currently shipping major version per Apple platform. Update on each Apple
+// release alongside MACOS_SUPPORT_TABLE. Used as the baseline for OS-lag
+// checks so the result doesn't depend on whatever happens to be running in
+// the fleet (one beta device on a future macOS would otherwise make every
+// other device look "decades behind").
+//
+// Override via env: CURRENT_SUPPORTED_OS_OVERRIDE='{"mac":15,"ios":18,"ipad":18}'
+const CURRENT_SUPPORTED_OS: Readonly<Record<"mac" | "ios" | "ipad", number>> = (() => {
+  const defaults = { mac: 15, ios: 18, ipad: 18 };
+  const raw = process.env.CURRENT_SUPPORTED_OS_OVERRIDE;
+  if (!raw) return defaults;
+  try {
+    const o = JSON.parse(raw) as Partial<Record<"mac" | "ios" | "ipad", number>>;
+    return { mac: o.mac ?? defaults.mac, ios: o.ios ?? defaults.ios, ipad: o.ipad ?? defaults.ipad };
+  } catch {
+    return defaults;
+  }
+})();
+
+function maxMacOSMajorFor(model: string | undefined): number | null {
+  if (!model) return null;
+  // Apply env override first if present (so admins can patch the table without redeploying).
+  const overrideRaw = process.env.MAC_OS_ELIGIBILITY_OVERRIDE;
+  if (overrideRaw) {
+    try {
+      const o = JSON.parse(overrideRaw) as Record<string, number>;
+      for (const [prefix, max] of Object.entries(o)) {
+        if (model.startsWith(prefix) && Number.isFinite(max)) return max;
+      }
+    } catch { /* ignore malformed override */ }
+  }
+  for (const row of MACOS_SUPPORT_TABLE) if (model.startsWith(row.prefix)) return row.max_macos_major;
+  return null;
+}
+
+// Default worker count for fleet-wide aggregations. SimpleMDM's published
+// rate limit (1 req/sec sustained, with bursts) tolerates 8 well; raise via
+// env if your tenant has a higher limit, lower it if you see 429s.
+const DEFAULT_FLEET_CONCURRENCY = Number(process.env.SIMPLEMDM_FLEET_CONCURRENCY ?? 8);
+
 // Pre-computed auth header — avoids re-encoding on every request.
 const AUTH_HEADER = API_KEY ? `Basic ${Buffer.from(`${API_KEY}:`).toString("base64")}` : "";
 
@@ -140,6 +208,20 @@ type DeviceRecord = {
   attributes: DeviceAttributes;
 };
 
+type InstalledAppAttributes = {
+  identifier?: string | null;
+  bundle_identifier?: string | null;
+  name?: string | null;
+  short_version?: string | null;
+  managed?: boolean | null;
+  [key: string]: unknown;
+};
+
+type InstalledAppRecord = {
+  id: string | number;
+  attributes: InstalledAppAttributes;
+};
+
 type PaginatedResponse<T> = {
   data: T[];
   has_more: boolean;
@@ -168,6 +250,81 @@ async function collectDevices(): Promise<DeviceRecord[]> {
   const out: DeviceRecord[] = [];
   for await (const d of paginateDevices()) out.push(d);
   return out;
+}
+
+// Paginate one device's installed_apps list (some Macs have hundreds).
+// Throws on MAX_PAGES exhaustion to match paginateDevices() behavior — silent
+// truncation in an aggregation tool produces wrong rollups, not partial ones.
+async function collectInstalledApps(deviceId: string | number): Promise<InstalledAppRecord[]> {
+  const id = encodeURIComponent(String(deviceId));
+  const out: InstalledAppRecord[] = [];
+  let cursor: string | number | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
+    const p = await simpleMDM(`/devices/${id}/installed_apps?limit=100${q}`) as PaginatedResponse<InstalledAppRecord>;
+    for (const a of p.data) out.push(a);
+    if (!p.has_more) return out;
+    cursor = p.data.at(-1)?.id;
+    if (cursor == null) return out;
+  }
+  throw new Error(`collectInstalledApps(${deviceId}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
+}
+
+// Generic concurrent per-device iteration. Caller supplies a filter (which
+// devices to visit) and a worker (returns a result row or undefined to skip).
+async function forEachDevice<T>(
+  concurrency: number,
+  filter: (d: DeviceRecord) => boolean,
+  fn: (d: DeviceRecord) => Promise<T | undefined>,
+): Promise<{ results: T[]; devices_processed: number; devices_with_errors: number }> {
+  const all = await collectDevices();
+  const queue = all.filter(filter);
+  const results: T[] = [];
+  let processed = 0;
+  let errors = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const d = queue.pop()!;
+      try {
+        const r = await fn(d);
+        if (r !== undefined) results.push(r);
+        processed++;
+      } catch { errors++; }
+    }
+  };
+  const conc = Math.max(1, Math.min(16, concurrency));
+  await Promise.all(Array.from({ length: conc }, worker));
+  return { results, devices_processed: processed, devices_with_errors: errors };
+}
+
+// Iterate every enrolled device's installed apps with bounded concurrency.
+// Used by the cross-fleet aggregation tools (get_top_installed_apps,
+// get_app_coverage, get_unmanaged_apps). Errors per device are counted
+// but do not abort the whole run — partial results are usually still useful.
+async function forEachDeviceInstalledApps(
+  concurrency: number,
+  onDevice: (device: DeviceRecord, apps: InstalledAppRecord[]) => void,
+): Promise<{ devices_processed: number; devices_with_errors: number }> {
+  const devices = await collectDevices();
+  const enrolled = devices.filter(d => getDeviceStatus(d.attributes) === "enrolled");
+  const queue = [...enrolled];
+  let errors = 0;
+  let processed = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const d = queue.pop()!;
+      try {
+        const apps = await collectInstalledApps(d.id);
+        onDevice(d, apps);
+        processed++;
+      } catch {
+        errors++;
+      }
+    }
+  };
+  const conc = Math.max(1, Math.min(16, concurrency));
+  await Promise.all(Array.from({ length: conc }, worker));
+  return { devices_processed: processed, devices_with_errors: errors };
 }
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
@@ -205,6 +362,185 @@ const TOOLS: Tool[] = [
   { name: "get_security_posture",
     description: "Compound tool — fleet-wide security rollup. Returns percentages and raw counts for supervised, DEP-enrolled, FileVault-enabled, recovery-lock, firmware-password, activation-lock, and user-approved-MDM posture across all enrolled devices, plus OS currency buckets (macOS / iOS / iPadOS).",
     inputSchema: { type: "object", properties: {} } },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLEET ANALYTICS (derived — iterate every device)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "get_top_installed_apps",
+    description: "Derived — rank apps by install count across the fleet. Iterates every enrolled device's installed_apps. Slow on large fleets (one HTTP call per device) but bounded by concurrency. Use to spot catalog gaps and shadow IT footprint.",
+    inputSchema: { type: "object", properties: {
+      limit: { type: "number", description: "Max apps to return. Default 25, max 500." },
+      exclude_apple: { type: "boolean", description: "Exclude com.apple.* bundle IDs (macOS/iOS built-ins). Default true." },
+      min_install_count: { type: "number", description: "Drop apps installed on fewer than N devices. Default 1." },
+    }}},
+
+  { name: "get_app_coverage",
+    description: "Derived — for a given bundle_identifier, return install percentage and the list of devices that DO NOT have it installed. Use to verify required tools (e.g. CrowdStrike, 1Password, VPN client) are deployed everywhere.",
+    inputSchema: { type: "object", required: ["bundle_identifier"], properties: {
+      bundle_identifier: { type: "string", description: "Exact bundle identifier to check (e.g. com.google.Chrome)." },
+    }}},
+
+  { name: "get_stale_devices",
+    description: "Derived — devices that have not checked in within the last N days. Reads device records only (no installed_apps iteration), so this is fast. Returns sorted by days_since (oldest first).",
+    inputSchema: { type: "object", properties: {
+      days: { type: "number", description: "Days since last check-in to consider stale. Default 14." },
+      include_unenrolled: { type: "boolean", description: "Include unenrolled devices in the result. Default false." },
+    }}},
+
+  { name: "get_storage_health",
+    description: "Derived — devices with low free disk space and/or low battery. Reads device records only. Returns two sorted lists (low_disk_devices, low_battery_devices). Useful for proactive replacement / cleanup tickets.",
+    inputSchema: { type: "object", properties: {
+      low_disk_gb: { type: "number", description: "Free-space threshold in GB. Devices with available_device_capacity below this are flagged. Default 20." },
+      low_battery_pct: { type: "number", description: "Battery level threshold percentage. Devices at or below this are flagged. Default 20." },
+    }}},
+
+  { name: "get_unmanaged_apps",
+    description: "Derived — apps installed on the fleet but NOT present in the SimpleMDM catalog. Iterates every device. Use for shadow-IT discovery: which third-party apps should be brought under management?",
+    inputSchema: { type: "object", properties: {
+      min_install_count: { type: "number", description: "Drop apps installed on fewer than N devices. Default 5." },
+      limit: { type: "number", description: "Max apps to return. Default 50, max 500." },
+      exclude_apple: { type: "boolean", description: "Exclude com.apple.* bundle IDs. Default true." },
+    }}},
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLEET ANALYTICS — Tier 1 (high-impact derived tools)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "get_app_version_drift",
+    description: "Derived — for one bundle_identifier, return the distribution of installed versions across the fleet plus per-device install rows. Iterates every enrolled device. Use to find devices stuck on outdated versions.",
+    inputSchema: { type: "object", required: ["bundle_identifier"], properties: {
+      bundle_identifier: { type: "string", description: "Exact bundle identifier to inspect (e.g. com.google.Chrome)." },
+    }}},
+
+  { name: "get_compliance_violators",
+    description: "Derived — single call returning enrolled devices that fail one or more compliance checks. Defaults: passcode_compliant, filevault_enabled (Macs), supervised, user_approved_mdm, OS within 2 majors of currently-supported. Reads device records only — fast. The OS-lag baseline is the platform's currently-shipping major (macOS 15 / iOS 18 / iPadOS 18 as of 2024-11), NOT the fleet maximum, so a single beta device cannot skew the result. Override via CURRENT_SUPPORTED_OS_OVERRIDE env var.",
+    inputSchema: { type: "object", properties: {
+      require_passcode_compliant: { type: "boolean", description: "Default true." },
+      require_filevault_macs: { type: "boolean", description: "Require FileVault on for Macs. Default true." },
+      require_supervised: { type: "boolean", description: "Default true." },
+      require_user_approved_mdm: { type: "boolean", description: "Default true." },
+      max_os_major_lag: { type: "number", description: "Max major versions behind the currently-supported major before flagging. Default 2." },
+      skip_os_check: { type: "boolean", description: "Skip the OS-lag check entirely. Default false." },
+      unsupported_lag_threshold: { type: "number", description: "Devices more than this many majors behind get the `os_unsupported` failure label instead of a numeric lag (Apple typically supports current + 2 prior majors). Default 3." },
+    }}},
+
+  { name: "get_devices_missing_profile",
+    description: "Derived — list devices that DO NOT have a given configuration profile installed. Iterates every enrolled device's profiles list.",
+    inputSchema: { type: "object", required: ["profile_id"], properties: {
+      profile_id: { type: "string", description: "SimpleMDM profile ID to check coverage for." },
+    }}},
+
+  { name: "get_pending_commands",
+    description: "Derived — devices with MDM commands sent but not acknowledged for over N hours. Reads the global /logs feed (no per-device fan-out) and pairs `*sent` events against `*acknowledged`/`*succeeded`/`*failed` events by device_id. Returns empty if /logs does not surface command events for your tenant.",
+    inputSchema: { type: "object", properties: {
+      min_age_hours: { type: "number", description: "Minimum age of the unacknowledged sent-event in hours. Default 4." },
+      log_pages: { type: "number", description: "Pages of /logs to scan (100 entries each). Default 5." },
+    }}},
+
+  { name: "get_dep_drift",
+    description: "Derived — DEP devices in Apple Business Manager whose assigned `profile_uuid` does not match the `default_assignment_profile_uuid` of the SimpleMDM dep_server they belong to. Indicates manual ABM intervention or a stale default. Does not require per-device search.",
+    inputSchema: { type: "object", properties: {
+      dep_server_id: { type: "string", description: "Restrict to one DEP server. Default: scan all." },
+    }}},
+
+  { name: "get_os_eligibility",
+    description: "Derived — for each Mac, list current macOS major and the maximum macOS major Apple supports for that model identifier, using a built-in static table (last updated 2024-11; macOS 15 Sequoia compatibility). Returns max_supported_major=null for unknown models. Optional MAC_OS_ELIGIBILITY_OVERRIDE env var (JSON) merges into the table.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_dep_unassigned",
+    description: "Derived — DEP devices visible in Apple Business Manager (via list_dep_devices) that are not yet assigned to a SimpleMDM enrollment / profile.",
+    inputSchema: { type: "object", properties: {
+      dep_server_id: { type: "string", description: "Specific DEP server. If omitted, scans all configured DEP servers." },
+    }}},
+
+  { name: "get_recently_enrolled",
+    description: "Derived — devices enrolled in the last N days. Reads device records only — fast.",
+    inputSchema: { type: "object", properties: {
+      days: { type: "number", description: "Look-back window in days. Default 7." },
+    }}},
+
+  { name: "get_lost_mode_devices",
+    description: "Derived — devices currently in lost mode, with last known location and lost-mode entry time when reported.",
+    inputSchema: { type: "object", properties: {} } },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLEET ANALYTICS — Tier 2 (operational rollups)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "get_app_install_failures",
+    description: "Derived — devices where a managed app push failed or is stuck pending. Iterates per-device installed_apps and inspects state. Sparse if SimpleMDM does not return install_status.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_battery_health_report",
+    description: "Derived — battery rollup for laptops/iOS: current level, low-battery flag. Beyond level (cycle count, max-capacity %) requires MunkiReport integration; falls back gracefully when not available.",
+    inputSchema: { type: "object", properties: {
+      low_pct: { type: "number", description: "Threshold considered 'low'. Default 20." },
+    }}},
+
+  { name: "get_network_summary",
+    description: "Derived — Wi-Fi MAC, ethernet MACs, last-seen IP, carrier breakdown (cellular). Useful for cellular fleets and IP-allow-list audits.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_user_attribution",
+    description: "Derived — device → primary user mapping rollup, reading a custom_attribute. Returns devices grouped by user plus 'unattributed' devices.",
+    inputSchema: { type: "object", required: ["custom_attribute_name"], properties: {
+      custom_attribute_name: { type: "string", description: "Name of the custom attribute that holds the primary user (e.g. 'primary_user_email')." },
+    }}},
+
+  { name: "get_inactive_assignment_groups",
+    description: "Derived — assignment groups with zero devices. Cleanup target.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_orphaned_profiles",
+    description: "Derived — configuration profiles in the catalog that are not attached to any assignment group (and therefore not deployed via group membership).",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_orphaned_apps",
+    description: "Derived — apps in the catalog that are not attached to any assignment group.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_app_size_footprint",
+    description: "Derived — fleet-wide storage cost per app, computed as sum(app_size_bytes × install_count). Iterates every device's installed_apps. Sparse if SimpleMDM does not return app size.",
+    inputSchema: { type: "object", properties: {
+      limit: { type: "number", description: "Max apps to return. Default 25." },
+    }}},
+
+  { name: "get_assignment_group_drift",
+    description: "Derived — devices whose installed apps diverge from the assigned-app set of any assignment group they belong to (apps missing from devices that should have them, per group membership).",
+    inputSchema: { type: "object", properties: {
+      assignment_group_id: { type: "string", description: "Restrict the drift check to a single assignment group. Default: all groups." },
+    }}},
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLEET ANALYTICS — Tier 3 (niche / context-specific)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "get_certificate_expiration_audit",
+    description: "Derived — APNs / MDM push certificate expiration. Inspects get_push_certificate. Lists days remaining and a renewal warning band (90/60/30).",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_enrollment_token_audit",
+    description: "Derived — list enrollments with creation date, last-used date (when reported), and a stale flag for enrollments not used in over N days.",
+    inputSchema: { type: "object", properties: {
+      stale_days: { type: "number", description: "Days without use to mark as stale. Default 90." },
+    }}},
+
+  { name: "get_device_user_count_outliers",
+    description: "Derived — Macs with unusually many local user accounts (default >5). Often indicates a shared device or stale local accounts.",
+    inputSchema: { type: "object", properties: {
+      min_users: { type: "number", description: "Threshold for 'too many'. Default 5." },
+    }}},
+
+  { name: "get_supervision_drift",
+    description: "Derived — currently unsupervised devices that are DEP-enrolled (and therefore should be supervised). Indicates supervision lost via re-image or restore.",
+    inputSchema: { type: "object", properties: {} } },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLEET ANALYTICS — Tier 4 selection
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "get_apps_by_publisher",
+    description: "Derived — group top installed apps by publisher prefix (com.google.*, com.microsoft.*, com.adobe.*, etc.) and return per-publisher install totals plus app breakdown. Iterates every device; share input with get_top_installed_apps.",
+    inputSchema: { type: "object", properties: {
+      limit_publishers: { type: "number", description: "Max publishers to return. Default 20." },
+      exclude_apple: { type: "boolean", description: "Exclude com.apple.* publisher. Default true." },
+    }}},
 
   // ══════════════════════════════════════════════════════════════════════════
   // DEVICES — read
@@ -1019,6 +1355,839 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       };
     }
 
+    // ── Fleet analytics: top installed apps ─────────────────────────────────
+    case "get_top_installed_apps": {
+      const limit = Math.max(1, Math.min(500, Number(args.limit ?? 25)));
+      const excludeApple = args.exclude_apple !== false;
+      const minCount = Math.max(1, Number(args.min_install_count ?? 1));
+      const counts = new Map<string, { bundle_identifier: string; name: string; count: number }>();
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (_, apps) => {
+        const seenOnDevice = new Set<string>();
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          const bid = (at.identifier as string | undefined)
+            ?? (at.bundle_identifier as string | undefined)
+            ?? (at.name as string | undefined);
+          if (!bid) continue;
+          if (excludeApple && bid.startsWith("com.apple.")) continue;
+          if (seenOnDevice.has(bid)) continue;
+          seenOnDevice.add(bid);
+          const cur = counts.get(bid);
+          if (cur) cur.count++;
+          else counts.set(bid, { bundle_identifier: bid, name: (at.name as string | undefined) ?? bid, count: 1 });
+        }
+      });
+      const denom = Math.max(stats.devices_processed, 1);
+      const apps = [...counts.values()]
+        .filter(a => a.count >= minCount)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit)
+        .map(a => ({ ...a, install_pct: Math.round((a.count / denom) * 1000) / 10 }));
+      return { ...stats, exclude_apple: excludeApple, apps_returned: apps.length, apps };
+    }
+
+    // ── Fleet analytics: app coverage for a specific bundle ID ──────────────
+    case "get_app_coverage": {
+      const bid = String(args.bundle_identifier ?? "").trim();
+      if (!bid) throw new Error("get_app_coverage requires bundle_identifier");
+      const installed: Array<{ id: string | number; name?: string; serial?: string }> = [];
+      const missing:   Array<{ id: string | number; name?: string; serial?: string }> = [];
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (d, apps) => {
+        const has = apps.some(a => {
+          const at = a.attributes ?? {};
+          return at.identifier === bid || at.bundle_identifier === bid;
+        });
+        const row = {
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+        };
+        (has ? installed : missing).push(row);
+      });
+      const denom = Math.max(stats.devices_processed, 1);
+      return {
+        bundle_identifier: bid,
+        ...stats,
+        installed_count: installed.length,
+        installed_pct: Math.round((installed.length / denom) * 1000) / 10,
+        missing_count: missing.length,
+        missing_devices: missing,
+      };
+    }
+
+    // ── Fleet analytics: stale devices ──────────────────────────────────────
+    case "get_stale_devices": {
+      const days = Math.max(1, Number(args.days ?? 14));
+      const includeUnenrolled = args.include_unenrolled === true;
+      const cutoff = Date.now() - days * 86_400_000;
+      const all = await collectDevices();
+      const stale: Array<{
+        id: string | number; name?: string; serial?: string; os?: string;
+        last_seen_at?: string; days_since: number; status: string;
+      }> = [];
+      for (const d of all) {
+        const status = getDeviceStatus(d.attributes);
+        if (!includeUnenrolled && status !== "enrolled") continue;
+        const last = d.attributes.last_seen_at as string | undefined;
+        if (!last) continue;
+        const t = Date.parse(last);
+        if (!Number.isFinite(t) || t > cutoff) continue;
+        stale.push({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          os: d.attributes.os_version ?? undefined,
+          last_seen_at: last,
+          days_since: Math.floor((Date.now() - t) / 86_400_000),
+          status,
+        });
+      }
+      stale.sort((a, b) => b.days_since - a.days_since);
+      return {
+        threshold_days: days,
+        include_unenrolled: includeUnenrolled,
+        total_devices: all.length,
+        stale_count: stale.length,
+        devices: stale,
+      };
+    }
+
+    // ── Fleet analytics: storage / battery health ───────────────────────────
+    case "get_storage_health": {
+      const lowDiskGb = Math.max(0, Number(args.low_disk_gb ?? 20));
+      const lowBatteryPct = Math.max(0, Math.min(100, Number(args.low_battery_pct ?? 20)));
+      const lowDisk: Array<{
+        id: string | number; name?: string; serial?: string; os?: string;
+        available_gb: number; total_gb?: number; free_pct?: number;
+      }> = [];
+      const lowBattery: Array<{
+        id: string | number; name?: string; serial?: string; battery_level_pct: number;
+      }> = [];
+      const all = await collectDevices();
+      for (const d of all) {
+        if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+        const cap = d.attributes.available_device_capacity as number | undefined;
+        const total = d.attributes.device_capacity as number | undefined;
+        if (typeof cap === "number" && cap < lowDiskGb) {
+          lowDisk.push({
+            id: d.id,
+            name: d.attributes.name as string | undefined,
+            serial: d.attributes.serial_number as string | undefined,
+            os: d.attributes.os_version ?? undefined,
+            available_gb: Math.round(cap * 10) / 10,
+            total_gb: typeof total === "number" ? Math.round(total * 10) / 10 : undefined,
+            free_pct: typeof total === "number" && total > 0 ? Math.round((cap / total) * 1000) / 10 : undefined,
+          });
+        }
+        const batRaw = d.attributes.battery_level as number | string | undefined | null;
+        if (batRaw != null) {
+          const num = typeof batRaw === "string" ? parseFloat(batRaw.replace("%", "")) : Number(batRaw);
+          // SimpleMDM may report 0-1 fraction or 0-100 percentage; normalize.
+          const pct = num <= 1 ? num * 100 : num;
+          if (Number.isFinite(pct) && pct > 0 && pct <= lowBatteryPct) {
+            lowBattery.push({
+              id: d.id,
+              name: d.attributes.name as string | undefined,
+              serial: d.attributes.serial_number as string | undefined,
+              battery_level_pct: Math.round(pct * 10) / 10,
+            });
+          }
+        }
+      }
+      lowDisk.sort((a, b) => a.available_gb - b.available_gb);
+      lowBattery.sort((a, b) => a.battery_level_pct - b.battery_level_pct);
+      return {
+        low_disk_threshold_gb: lowDiskGb,
+        low_battery_threshold_pct: lowBatteryPct,
+        total_enrolled: all.filter(d => getDeviceStatus(d.attributes) === "enrolled").length,
+        low_disk_count: lowDisk.length,
+        low_disk_devices: lowDisk,
+        low_battery_count: lowBattery.length,
+        low_battery_devices: lowBattery,
+      };
+    }
+
+    // ── Fleet analytics: unmanaged (shadow IT) apps ─────────────────────────
+    case "get_unmanaged_apps": {
+      const minCount = Math.max(1, Number(args.min_install_count ?? 5));
+      const limit = Math.max(1, Math.min(500, Number(args.limit ?? 50)));
+      const excludeApple = args.exclude_apple !== false;
+      // Build catalog set. list_apps in SimpleMDM does not paginate via the
+      // public endpoint, so a single call captures the full catalog.
+      const catalog = await api("/apps") as PaginatedResponse<{ attributes?: { bundle_identifier?: string | null } }>;
+      const catalogBids = new Set<string>();
+      for (const c of catalog.data ?? []) {
+        const b = c.attributes?.bundle_identifier;
+        if (b) catalogBids.add(b);
+      }
+      const counts = new Map<string, { bundle_identifier: string; name: string; count: number }>();
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (_, apps) => {
+        const seenOnDevice = new Set<string>();
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          const bid = (at.identifier as string | undefined) ?? (at.bundle_identifier as string | undefined);
+          if (!bid) continue;
+          if (excludeApple && bid.startsWith("com.apple.")) continue;
+          if (catalogBids.has(bid)) continue;
+          if (seenOnDevice.has(bid)) continue;
+          seenOnDevice.add(bid);
+          const cur = counts.get(bid);
+          if (cur) cur.count++;
+          else counts.set(bid, { bundle_identifier: bid, name: (at.name as string | undefined) ?? bid, count: 1 });
+        }
+      });
+      const denom = Math.max(stats.devices_processed, 1);
+      const apps = [...counts.values()]
+        .filter(a => a.count >= minCount)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit)
+        .map(a => ({ ...a, install_pct: Math.round((a.count / denom) * 1000) / 10 }));
+      return {
+        catalog_size: catalogBids.size,
+        ...stats,
+        min_install_count: minCount,
+        exclude_apple: excludeApple,
+        unmanaged_apps_returned: apps.length,
+        apps,
+      };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Tier 1 handlers
+    // ══════════════════════════════════════════════════════════════════════
+
+    case "get_app_version_drift": {
+      const target = String(args.bundle_identifier ?? "").trim();
+      if (!target) throw new Error("get_app_version_drift requires bundle_identifier");
+      const versionCounts = new Map<string, number>();
+      const rows: Array<{ id: string|number; name?: string; serial?: string; version: string }> = [];
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (d, apps) => {
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          if (at.identifier !== target && at.bundle_identifier !== target) continue;
+          const v = (at.short_version as string | undefined) ?? "unknown";
+          versionCounts.set(v, (versionCounts.get(v) ?? 0) + 1);
+          rows.push({
+            id: d.id,
+            name: d.attributes.name as string | undefined,
+            serial: d.attributes.serial_number as string | undefined,
+            version: v,
+          });
+          break;
+        }
+      });
+      const distribution = [...versionCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([version, count]) => ({ version, count }));
+      return {
+        bundle_identifier: target,
+        ...stats,
+        installed_count: rows.length,
+        unique_versions: distribution.length,
+        version_distribution: distribution,
+        installs: rows,
+      };
+    }
+
+    case "get_compliance_violators": {
+      const reqPasscode = args.require_passcode_compliant !== false;
+      const reqFV = args.require_filevault_macs !== false;
+      const reqSup = args.require_supervised !== false;
+      const reqUAMDM = args.require_user_approved_mdm !== false;
+      const skipOs = args.skip_os_check === true;
+      const maxLag = Math.max(0, Number(args.max_os_major_lag ?? 2));
+      const unsupportedLag = Math.max(maxLag, Number(args.unsupported_lag_threshold ?? 3));
+      const all = await collectDevices();
+      const enrolled = all.filter(d => getDeviceStatus(d.attributes) === "enrolled");
+      const violators: Array<{
+        id: string|number; name?: string; serial?: string; os?: string; platform: string;
+        failures: string[];
+      }> = [];
+      // Tally each failure type so callers can act on the dominant one without
+      // re-iterating the violators array.
+      const failureCounts: Record<string, number> = {};
+      const bumpFailure = (k: string) => { failureCounts[k] = (failureCounts[k] ?? 0) + 1; };
+      for (const d of enrolled) {
+        const failures: string[] = [];
+        const a = d.attributes;
+        const modelName = a.model_name as string | undefined ?? "";
+        const isMac = modelName.includes("Mac");
+        const platform: "mac" | "ios" | "ipad" = isMac ? "mac" : modelName.includes("iPad") ? "ipad" : "ios";
+        if (reqPasscode && a.passcode_compliant === false) { failures.push("passcode_not_compliant"); bumpFailure("passcode_not_compliant"); }
+        if (reqFV && isMac && a.filevault_enabled === false) { failures.push("filevault_off"); bumpFailure("filevault_off"); }
+        if (reqSup && a.is_supervised === false) { failures.push("not_supervised"); bumpFailure("not_supervised"); }
+        if (reqUAMDM && a.is_user_approved_enrollment === false) { failures.push("not_user_approved_mdm"); bumpFailure("not_user_approved_mdm"); }
+        if (!skipOs) {
+          const v = a.os_version ?? "";
+          const major = parseInt(v.split(".")[0] ?? "", 10);
+          const baseline = CURRENT_SUPPORTED_OS[platform];
+          if (Number.isFinite(major) && Number.isFinite(baseline) && baseline - major > maxLag) {
+            const lag = baseline - major;
+            const label = lag > unsupportedLag ? "os_unsupported" : `os_${lag}_majors_behind`;
+            failures.push(label);
+            bumpFailure(label);
+          }
+        }
+        if (failures.length) {
+          violators.push({
+            id: d.id,
+            name: a.name as string | undefined,
+            serial: a.serial_number as string | undefined,
+            os: a.os_version ?? undefined,
+            platform,
+            failures,
+          });
+        }
+      }
+      violators.sort((a, b) => b.failures.length - a.failures.length);
+      return {
+        total_enrolled: enrolled.length,
+        violator_count: violators.length,
+        baseline_supported_major: CURRENT_SUPPORTED_OS,
+        rules_applied: { reqPasscode, reqFV, reqSup, reqUAMDM, skipOs, maxLag, unsupportedLag },
+        failure_counts: failureCounts,
+        violators,
+      };
+    }
+
+    case "get_devices_missing_profile": {
+      const profileId = String(args.profile_id ?? "").trim();
+      if (!profileId) throw new Error("get_devices_missing_profile requires profile_id");
+      const stats = await forEachDevice(DEFAULT_FLEET_CONCURRENCY,
+        d => getDeviceStatus(d.attributes) === "enrolled",
+        async d => {
+          const r = await simpleMDM(`/devices/${encodeURIComponent(String(d.id))}/profiles`) as { data?: Array<{ id: string|number }> };
+          const has = (r.data ?? []).some(p => String(p.id) === profileId);
+          if (has) return undefined;
+          return {
+            id: d.id,
+            name: d.attributes.name as string | undefined,
+            serial: d.attributes.serial_number as string | undefined,
+            os: d.attributes.os_version ?? undefined,
+          };
+        });
+      return {
+        profile_id: profileId,
+        devices_processed: stats.devices_processed,
+        devices_with_errors: stats.devices_with_errors,
+        missing_count: stats.results.length,
+        missing_devices: stats.results,
+      };
+    }
+
+    case "get_pending_commands": {
+      const minAgeHours = Math.max(0, Number(args.min_age_hours ?? 4));
+      const pages = Math.max(1, Math.min(20, Number(args.log_pages ?? 5)));
+      const cutoffMs = Date.now() - minAgeHours * 3_600_000;
+      // Pull recent global log entries (paginated). One pass — no per-device fan-out.
+      const entries: Array<{ id: string|number; attributes?: Record<string, unknown>; relationships?: { device?: { data?: { id?: string|number }} } }> = [];
+      let cursor: string | number | undefined;
+      for (let i = 0; i < pages; i++) {
+        const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
+        const r = await simpleMDM(`/logs?limit=100${q}`) as PaginatedResponse<typeof entries[number]>;
+        for (const e of r.data ?? []) entries.push(e);
+        if (!r.has_more || !r.data?.length) break;
+        cursor = r.data.at(-1)?.id;
+      }
+      // For each (device, command_uuid-ish key), record sent and terminal events.
+      type EvtState = { device_id: string|number; sent_at: number; event: string; ack_seen: boolean };
+      const sent = new Map<string, EvtState>();
+      const terminalRe = /(acknowledged|succeeded|completed|failed|error)$/i;
+      const sentRe = /(sent|queued|pending)$/i;
+      for (const e of entries) {
+        const a = e.attributes ?? {};
+        const event = String(a.event ?? a.namespace ?? "");
+        if (!event.toLowerCase().includes("command")) continue;
+        const did = e.relationships?.device?.data?.id;
+        if (did == null) continue;
+        const meta = a.metadata as Record<string, unknown> | undefined;
+        const cmdKey = String((meta?.command_uuid as string | undefined) ?? (meta?.uuid as string | undefined) ?? `${did}:${event}:${a.at}`);
+        const ts = Date.parse(String(a.at ?? ""));
+        if (!Number.isFinite(ts)) continue;
+        if (sentRe.test(event)) {
+          const cur = sent.get(cmdKey);
+          if (!cur || ts < cur.sent_at) sent.set(cmdKey, { device_id: did, sent_at: ts, event, ack_seen: cur?.ack_seen ?? false });
+        } else if (terminalRe.test(event)) {
+          const cur = sent.get(cmdKey);
+          if (cur) cur.ack_seen = true;
+          else sent.set(cmdKey, { device_id: did, sent_at: ts, event, ack_seen: true });
+        }
+      }
+      // Aggregate per device: count of unacknowledged commands older than cutoff.
+      const perDevice = new Map<string, { device_id: string|number; pending_count: number; oldest_sent_at: string }>();
+      for (const s of sent.values()) {
+        if (s.ack_seen) continue;
+        if (s.sent_at >= cutoffMs) continue;
+        const k = String(s.device_id);
+        const cur = perDevice.get(k);
+        const iso = new Date(s.sent_at).toISOString();
+        if (cur) { cur.pending_count++; if (iso < cur.oldest_sent_at) cur.oldest_sent_at = iso; }
+        else perDevice.set(k, { device_id: s.device_id, pending_count: 1, oldest_sent_at: iso });
+      }
+      const devices = [...perDevice.values()].sort((a, b) => b.pending_count - a.pending_count);
+      return {
+        min_age_hours: minAgeHours,
+        log_entries_scanned: entries.length,
+        commands_observed: sent.size,
+        devices_with_pending: devices.length,
+        devices,
+      };
+    }
+
+    case "get_dep_drift": {
+      const restrict = args.dep_server_id != null ? String(args.dep_server_id) : undefined;
+      const serversResp = await api("/dep_servers") as { data?: Array<{ id: string|number; attributes?: Record<string, unknown> }> };
+      const servers = (serversResp.data ?? []).filter(s => !restrict || String(s.id) === restrict);
+      const drift: Array<{ dep_server_id: string|number; serial: string; assigned_profile_uuid?: string|null; expected_profile_uuid?: string|null }> = [];
+      for (const s of servers) {
+        const expected = (s.attributes?.default_assignment_profile_uuid
+                       ?? s.attributes?.default_profile_uuid
+                       ?? null) as string | null;
+        if (!expected) continue; // no default → can't define drift for this server
+        const r = await api(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices?limit=100`) as { data?: Array<{ attributes?: Record<string, unknown> }> };
+        for (const dep of r.data ?? []) {
+          const a = dep.attributes ?? {};
+          const sn = a.serial_number as string | undefined;
+          const assigned = (a.profile_uuid as string | null | undefined) ?? null;
+          if (!sn || !assigned) continue;
+          if (assigned !== expected) {
+            drift.push({ dep_server_id: s.id, serial: sn, assigned_profile_uuid: assigned, expected_profile_uuid: expected });
+          }
+        }
+      }
+      return { servers_scanned: servers.length, drift_count: drift.length, devices: drift };
+    }
+
+    case "get_os_eligibility": {
+      const all = await collectDevices();
+      const rows: Array<{
+        id: string|number; name?: string; serial?: string; model?: string;
+        current_major?: number; max_supported_major: number | null;
+        upgrade_available: boolean | null;
+      }> = [];
+      for (const d of all) {
+        if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+        const modelName = d.attributes.model_name as string | undefined;
+        if (!modelName || !modelName.includes("Mac")) continue;
+        const model = d.attributes.model as string | undefined;
+        const v = d.attributes.os_version ?? "";
+        const cur = parseInt(v.split(".")[0] ?? "", 10);
+        const max = maxMacOSMajorFor(model);
+        rows.push({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          model,
+          current_major: Number.isFinite(cur) ? cur : undefined,
+          max_supported_major: max,
+          upgrade_available: max != null && Number.isFinite(cur) ? max > cur : null,
+        });
+      }
+      const upgradable = rows.filter(r => r.upgrade_available === true);
+      const unknownModel = rows.filter(r => r.max_supported_major === null);
+      return {
+        table_last_updated: "2024-11",
+        mac_count: rows.length,
+        upgradable_count: upgradable.length,
+        unknown_model_count: unknownModel.length,
+        devices: rows,
+      };
+    }
+
+    case "get_dep_unassigned": {
+      const serverId = args.dep_server_id != null ? String(args.dep_server_id) : undefined;
+      const servers = serverId
+        ? [{ id: serverId }]
+        : (((await api("/dep_servers")) as { data?: Array<{ id: string|number }> }).data ?? []);
+      const unassigned: Array<{ dep_server_id: string|number; serial: string; model?: string; profile_uuid?: string|null }> = [];
+      for (const s of servers) {
+        const r = await api(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices?limit=100`) as { data?: Array<{ attributes?: Record<string, unknown> }> };
+        for (const dep of r.data ?? []) {
+          const a = dep.attributes ?? {};
+          if (a.profile_uuid == null || a.profile_uuid === "") {
+            unassigned.push({
+              dep_server_id: s.id,
+              serial: a.serial_number as string ?? "",
+              model: a.model as string | undefined,
+              profile_uuid: a.profile_uuid as string | null | undefined ?? null,
+            });
+          }
+        }
+      }
+      return { dep_servers_scanned: servers.length, unassigned_count: unassigned.length, devices: unassigned };
+    }
+
+    case "get_recently_enrolled": {
+      const days = Math.max(1, Number(args.days ?? 7));
+      const cutoff = Date.now() - days * 86_400_000;
+      const all = await collectDevices();
+      const recent = all
+        .map(d => {
+          const e = d.attributes.enrolled_at as string | undefined;
+          const t = e ? Date.parse(e) : NaN;
+          return { d, t };
+        })
+        .filter(x => Number.isFinite(x.t) && x.t >= cutoff)
+        .sort((a, b) => b.t - a.t)
+        .map(({ d, t }) => ({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          os: d.attributes.os_version ?? undefined,
+          enrolled_at: d.attributes.enrolled_at as string | undefined,
+          days_since_enroll: Math.floor((Date.now() - t) / 86_400_000),
+        }));
+      return { window_days: days, count: recent.length, devices: recent };
+    }
+
+    case "get_lost_mode_devices": {
+      const all = await collectDevices();
+      const inLost = all
+        .filter(d => d.attributes.lost_mode_enabled === true || d.attributes.is_lost_mode_enabled === true)
+        .map(d => ({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          os: d.attributes.os_version ?? undefined,
+          location_latitude: d.attributes.location_latitude ?? d.attributes.lost_mode_latitude ?? null,
+          location_longitude: d.attributes.location_longitude ?? d.attributes.lost_mode_longitude ?? null,
+          location_updated_at: d.attributes.location_updated_at ?? d.attributes.lost_mode_location_updated_at ?? null,
+        }));
+      return { count: inLost.length, devices: inLost };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Tier 2 handlers
+    // ══════════════════════════════════════════════════════════════════════
+
+    case "get_app_install_failures": {
+      const failed: Array<{ device_id: string|number; device_name?: string; bundle_identifier?: string; app_name?: string; status?: string }> = [];
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (d, apps) => {
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          const status = String((at.install_status as string | undefined) ?? (at.status as string | undefined) ?? "").toLowerCase();
+          if (status === "failed" || status === "error" || status === "rejected" || status === "stuck") {
+            failed.push({
+              device_id: d.id,
+              device_name: d.attributes.name as string | undefined,
+              bundle_identifier: (at.identifier as string | undefined) ?? (at.bundle_identifier as string | undefined),
+              app_name: at.name as string | undefined,
+              status,
+            });
+          }
+        }
+      });
+      return { ...stats, failure_count: failed.length, failures: failed };
+    }
+
+    case "get_battery_health_report": {
+      const lowPct = Math.max(0, Math.min(100, Number(args.low_pct ?? 20)));
+      const all = await collectDevices();
+      const rows: Array<{ id: string|number; name?: string; serial?: string; level_pct?: number; cycles?: number; max_capacity_pct?: number; flagged: boolean; reason?: string }> = [];
+      for (const d of all) {
+        if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+        const raw = d.attributes.battery_level as number | string | null | undefined;
+        if (raw == null) continue;
+        const num = typeof raw === "string" ? parseFloat(raw.replace("%", "")) : Number(raw);
+        const pct = Number.isFinite(num) ? (num <= 1 ? num * 100 : num) : undefined;
+        const cycles = d.attributes.battery_cycle_count as number | undefined;
+        const maxCap = d.attributes.battery_max_capacity_pct as number | undefined;
+        const flagged = (pct !== undefined && pct <= lowPct) ||
+                        (typeof cycles === "number" && cycles > 1000) ||
+                        (typeof maxCap === "number" && maxCap < 80);
+        if (!flagged) continue;
+        rows.push({
+          id: d.id,
+          name: d.attributes.name as string | undefined,
+          serial: d.attributes.serial_number as string | undefined,
+          level_pct: pct,
+          cycles,
+          max_capacity_pct: maxCap,
+          flagged: true,
+          reason: pct !== undefined && pct <= lowPct ? "low_level"
+                : typeof maxCap === "number" && maxCap < 80 ? "low_capacity"
+                : "high_cycles",
+        });
+      }
+      return { low_threshold_pct: lowPct, flagged_count: rows.length, devices: rows };
+    }
+
+    case "get_network_summary": {
+      const all = await collectDevices();
+      const carriers: Record<string, number> = {};
+      const rows: Array<{ id: string|number; name?: string; serial?: string; wifi_mac?: string; ethernet_macs?: string[]; last_seen_ip?: string; current_carrier?: string|null }> = [];
+      for (const d of all) {
+        if (getDeviceStatus(d.attributes) !== "enrolled") continue;
+        const a = d.attributes;
+        const carrier = (a.current_carrier_network as string | null | undefined) ?? null;
+        if (carrier) carriers[carrier] = (carriers[carrier] ?? 0) + 1;
+        rows.push({
+          id: d.id,
+          name: a.name as string | undefined,
+          serial: a.serial_number as string | undefined,
+          wifi_mac: a.wifi_mac as string | undefined,
+          ethernet_macs: a.ethernet_macs as string[] | undefined,
+          last_seen_ip: a.last_seen_ip as string | undefined,
+          current_carrier: carrier,
+        });
+      }
+      return { device_count: rows.length, carrier_breakdown: carriers, devices: rows };
+    }
+
+    case "get_user_attribution": {
+      const attrName = String(args.custom_attribute_name ?? "").trim();
+      if (!attrName) throw new Error("get_user_attribution requires custom_attribute_name");
+      const stats = await forEachDevice(DEFAULT_FLEET_CONCURRENCY,
+        d => getDeviceStatus(d.attributes) === "enrolled",
+        async d => {
+          const r = await simpleMDM(`/devices/${encodeURIComponent(String(d.id))}/custom_attribute_values`)
+            .catch(() => ({ data: [] as Array<{ id: string; attributes?: { value?: string|null } }> })) as { data?: Array<{ id: string; attributes?: { value?: string|null } }> };
+          const match = (r.data ?? []).find(v => v.id === attrName);
+          const value = match?.attributes?.value ?? null;
+          return {
+            device_id: d.id,
+            device_name: d.attributes.name as string | undefined,
+            serial: d.attributes.serial_number as string | undefined,
+            user: value,
+          };
+        });
+      const byUser: Record<string, Array<unknown>> = {};
+      const unattributed: Array<unknown> = [];
+      for (const r of stats.results) {
+        const u = (r as { user: string|null }).user;
+        if (!u) unattributed.push(r);
+        else (byUser[u] ??= []).push(r);
+      }
+      return {
+        custom_attribute: attrName,
+        ...stats,
+        unique_users: Object.keys(byUser).length,
+        unattributed_count: unattributed.length,
+        by_user: byUser,
+        unattributed,
+      };
+    }
+
+    case "get_inactive_assignment_groups": {
+      const r = await api("/assignment_groups?limit=100") as { data?: Array<{ id: string|number; attributes?: { name?: string }; relationships?: { devices?: { data?: unknown[] } } }> };
+      const inactive = (r.data ?? [])
+        .filter(g => !g.relationships?.devices?.data?.length)
+        .map(g => ({ id: g.id, name: g.attributes?.name }));
+      return { total_groups: (r.data ?? []).length, inactive_count: inactive.length, groups: inactive };
+    }
+
+    case "get_orphaned_profiles": {
+      const profilesResp = await api("/custom_configuration_profiles?limit=100") as { data?: Array<{ id: string|number; attributes?: { name?: string } }> };
+      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{ relationships?: { profiles?: { data?: Array<{ id: string|number }> } } }> };
+      const usedProfileIds = new Set<string>();
+      for (const g of groupsResp.data ?? []) {
+        for (const p of g.relationships?.profiles?.data ?? []) usedProfileIds.add(String(p.id));
+      }
+      const orphans = (profilesResp.data ?? [])
+        .filter(p => !usedProfileIds.has(String(p.id)))
+        .map(p => ({ id: p.id, name: p.attributes?.name }));
+      return { total_profiles: (profilesResp.data ?? []).length, orphan_count: orphans.length, profiles: orphans };
+    }
+
+    case "get_orphaned_apps": {
+      const apps = await api("/apps") as { data?: Array<{ id: string|number; attributes?: { name?: string } }> };
+      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{ relationships?: { apps?: { data?: Array<{ id: string|number }> } } }> };
+      const usedAppIds = new Set<string>();
+      for (const g of groupsResp.data ?? []) {
+        for (const a of g.relationships?.apps?.data ?? []) usedAppIds.add(String(a.id));
+      }
+      const orphans = (apps.data ?? [])
+        .filter(a => !usedAppIds.has(String(a.id)))
+        .map(a => ({ id: a.id, name: a.attributes?.name }));
+      return { total_apps: (apps.data ?? []).length, orphan_count: orphans.length, apps: orphans };
+    }
+
+    case "get_app_size_footprint": {
+      const limit = Math.max(1, Math.min(500, Number(args.limit ?? 25)));
+      const totals = new Map<string, { bundle_identifier: string; name: string; install_count: number; bytes_per_install: number }>();
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (_, apps) => {
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          const bid = (at.identifier as string | undefined) ?? (at.bundle_identifier as string | undefined);
+          if (!bid) continue;
+          const size = Number((at.app_size as number | undefined) ?? (at.size as number | undefined) ?? 0);
+          if (!size) continue;
+          const cur = totals.get(bid);
+          if (cur) cur.install_count++;
+          else totals.set(bid, { bundle_identifier: bid, name: (at.name as string | undefined) ?? bid, install_count: 1, bytes_per_install: size });
+        }
+      });
+      const ranked = [...totals.values()]
+        .map(a => ({ ...a, total_bytes: a.install_count * a.bytes_per_install }))
+        .sort((a, b) => b.total_bytes - a.total_bytes)
+        .slice(0, limit);
+      return { ...stats, apps_with_size_data: totals.size, ranked_by_total_bytes: ranked };
+    }
+
+    case "get_assignment_group_drift": {
+      const restrictGroupId = args.assignment_group_id != null ? String(args.assignment_group_id) : undefined;
+      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{
+        id: string|number;
+        attributes?: { name?: string };
+        relationships?: { apps?: { data?: Array<{ id: string|number }> }; devices?: { data?: Array<{ id: string|number }> } };
+      }> };
+      const groups = (groupsResp.data ?? []).filter(g => !restrictGroupId || String(g.id) === restrictGroupId);
+      const catalog = await api("/apps") as { data?: Array<{ id: string|number; attributes?: { bundle_identifier?: string|null } }> };
+      const appIdToBid = new Map<string, string>();
+      for (const a of catalog.data ?? []) {
+        const b = a.attributes?.bundle_identifier;
+        if (b) appIdToBid.set(String(a.id), b);
+      }
+      // Build a flat work queue across all in-scope (group, device) pairs so we
+      // can run with the same bounded concurrency as the other fleet tools.
+      type WorkItem = { groupId: string|number; groupName?: string; deviceId: string; expected: string[] };
+      const queue: WorkItem[] = [];
+      for (const g of groups) {
+        const expectedBids = (g.relationships?.apps?.data ?? [])
+          .map(a => appIdToBid.get(String(a.id)))
+          .filter((x): x is string => !!x);
+        if (!expectedBids.length) continue;
+        for (const d of g.relationships?.devices?.data ?? []) {
+          queue.push({ groupId: g.id, groupName: g.attributes?.name, deviceId: String(d.id), expected: expectedBids });
+        }
+      }
+      const drift: Array<{ group_id: string|number; group_name?: string; device_id: string; missing: string[] }> = [];
+      let errors = 0;
+      const worker = async () => {
+        while (queue.length) {
+          const item = queue.pop()!;
+          try {
+            const installed = await collectInstalledApps(item.deviceId);
+            const installedBids = new Set<string>();
+            for (const a of installed) {
+              const at = a.attributes ?? {};
+              const bid = (at.identifier as string | undefined) ?? (at.bundle_identifier as string | undefined);
+              if (bid) installedBids.add(bid);
+            }
+            const missing = item.expected.filter(b => !installedBids.has(b));
+            if (missing.length) drift.push({ group_id: item.groupId, group_name: item.groupName, device_id: item.deviceId, missing });
+          } catch { errors++; }
+        }
+      };
+      await Promise.all(Array.from({ length: DEFAULT_FLEET_CONCURRENCY }, worker));
+      return { groups_checked: groups.length, drift_rows: drift.length, devices_with_errors: errors, drift };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Tier 3 handlers
+    // ══════════════════════════════════════════════════════════════════════
+
+    case "get_certificate_expiration_audit": {
+      const r = await api("/push_certificate") as { data?: { attributes?: Record<string, unknown> } };
+      const a = r.data?.attributes ?? {};
+      const expiry = (a.expires_at as string | undefined) ?? (a.expiration as string | undefined);
+      let days_until_expiry: number | null = null;
+      let warning: "ok" | "renew_soon" | "renew_now" | "expired" | "unknown" = "unknown";
+      if (expiry) {
+        const t = Date.parse(expiry);
+        if (Number.isFinite(t)) {
+          days_until_expiry = Math.floor((t - Date.now()) / 86_400_000);
+          warning = days_until_expiry < 0 ? "expired"
+                  : days_until_expiry <= 30 ? "renew_now"
+                  : days_until_expiry <= 90 ? "renew_soon" : "ok";
+        }
+      }
+      return { apple_id: a.apple_id, expires_at: expiry ?? null, days_until_expiry, warning };
+    }
+
+    case "get_enrollment_token_audit": {
+      const staleDays = Math.max(1, Number(args.stale_days ?? 90));
+      const cutoff = Date.now() - staleDays * 86_400_000;
+      const r = await api("/enrollments?limit=100") as { data?: Array<{ id: string|number; attributes?: Record<string, unknown> }> };
+      const rows = (r.data ?? []).map(e => {
+        const at = e.attributes ?? {};
+        const created = at.created_at as string | undefined;
+        const lastUsed = (at.last_used_at as string | undefined) ?? (at.welcome_screen_dismissed_at as string | undefined);
+        const lastUsedT = lastUsed ? Date.parse(lastUsed) : NaN;
+        return {
+          id: e.id,
+          created_at: created,
+          last_used_at: lastUsed,
+          stale: !lastUsed || (Number.isFinite(lastUsedT) && lastUsedT < cutoff),
+          enrollment_url: at.url as string | undefined,
+        };
+      });
+      return { stale_days: staleDays, total: rows.length, stale_count: rows.filter(r => r.stale).length, enrollments: rows };
+    }
+
+    case "get_device_user_count_outliers": {
+      const minUsers = Math.max(1, Number(args.min_users ?? 5));
+      const stats = await forEachDevice(DEFAULT_FLEET_CONCURRENCY,
+        d => getDeviceStatus(d.attributes) === "enrolled" && (d.attributes.model_name as string | undefined ?? "").includes("Mac"),
+        async d => {
+          const r = await simpleMDM(`/devices/${encodeURIComponent(String(d.id))}/users`) as { data?: unknown[] };
+          const count = (r.data ?? []).length;
+          if (count < minUsers) return undefined;
+          return {
+            id: d.id,
+            name: d.attributes.name as string | undefined,
+            serial: d.attributes.serial_number as string | undefined,
+            user_count: count,
+          };
+        });
+      return { threshold: minUsers, ...stats, outlier_count: stats.results.length, devices: stats.results.sort((a, b) => b.user_count - a.user_count) };
+    }
+
+    case "get_supervision_drift": {
+      const all = await collectDevices();
+      const drift = all.filter(d =>
+        getDeviceStatus(d.attributes) === "enrolled"
+        && d.attributes.dep_enrolled === true
+        && d.attributes.is_supervised === false
+      ).map(d => ({
+        id: d.id,
+        name: d.attributes.name as string | undefined,
+        serial: d.attributes.serial_number as string | undefined,
+        os: d.attributes.os_version ?? undefined,
+      }));
+      return { drift_count: drift.length, devices: drift };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Tier 4 selection
+    // ══════════════════════════════════════════════════════════════════════
+
+    case "get_apps_by_publisher": {
+      const limitPub = Math.max(1, Math.min(200, Number(args.limit_publishers ?? 20)));
+      const excludeApple = args.exclude_apple !== false;
+      const byPub = new Map<string, { publisher: string; total_installs: number; apps: Map<string, { bundle_identifier: string; name: string; count: number }> }>();
+      const stats = await forEachDeviceInstalledApps(DEFAULT_FLEET_CONCURRENCY, (_, apps) => {
+        const seen = new Set<string>();
+        for (const a of apps) {
+          const at = a.attributes ?? {};
+          const bid = (at.identifier as string | undefined) ?? (at.bundle_identifier as string | undefined);
+          if (!bid) continue;
+          if (excludeApple && bid.startsWith("com.apple.")) continue;
+          if (seen.has(bid)) continue;
+          seen.add(bid);
+          const parts = bid.split(".");
+          const publisher = parts.length >= 2 ? `${parts[0]}.${parts[1]}` : bid;
+          const name = (at.name as string | undefined) ?? bid;
+          const pub = byPub.get(publisher) ?? { publisher, total_installs: 0, apps: new Map() };
+          pub.total_installs++;
+          const appCur = pub.apps.get(bid);
+          if (appCur) appCur.count++;
+          else pub.apps.set(bid, { bundle_identifier: bid, name, count: 1 });
+          byPub.set(publisher, pub);
+        }
+      });
+      const ranked = [...byPub.values()]
+        .sort((a, b) => b.total_installs - a.total_installs)
+        .slice(0, limitPub)
+        .map(p => ({
+          publisher: p.publisher,
+          total_installs: p.total_installs,
+          unique_apps: p.apps.size,
+          apps: [...p.apps.values()].sort((a, b) => b.count - a.count),
+        }));
+      return { ...stats, publishers_returned: ranked.length, publishers: ranked };
+    }
+
     // ── Devices read ─────────────────────────────────────────────────────────
     case "list_devices": return api(`/devices${qs(args, ["search", "include_awaiting_enrollment", "limit", "starting_after"])}`);
     case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
@@ -1416,6 +2585,10 @@ const RESOURCES = [
   { uri: "simplemdm://inventory/devices",      name: "Device inventory",       description: "First page of the device list. For paging, call the list_devices tool with starting_after.",       mimeType: "application/json" },
   { uri: "simplemdm://inventory/assignment-groups", name: "Assignment groups", description: "Full list of assignment groups with their apps/devices/profiles.",                                  mimeType: "application/json" },
   { uri: "simplemdm://inventory/apps",         name: "App catalog",            description: "First page of the app catalog (list_apps does not paginate).",                                     mimeType: "application/json" },
+  { uri: "simplemdm://reports/top-apps",       name: "Top installed apps",     description: "Apps ranked by install count across the fleet (excludes com.apple.*). Slow — iterates every device.", mimeType: "application/json" },
+  { uri: "simplemdm://reports/unmanaged-apps", name: "Unmanaged apps",         description: "Apps installed on the fleet but missing from the SimpleMDM catalog. Shadow-IT discovery.",          mimeType: "application/json" },
+  { uri: "simplemdm://reports/stale-devices",  name: "Stale devices (14d)",    description: "Enrolled devices that have not checked in for more than 14 days. Fast.",                              mimeType: "application/json" },
+  { uri: "simplemdm://reports/storage-health", name: "Storage / battery health", description: "Enrolled devices with low free disk (<20GB) or low battery (<=20%). Fast.",                        mimeType: "application/json" },
 ];
 
 async function readResource(uri: string): Promise<unknown> {
@@ -1464,6 +2637,10 @@ async function readResource(uri: string): Promise<unknown> {
     case "simplemdm://inventory/devices":             return handleTool("list_devices", { limit: 100 });
     case "simplemdm://inventory/assignment-groups":   return handleTool("list_assignment_groups", {});
     case "simplemdm://inventory/apps":                return handleTool("list_apps", {});
+    case "simplemdm://reports/top-apps":              return handleTool("get_top_installed_apps", {});
+    case "simplemdm://reports/unmanaged-apps":        return handleTool("get_unmanaged_apps", {});
+    case "simplemdm://reports/stale-devices":         return handleTool("get_stale_devices", {});
+    case "simplemdm://reports/storage-health":        return handleTool("get_storage_health", {});
     default: throw new Error(`Unknown resource: ${uri}`);
   }
 }
@@ -1507,6 +2684,27 @@ const PROMPTS = [
       { name: "days", description: "Number of days since last check-in to consider stale. Default 14.", required: false },
     ],
   },
+  {
+    name: "compliance-violators-remediation",
+    description: "Find compliance violators and produce a prioritized remediation plan grouped by failure type. Read-only — proposes actions, does not execute.",
+    arguments: [
+      { name: "max_os_major_lag", description: "Major versions behind to count as out-of-date. Default 1.", required: false },
+    ],
+  },
+  {
+    name: "profile-coverage-remediation",
+    description: "For a given profile_id, list the missing-profile devices and propose either bulk assignment via assignment groups or per-device assign_profile_to_device calls.",
+    arguments: [
+      { name: "profile_id", description: "SimpleMDM profile ID to verify coverage for.", required: true },
+    ],
+  },
+  {
+    name: "app-inventory-audit",
+    description: "Cross-fleet app inventory: top installed apps + apps installed but not in the SimpleMDM catalog (shadow IT). Recommends catalog additions and removals.",
+    arguments: [
+      { name: "limit", description: "Top N apps to report. Default 25.", required: false },
+    ],
+  },
 ];
 
 function promptBody(name: string, args: Record<string, string> | undefined): string {
@@ -1524,7 +2722,19 @@ function promptBody(name: string, args: Record<string, string> | undefined): str
       return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
     case "stale-devices-cleanup": {
       const days = a.days || "14";
-      return `Find devices enrolled but not checked in for over ${days} days. Use list_devices with pagination and inspect last_seen_at in get_device for candidates. Group stale devices by device_group or assignment_group, then propose remediation per group: sync_device first, escalate to lock_device only if still unreachable. Do not unenroll or wipe anything automatically.`;
+      return `Find stale devices using get_stale_devices with days=${days}. Group the result by os major version and propose remediation: sync_device for borderline cases, lock_device only if a device is past 30 days. Do not unenroll or wipe anything automatically — present the plan and wait for confirmation.`;
+    }
+    case "compliance-violators-remediation": {
+      const lag = a.max_os_major_lag || "1";
+      return `Call get_compliance_violators with max_os_major_lag=${lag}. Group the result by failure type (passcode_not_compliant, filevault_off, not_supervised, not_user_approved_mdm, os_*_majors_behind). For each group, propose the remediation tool that would address it (e.g. clear_passcode + user re-enrollment for passcode failures; profile reassignment for FileVault; update_os for OS lag). Do not call any write tool. End with a numbered remediation list ranked by device count.`;
+    }
+    case "profile-coverage-remediation": {
+      const pid = a.profile_id || "{profile_id}";
+      return `Call get_devices_missing_profile with profile_id=${pid}. If more than 20 devices are missing it, recommend creating or expanding an assignment group rather than per-device assignment. Otherwise, list the per-device assign_profile_to_device calls that would close the gap. Do not execute any writes — produce the plan only.`;
+    }
+    case "app-inventory-audit": {
+      const limit = a.limit || "25";
+      return `Run a cross-fleet app inventory audit. Call get_top_installed_apps with limit=${limit} and get_unmanaged_apps in parallel. Then: 1) flag any unmanaged app installed on more than 50% of the fleet as a strong candidate for catalog addition (so updates and configuration can be managed); 2) flag catalog apps with very low install_pct as candidates for removal or reassignment; 3) call out anything that looks like obviously legitimate Apple/Adobe/Microsoft helper processes (don't recommend managing those). End with a 5–10 item action list ranked by impact.`;
     }
     default:
       throw new Error(`Unknown prompt: ${name}`);
