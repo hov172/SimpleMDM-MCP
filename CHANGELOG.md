@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.8.1] - 2026-04-16
+
+### Fixed
+- **`wifi_network_id` schema type corrected from `string` to `integer`.**
+  SimpleMDM's `POST /devices/{id}/wipe` expects an unquoted integer;
+  serializing as a quoted string risked a 422 from the server. Schema now
+  declares `{ type: "integer", minimum: 1 }` so the MCP SDK validates the
+  correct JSON shape before dispatch, and `JSON.stringify` emits
+  `"wifi_network_id":42` instead of `"wifi_network_id":"42"`.
+
+### Added
+- `clear_custom_attributes` and `unassign_direct_profiles` parameters on
+  `wipe_device`. Both are optional booleans (server default: `false`) and
+  were already supported by SimpleMDM's endpoint but not exposed in the
+  MCP surface. Now wired through `buildWipeBody` and the schema.
+- Three additional tests covering the integer serialization of
+  `wifi_network_id` and solo-field serialization of the two new booleans.
+
 ## [0.8.0] - 2026-04-16
 
 ### Added
