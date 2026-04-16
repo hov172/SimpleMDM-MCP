@@ -49,31 +49,50 @@ const MAX_PAGES          = Number(process.env.SIMPLEMDM_MAX_PAGES ?? 200);
 const CACHE_TTL_MS       = Number(process.env.SIMPLEMDM_CACHE_TTL_MS ?? 300_000); // 5 min default
 
 // macOS support matrix keyed by Apple model identifier prefix.
-// Source: Apple support docs as of 2024-11. Update on each macOS major release.
+// Source: Apple support docs as of 2026-04. Update on each macOS major release.
 // Keys are matched as prefixes against the device's `model` attribute
 // (e.g. "MacBookPro18,1", "Mac14,2"). The first matching prefix wins, so the
-// list is ordered most-specific → least-specific.
+// list is ordered most-specific → least-specific. Per-tenant patches go via
+// MAC_OS_ELIGIBILITY_OVERRIDE without redeploying.
 const MACOS_SUPPORT_TABLE: ReadonlyArray<{ prefix: string; max_macos_major: number }> = [
-  // Apple Silicon — every Mac{N},{M} family supports the macOS that shipped
-  // with it and every subsequent release through current (15 Sequoia, 11/2024).
-  { prefix: "Mac16,",       max_macos_major: 15 }, // M4 (2024)
-  { prefix: "Mac15,",       max_macos_major: 15 }, // M3 (2023-24)
-  { prefix: "Mac14,",       max_macos_major: 15 }, // M2 (2022-23)
-  { prefix: "Mac13,",       max_macos_major: 15 }, // M1 Pro/Max/Ultra (2021-22)
-  { prefix: "Mac11,",       max_macos_major: 15 }, // M1 (2020)
-  // Intel — macOS 15 Sequoia supports 2018+ in most product lines.
-  { prefix: "iMacPro1,",    max_macos_major: 15 },
-  { prefix: "MacPro7,",     max_macos_major: 15 },
-  { prefix: "Macmini8,",    max_macos_major: 15 },
-  { prefix: "MacBookAir8,", max_macos_major: 15 }, { prefix: "MacBookAir9,",  max_macos_major: 15 }, { prefix: "MacBookAir10,", max_macos_major: 15 },
-  { prefix: "MacBookPro15,",max_macos_major: 15 }, { prefix: "MacBookPro16,", max_macos_major: 15 }, { prefix: "MacBookPro17,", max_macos_major: 15 }, { prefix: "MacBookPro18,", max_macos_major: 15 },
-  { prefix: "iMac19,",      max_macos_major: 15 }, { prefix: "iMac20,",       max_macos_major: 15 }, { prefix: "iMac21,",       max_macos_major: 15 },
+  // Apple Silicon — all support current macOS (Tahoe 26, shipped 09/2025).
+  { prefix: "Mac16,",        max_macos_major: 26 }, // M4 (2024-25)
+  { prefix: "Mac15,",        max_macos_major: 26 }, // M3 (2023-24)
+  { prefix: "Mac14,",        max_macos_major: 26 }, // M2 (2022-23)
+  { prefix: "Mac13,",        max_macos_major: 26 }, // M1 Pro/Max/Ultra (2021-22)
+  { prefix: "Mac11,",        max_macos_major: 26 }, // M1 (2020)
+  // Apple Silicon-era models with legacy naming (M1 generation, late 2020 / 2021).
+  { prefix: "Macmini9,",     max_macos_major: 26 }, // M1 Mac mini (2020)
+  { prefix: "MacBookAir10,", max_macos_major: 26 }, // M1 MacBook Air (2020)
+  { prefix: "MacBookPro17,", max_macos_major: 26 }, // M1 MacBook Pro 13" (2020)
+  { prefix: "MacBookPro18,", max_macos_major: 26 }, // M1 Pro/Max MacBook Pro 14"/16" (2021)
+  { prefix: "iMac21,",       max_macos_major: 26 }, // M1 iMac 24" (2021)
+  // Intel — only four Intel models support Tahoe (26).
+  { prefix: "MacPro7,",      max_macos_major: 26 }, // Mac Pro 2019
+  { prefix: "iMac20,",       max_macos_major: 26 }, // iMac 27" 2020
+  { prefix: "MacBookPro16,3",max_macos_major: 15 }, // MBP 13" 2020 2-port — Sequoia max (Tahoe drops it)
+  { prefix: "MacBookPro16,", max_macos_major: 26 }, // MBP 16" 2019 (16,1/4) and MBP 13" 2020 4-port (16,2)
+  // Intel — Sequoia (15) is the max (Tahoe drops them).
+  { prefix: "iMacPro1,",     max_macos_major: 15 },
+  { prefix: "Macmini8,",     max_macos_major: 15 },
+  { prefix: "MacBookAir8,",  max_macos_major: 15 }, { prefix: "MacBookAir9,",  max_macos_major: 15 },
+  { prefix: "MacBookPro15,", max_macos_major: 15 },
+  { prefix: "iMac19,",       max_macos_major: 15 },
   // Ventura (13) cut: roughly 2017 hardware.
-  { prefix: "iMac18,",      max_macos_major: 13 },
-  { prefix: "MacBookPro13,",max_macos_major: 13 }, { prefix: "MacBookPro14,", max_macos_major: 13 },
-  { prefix: "MacBookAir7,", max_macos_major: 12 }, { prefix: "Macmini7,",     max_macos_major: 12 }, { prefix: "MacPro6,", max_macos_major: 12 },
-  // Older — Big Sur (11) or earlier; sparse, listed as a coarse bucket.
-  { prefix: "iMac17,",      max_macos_major: 11 }, { prefix: "MacBookPro11,", max_macos_major: 11 }, { prefix: "MacBookPro12,", max_macos_major: 11 },
+  { prefix: "iMac18,",       max_macos_major: 13 },
+  { prefix: "MacBookPro13,", max_macos_major: 13 }, { prefix: "MacBookPro14,", max_macos_major: 13 },
+  // Monterey (12) — Late 2015 hardware (iMac 21.5"/27" Retina) and 2014 portables.
+  { prefix: "iMac17,",       max_macos_major: 12 }, // iMac 27" Retina 5K Late 2015 (was 11 prior to v0.7.1; Apple supports through Monterey)
+  { prefix: "iMac16,",       max_macos_major: 12 }, // iMac 21.5" Late 2015 (incl. 4K)
+  { prefix: "MacBookAir7,",  max_macos_major: 12 }, { prefix: "Macmini7,",     max_macos_major: 12 }, { prefix: "MacPro6,", max_macos_major: 12 },
+  // Big Sur (11) — Mid 2014 / Late 2014 hardware.
+  { prefix: "iMac15,",       max_macos_major: 11 }, // iMac 27" Retina 5K Late 2014/Mid 2015
+  { prefix: "iMac14,4",      max_macos_major: 11 }, // iMac 21.5" Mid 2014
+  { prefix: "MacBookPro11,", max_macos_major: 11 }, { prefix: "MacBookPro12,", max_macos_major: 11 },
+  // Catalina (10) — Late 2013 hardware (no Big Sur due to graphics driver cut).
+  { prefix: "iMac14,1",      max_macos_major: 10 }, // iMac 21.5" Late 2013
+  { prefix: "iMac14,2",      max_macos_major: 10 }, // iMac 27" Late 2013
+  { prefix: "iMac14,3",      max_macos_major: 10 }, // iMac 21.5" Late 2013 NVIDIA
 ];
 
 // Currently shipping major version per Apple platform. Update on each Apple
@@ -82,9 +101,9 @@ const MACOS_SUPPORT_TABLE: ReadonlyArray<{ prefix: string; max_macos_major: numb
 // the fleet (one beta device on a future macOS would otherwise make every
 // other device look "decades behind").
 //
-// Override via env: CURRENT_SUPPORTED_OS_OVERRIDE='{"mac":15,"ios":18,"ipad":18}'
+// Override via env: CURRENT_SUPPORTED_OS_OVERRIDE='{"mac":26,"ios":26,"ipad":26}'
 const CURRENT_SUPPORTED_OS: Readonly<Record<"mac" | "ios" | "ipad", number>> = (() => {
-  const defaults = { mac: 15, ios: 18, ipad: 18 };
+  const defaults = { mac: 26, ios: 26, ipad: 26 };
   const raw = process.env.CURRENT_SUPPORTED_OS_OVERRIDE;
   if (!raw) return defaults;
   try {
@@ -620,7 +639,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "get_compliance_violators",
-    description: "Derived — single call returning enrolled devices that fail one or more compliance checks. Defaults: passcode_compliant, filevault_enabled (Macs), supervised, user_approved_mdm, OS within 2 majors of currently-supported. Reads device records only — fast. The OS-lag baseline is the platform's currently-shipping major (macOS 15 / iOS 18 / iPadOS 18 as of 2024-11), NOT the fleet maximum, so a single beta device cannot skew the result. Override via CURRENT_SUPPORTED_OS_OVERRIDE env var.",
+    description: "Derived — single call returning enrolled devices that fail one or more compliance checks. Defaults: passcode_compliant, filevault_enabled (Macs), supervised, user_approved_mdm, OS within 2 majors of currently-supported. Reads device records only — fast. The OS-lag baseline is the platform's currently-shipping major (macOS 26 / iOS 26 / iPadOS 26 as of 2025-09), NOT the fleet maximum, so a single beta device cannot skew the result. Override via CURRENT_SUPPORTED_OS_OVERRIDE env var.",
     inputSchema: { type: "object", properties: {
       require_passcode_compliant: { type: "boolean", description: "Default true." },
       require_filevault_macs: { type: "boolean", description: "Require FileVault on for Macs. Default true." },
@@ -651,7 +670,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "get_os_eligibility",
-    description: "Derived — for each Mac, list current macOS major and the maximum macOS major Apple supports for that model identifier, using a built-in static table (last updated 2024-11; macOS 15 Sequoia compatibility). Returns max_supported_major=null for unknown models. Optional MAC_OS_ELIGIBILITY_OVERRIDE env var (JSON) merges into the table.",
+    description: "Derived — for each Mac, list current macOS major and the maximum macOS major Apple supports for that model identifier, using a built-in static table (last updated 2026-04; macOS 26 Tahoe compatibility). Returns max_supported_major=null for unknown models. Optional MAC_OS_ELIGIBILITY_OVERRIDE env var (JSON) merges into the table.",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_dep_unassigned",
@@ -2009,7 +2028,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       const unknownModel = rows.filter(r => r.max_supported_major === null);
       const unknownPrefixes = [...new Set(unknownModel.map(r => r.model?.replace(/,\d+$/, ",") ?? "unknown").filter(Boolean))];
       const result: Record<string, unknown> = {
-        table_last_updated: "2024-11",
+        table_last_updated: "2026-04",
         mac_count: rows.length,
         upgradable_count: upgradable.length,
         unknown_model_count: unknownModel.length,
@@ -2017,7 +2036,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       };
       if (unknownPrefixes.length > 0) {
         result.unknown_model_prefixes = unknownPrefixes;
-        result._agent_hint = `${unknownPrefixes.length} model identifier${unknownPrefixes.length > 1 ? "s are" : " is"} not in the built-in support table (last updated 2024-11): ${unknownPrefixes.join(", ")}. `
+        result._agent_hint = `${unknownPrefixes.length} model identifier${unknownPrefixes.length > 1 ? "s are" : " is"} not in the built-in support table (last updated 2026-04): ${unknownPrefixes.join(", ")}. `
           + `Search the web for each (e.g. "Apple ${unknownPrefixes[0]} macOS compatibility") to determine the maximum supported macOS version. `
           + `Once found, tell the admin to set the MAC_OS_ELIGIBILITY_OVERRIDE env var to patch the table without redeploying — for example: MAC_OS_ELIGIBILITY_OVERRIDE='{"${unknownPrefixes[0]}":16}'.`;
       }

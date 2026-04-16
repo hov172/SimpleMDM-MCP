@@ -1,6 +1,6 @@
 {
   "name": "simplemdm-mcp",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "MCP server for SimpleMDM — query and manage your MDM fleet with natural language through Claude.",
   "type": "module",
   "main": "dist/index.js",
