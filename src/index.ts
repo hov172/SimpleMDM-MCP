@@ -11,7 +11,24 @@ import {
   GetPromptRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
+
+// Resolved at startup from the sibling package.json so the server's reported
+// version stays in sync with package.json automatically. Works in both the
+// installed npm layout (dist/ + package.json siblings) and the Dockerfile
+// layout (/app/dist/ + /app/package.json).
+const PKG_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(resolve(here, "..", "package.json"), "utf8")) as { version?: string };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -2777,7 +2794,7 @@ function formatError(err: unknown): string {
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "simplemdm-mcp", version: "0.4.0" },
+  { name: "simplemdm-mcp", version: PKG_VERSION },
   { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
