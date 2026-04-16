@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- Server version reported via MCP `initialize` was hardcoded and would
+  drift from `package.json` on every release (was reporting `0.4.0`
+  while the package was at `0.5.0`). Now read from the sibling
+  `package.json` at startup so it stays in sync automatically.
+
 ### Added
 - Dockerfile `VERSION` build-arg, baked into the image's
   `org.opencontainers.image.version` label. Inspect via
