@@ -4,30 +4,6 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
-
-### Changed
-- **Tool descriptions no longer include a `⚠️` warning emoji prefix.** All
-  `WRITE` and `WRITE DESTRUCTIVE` tool descriptions still carry those
-  literal words, and the `destructiveHint: true` annotation is unchanged,
-  so MCP clients retain both structured and textual signals. The emoji was
-  decorative and redundant with those two channels. 78 occurrences removed
-  from `src/index.ts`.
-
-### Verified (v0.8.1 post-ship)
-- Smoke-tested the rebuilt Docker image — `tools/list` returns the full
-  `wipe_device` schema with all 10 properties, `wifi_network_id` typed as
-  `integer` with `minimum: 1`, and both new booleans present.
-- Live-tested against a real iPad (supervised, iPadOS 26.4.1) through the
-  MCP:
-  - `wipe_device { return_to_service: true }` (no `wifi_network_id`) —
-    our `validateWipeArgs` throws before any HTTP call. Device untouched.
-  - `wipe_device { preserve_data_plan: true }` with a read-only API key —
-    SimpleMDM returns `403: This API Key does not have access to this
-    resource.` Confirms the full request path reaches SimpleMDM and the
-    error propagates cleanly. End-to-end field-name acceptance still
-    requires a write-scoped key against a sandbox tenant.
-
 ## [0.8.1] - 2026-04-16
 
 ### Fixed
@@ -45,6 +21,28 @@ All notable changes to this project are documented here. Format follows
   MCP surface. Now wired through `buildWipeBody` and the schema.
 - Three additional tests covering the integer serialization of
   `wifi_network_id` and solo-field serialization of the two new booleans.
+
+### Changed
+- **Tool descriptions no longer include a `⚠️` warning emoji prefix.** All
+  `WRITE` and `WRITE DESTRUCTIVE` tool descriptions still carry those
+  literal words, and the `destructiveHint: true` annotation is unchanged,
+  so MCP clients retain both structured and textual signals. The emoji was
+  decorative and redundant with those two channels. 78 occurrences removed
+  from `src/index.ts`.
+
+### Verified live (2026-04-16)
+- Smoke-tested the rebuilt Docker image — `tools/list` returns the full
+  `wipe_device` schema with all 10 properties, `wifi_network_id` typed as
+  `integer` with `minimum: 1`, and both new booleans present.
+- Live-tested against a real iPad (supervised, iPadOS 26.4.1) through the
+  MCP:
+  - `wipe_device { return_to_service: true }` (no `wifi_network_id`) —
+    `validateWipeArgs` throws before any HTTP call. Device untouched.
+  - `wipe_device { preserve_data_plan: true }` with a read-only API key —
+    SimpleMDM returns `403: This API Key does not have access to this
+    resource.` Confirms the full request path reaches SimpleMDM and the
+    error propagates cleanly. End-to-end field-name acceptance still
+    requires a write-scoped key against a sandbox tenant.
 
 ## [0.8.0] - 2026-04-16
 
