@@ -17,8 +17,10 @@ RUN npm prune --omit=dev
 
 FROM node:22-alpine
 
-# Override at build time:
-#   docker build --build-arg VERSION=0.5.0 -t simplemdm-mcp:0.5.0 .
+# Override at build time. Recommended: derive from package.json so the
+# example never goes stale:
+#   V=$(node -p "require('./package.json').version")
+#   docker build --build-arg VERSION=$V -t simplemdm-mcp:$V .
 ARG VERSION=dev
 
 LABEL org.opencontainers.image.title="simplemdm-mcp" \
