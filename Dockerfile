@@ -17,10 +17,15 @@ RUN npm prune --omit=dev
 
 FROM node:22-alpine
 
+# Override at build time:
+#   docker build --build-arg VERSION=0.5.0 -t simplemdm-mcp:0.5.0 .
+ARG VERSION=dev
+
 LABEL org.opencontainers.image.title="simplemdm-mcp" \
       org.opencontainers.image.description="MCP server for SimpleMDM — query and manage your MDM fleet." \
       org.opencontainers.image.source="https://github.com/hov172/SimpleMDM-MCP" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}"
 
 WORKDIR /app
 ENV NODE_ENV=production
