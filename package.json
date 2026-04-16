@@ -1,6 +1,6 @@
 {
   "name": "simplemdm-mcp",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "MCP server for SimpleMDM — query and manage your MDM fleet with natural language through Claude.",
   "type": "module",
   "main": "dist/index.js",
@@ -12,6 +12,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
+    "test": "npm run build && node --test test/*.mjs",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "files": [
