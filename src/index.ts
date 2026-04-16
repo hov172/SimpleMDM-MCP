@@ -567,7 +567,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {} } },
 
   { name: "update_account",
-    description: "⚠️ WRITE — Update account settings (name, apple_store_country_code).",
+    description: "WRITE — Update account settings (name, apple_store_country_code).",
     inputSchema: { type: "object", properties: {
       name: { type: "string" },
       apple_store_country_code: { type: "string", description: "Two-letter country code e.g. US, AU, GB." },
@@ -806,14 +806,14 @@ const TOOLS: Tool[] = [
   // DEVICES — write (management)
   // ══════════════════════════════════════════════════════════════════════════
   { name: "create_device",
-    description: "⚠️ WRITE — Create a device placeholder record.",
+    description: "WRITE — Create a device placeholder record.",
     inputSchema: { type: "object", required: ["name"], properties: {
       name: { type: "string" },
       group_id: { type: "string", description: "Optional device group ID to assign to." },
     }}},
 
   { name: "update_device",
-    description: "⚠️ WRITE — Update a device record (name, device_name).",
+    description: "WRITE — Update a device record (name, device_name).",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
       name: { type: "string", description: "SimpleMDM display name." },
@@ -821,11 +821,11 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_device",
-    description: "⚠️ WRITE — Delete a device record from SimpleMDM. Does not wipe the device.",
+    description: "WRITE — Delete a device record from SimpleMDM. Does not wipe the device.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "delete_device_user",
-    description: "⚠️ WRITE — Delete a user account from a device.",
+    description: "WRITE — Delete a user account from a device.",
     inputSchema: { type: "object", required: ["device_id", "user_id"], properties: {
       device_id: { type: "string" },
       user_id: { type: "string" },
@@ -835,7 +835,7 @@ const TOOLS: Tool[] = [
   // DEVICES — actions
   // ══════════════════════════════════════════════════════════════════════════
   { name: "lock_device",
-    description: "⚠️ WRITE — Remote lock. Optional message and 6-digit PIN on macOS.",
+    description: "WRITE — Remote lock. Optional message and 6-digit PIN on macOS.",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
       message: { type: "string" },
@@ -843,7 +843,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "wipe_device",
-    description: "⚠️ WRITE DESTRUCTIVE — Remote wipe. Erases all data on the device. Irreversible. " +
+    description: "WRITE DESTRUCTIVE — Remote wipe. Erases all data on the device. Irreversible. " +
                  "Supports iOS 17+ Return-to-Service and eSIM/data-plan preservation.",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
@@ -860,35 +860,35 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "sync_device",
-    description: "⚠️ WRITE — Force device to re-check in with SimpleMDM immediately.",
+    description: "WRITE — Force device to re-check in with SimpleMDM immediately.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "restart_device",
-    description: "⚠️ WRITE — Remote restart. Device must be supervised.",
+    description: "WRITE — Remote restart. Device must be supervised.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "shutdown_device",
-    description: "⚠️ WRITE — Remote shutdown. Device must be supervised.",
+    description: "WRITE — Remote shutdown. Device must be supervised.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "unenroll_device",
-    description: "⚠️ WRITE — Unenroll a device from MDM management.",
+    description: "WRITE — Unenroll a device from MDM management.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "clear_passcode",
-    description: "⚠️ WRITE — Clear the device passcode.",
+    description: "WRITE — Clear the device passcode.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "clear_restrictions_password",
-    description: "⚠️ WRITE — Clear the restrictions password on a device.",
+    description: "WRITE — Clear the restrictions password on a device.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "update_os",
-    description: "⚠️ WRITE — Trigger a managed OS update.",
+    description: "WRITE — Trigger a managed OS update.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "enable_lost_mode",
-    description: "⚠️ WRITE — Enable Lost Mode on a supervised iOS device.",
+    description: "WRITE — Enable Lost Mode on a supervised iOS device.",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
       message: { type: "string" },
@@ -897,66 +897,66 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "disable_lost_mode",
-    description: "⚠️ WRITE — Disable Lost Mode.",
+    description: "WRITE — Disable Lost Mode.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "play_lost_mode_sound",
-    description: "⚠️ WRITE — Play a sound on a device in Lost Mode.",
+    description: "WRITE — Play a sound on a device in Lost Mode.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "update_lost_mode_location",
-    description: "⚠️ WRITE — Request a location update on a device in Lost Mode.",
+    description: "WRITE — Request a location update on a device in Lost Mode.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "clear_firmware_password",
-    description: "⚠️ WRITE — Clear the firmware password on a Mac.",
+    description: "WRITE — Clear the firmware password on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "rotate_firmware_password",
-    description: "⚠️ WRITE — Rotate the firmware password on a Mac.",
+    description: "WRITE — Rotate the firmware password on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "clear_recovery_lock_password",
-    description: "⚠️ WRITE — Clear the recovery lock password on an Apple Silicon Mac.",
+    description: "WRITE — Clear the recovery lock password on an Apple Silicon Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "rotate_recovery_lock_password",
-    description: "⚠️ WRITE — Rotate the recovery lock password on an Apple Silicon Mac.",
+    description: "WRITE — Rotate the recovery lock password on an Apple Silicon Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "rotate_filevault_recovery_key",
-    description: "⚠️ WRITE — Rotate the FileVault recovery key on a Mac.",
+    description: "WRITE — Rotate the FileVault recovery key on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "set_admin_password",
-    description: "⚠️ WRITE — Set the local admin password on a Mac.",
+    description: "WRITE — Set the local admin password on a Mac.",
     inputSchema: { type: "object", required: ["device_id", "new_password"], properties: {
       device_id: { type: "string" },
       new_password: { type: "string" },
     }}},
 
   { name: "rotate_admin_password",
-    description: "⚠️ WRITE — Rotate the local admin password on a Mac.",
+    description: "WRITE — Rotate the local admin password on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "enable_remote_desktop",
-    description: "⚠️ WRITE — Enable Remote Desktop (ARD) on a Mac.",
+    description: "WRITE — Enable Remote Desktop (ARD) on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "disable_remote_desktop",
-    description: "⚠️ WRITE — Disable Remote Desktop (ARD) on a Mac.",
+    description: "WRITE — Disable Remote Desktop (ARD) on a Mac.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "enable_bluetooth",
-    description: "⚠️ WRITE — Enable Bluetooth on a device.",
+    description: "WRITE — Enable Bluetooth on a device.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "disable_bluetooth",
-    description: "⚠️ WRITE — Disable Bluetooth on a device.",
+    description: "WRITE — Disable Bluetooth on a device.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "set_time_zone",
-    description: "⚠️ WRITE — Set the time zone on a device.",
+    description: "WRITE — Set the time zone on a device.",
     inputSchema: { type: "object", required: ["device_id", "time_zone"], properties: {
       device_id: { type: "string" },
       time_zone: { type: "string", description: "IANA time zone name e.g. America/New_York." },
@@ -974,14 +974,14 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "create_assignment_group",
-    description: "⚠️ WRITE — Create a new static assignment group.",
+    description: "WRITE — Create a new static assignment group.",
     inputSchema: { type: "object", required: ["name"], properties: {
       name: { type: "string" },
       auto_deploy: { type: "boolean", description: "Auto-push apps when devices join. Default true." },
     }}},
 
   { name: "update_assignment_group",
-    description: "⚠️ WRITE — Update an assignment group name or auto_deploy setting.",
+    description: "WRITE — Update an assignment group name or auto_deploy setting.",
     inputSchema: { type: "object", required: ["group_id"], properties: {
       group_id: { type: "string" },
       name: { type: "string" },
@@ -989,23 +989,23 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_assignment_group",
-    description: "⚠️ WRITE — Delete an assignment group.",
+    description: "WRITE — Delete an assignment group.",
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "assign_device_to_group",
-    description: "⚠️ WRITE — Add a device to an assignment group.",
+    description: "WRITE — Add a device to an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "device_id"], properties: {
       group_id: { type: "string" }, device_id: { type: "string" },
     }}},
 
   { name: "unassign_device_from_group",
-    description: "⚠️ WRITE — Remove a device from an assignment group.",
+    description: "WRITE — Remove a device from an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "device_id"], properties: {
       group_id: { type: "string" }, device_id: { type: "string" },
     }}},
 
   { name: "assign_app_to_group",
-    description: "⚠️ WRITE — Assign an app to an assignment group.",
+    description: "WRITE — Assign an app to an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "app_id"], properties: {
       group_id: { type: "string" },
       app_id: { type: "string" },
@@ -1014,37 +1014,37 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "unassign_app_from_group",
-    description: "⚠️ WRITE — Remove an app from an assignment group.",
+    description: "WRITE — Remove an app from an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "app_id"], properties: {
       group_id: { type: "string" }, app_id: { type: "string" },
     }}},
 
   { name: "assign_profile_to_group",
-    description: "⚠️ WRITE — Assign a profile to an assignment group.",
+    description: "WRITE — Assign a profile to an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "profile_id"], properties: {
       group_id: { type: "string" }, profile_id: { type: "string" },
     }}},
 
   { name: "unassign_profile_from_group",
-    description: "⚠️ WRITE — Remove a profile from an assignment group.",
+    description: "WRITE — Remove a profile from an assignment group.",
     inputSchema: { type: "object", required: ["group_id", "profile_id"], properties: {
       group_id: { type: "string" }, profile_id: { type: "string" },
     }}},
 
   { name: "push_apps_to_group",
-    description: "⚠️ WRITE — Push all assigned apps to all devices in a group.",
+    description: "WRITE — Push all assigned apps to all devices in a group.",
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "update_apps_in_group",
-    description: "⚠️ WRITE — Push app updates to all devices in a group.",
+    description: "WRITE — Push app updates to all devices in a group.",
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "sync_profiles_in_group",
-    description: "⚠️ WRITE — Sync all profiles to all devices in a group.",
+    description: "WRITE — Sync all profiles to all devices in a group.",
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "clone_assignment_group",
-    description: "⚠️ WRITE — Clone an assignment group (static and dynamic only).",
+    description: "WRITE — Clone an assignment group (static and dynamic only).",
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1061,7 +1061,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["app_id"], properties: { app_id: { type: "string" } }}},
 
   { name: "create_app",
-    description: "⚠️ WRITE — Add an App Store app by ID or bundle ID to the catalog.",
+    description: "WRITE — Add an App Store app by ID or bundle ID to the catalog.",
     inputSchema: { type: "object", properties: {
       app_store_id: { type: "string", description: "Apple App Store numeric ID e.g. 1090161858." },
       bundle_id: { type: "string", description: "Bundle identifier e.g. com.myCompany.MyApp." },
@@ -1069,7 +1069,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "update_app",
-    description: "⚠️ WRITE — Update an app catalog entry name.",
+    description: "WRITE — Update an app catalog entry name.",
     inputSchema: { type: "object", required: ["app_id"], properties: {
       app_id: { type: "string" },
       name: { type: "string" },
@@ -1077,7 +1077,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_app",
-    description: "⚠️ WRITE — Remove an app from the catalog. Does not uninstall from devices.",
+    description: "WRITE — Remove an app from the catalog. Does not uninstall from devices.",
     inputSchema: { type: "object", required: ["app_id"], properties: { app_id: { type: "string" } }}},
 
   { name: "list_app_installs",
@@ -1094,15 +1094,15 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["installed_app_id"], properties: { installed_app_id: { type: "string" } }}},
 
   { name: "request_app_management",
-    description: "⚠️ WRITE — Request MDM management of an unmanaged installed app.",
+    description: "WRITE — Request MDM management of an unmanaged installed app.",
     inputSchema: { type: "object", required: ["installed_app_id"], properties: { installed_app_id: { type: "string" } }}},
 
   { name: "update_installed_app",
-    description: "⚠️ WRITE — Push an update to a specific installed app instance.",
+    description: "WRITE — Push an update to a specific installed app instance.",
     inputSchema: { type: "object", required: ["installed_app_id"], properties: { installed_app_id: { type: "string" } }}},
 
   { name: "uninstall_app",
-    description: "⚠️ WRITE — Uninstall a managed app from a device.",
+    description: "WRITE — Uninstall a managed app from a device.",
     inputSchema: { type: "object", required: ["installed_app_id"], properties: { installed_app_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1117,21 +1117,21 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["attribute_name"], properties: { attribute_name: { type: "string" } }}},
 
   { name: "create_custom_attribute",
-    description: "⚠️ WRITE — Create a new custom attribute.",
+    description: "WRITE — Create a new custom attribute.",
     inputSchema: { type: "object", required: ["name"], properties: {
       name: { type: "string", description: "Attribute key name." },
       default_value: { type: "string" },
     }}},
 
   { name: "update_custom_attribute",
-    description: "⚠️ WRITE — Update a custom attribute's default value.",
+    description: "WRITE — Update a custom attribute's default value.",
     inputSchema: { type: "object", required: ["attribute_name"], properties: {
       attribute_name: { type: "string" },
       default_value: { type: "string" },
     }}},
 
   { name: "delete_custom_attribute",
-    description: "⚠️ WRITE — Delete a custom attribute.",
+    description: "WRITE — Delete a custom attribute.",
     inputSchema: { type: "object", required: ["attribute_name"], properties: { attribute_name: { type: "string" } }}},
 
   { name: "get_device_attribute_values",
@@ -1139,7 +1139,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "set_device_attribute_value",
-    description: "⚠️ WRITE — Set a custom attribute value for a specific device.",
+    description: "WRITE — Set a custom attribute value for a specific device.",
     inputSchema: { type: "object", required: ["attribute_name", "device_id", "value"], properties: {
       attribute_name: { type: "string" },
       device_id: { type: "string" },
@@ -1147,7 +1147,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "set_attribute_for_multiple_devices",
-    description: "⚠️ WRITE — Set a custom attribute value on multiple devices at once.",
+    description: "WRITE — Set a custom attribute value on multiple devices at once.",
     inputSchema: { type: "object", required: ["attribute_name", "device_ids", "value"], properties: {
       attribute_name: { type: "string" },
       device_ids: { type: "array", items: { type: "string" } },
@@ -1159,7 +1159,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["group_id"], properties: { group_id: { type: "string" } }}},
 
   { name: "set_group_attribute_value",
-    description: "⚠️ WRITE — Set a custom attribute value at the assignment group level.",
+    description: "WRITE — Set a custom attribute value at the assignment group level.",
     inputSchema: { type: "object", required: ["attribute_name", "group_id", "value"], properties: {
       attribute_name: { type: "string" },
       group_id: { type: "string" },
@@ -1174,7 +1174,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {} } },
 
   { name: "create_custom_configuration_profile",
-    description: "⚠️ WRITE — Create a new custom configuration profile by providing mobileconfig XML.",
+    description: "WRITE — Create a new custom configuration profile by providing mobileconfig XML.",
     inputSchema: { type: "object", required: ["name", "mobileconfig"], properties: {
       name: { type: "string" },
       mobileconfig: { type: "string", description: "The mobileconfig XML content as a string." },
@@ -1183,7 +1183,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "update_custom_configuration_profile",
-    description: "⚠️ WRITE — Update a custom configuration profile.",
+    description: "WRITE — Update a custom configuration profile.",
     inputSchema: { type: "object", required: ["profile_id"], properties: {
       profile_id: { type: "string" },
       name: { type: "string" },
@@ -1193,17 +1193,17 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_custom_configuration_profile",
-    description: "⚠️ WRITE — Delete a custom configuration profile.",
+    description: "WRITE — Delete a custom configuration profile.",
     inputSchema: { type: "object", required: ["profile_id"], properties: { profile_id: { type: "string" } }}},
 
   { name: "assign_custom_profile_to_device",
-    description: "⚠️ WRITE — Assign a custom configuration profile directly to a device.",
+    description: "WRITE — Assign a custom configuration profile directly to a device.",
     inputSchema: { type: "object", required: ["profile_id", "device_id"], properties: {
       profile_id: { type: "string" }, device_id: { type: "string" },
     }}},
 
   { name: "unassign_custom_profile_from_device",
-    description: "⚠️ WRITE — Remove a custom configuration profile from a device.",
+    description: "WRITE — Remove a custom configuration profile from a device.",
     inputSchema: { type: "object", required: ["profile_id", "device_id"], properties: {
       profile_id: { type: "string" }, device_id: { type: "string" },
     }}},
@@ -1220,7 +1220,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["declaration_id"], properties: { declaration_id: { type: "string" } }}},
 
   { name: "create_custom_declaration",
-    description: "⚠️ WRITE — Create a new custom declaration.",
+    description: "WRITE — Create a new custom declaration.",
     inputSchema: { type: "object", required: ["name", "payload"], properties: {
       name: { type: "string" },
       payload: { type: "string", description: "The declaration JSON payload as a string." },
@@ -1229,7 +1229,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "update_custom_declaration",
-    description: "⚠️ WRITE — Update a custom declaration.",
+    description: "WRITE — Update a custom declaration.",
     inputSchema: { type: "object", required: ["declaration_id"], properties: {
       declaration_id: { type: "string" },
       name: { type: "string" },
@@ -1238,17 +1238,17 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_custom_declaration",
-    description: "⚠️ WRITE — Delete a custom declaration.",
+    description: "WRITE — Delete a custom declaration.",
     inputSchema: { type: "object", required: ["declaration_id"], properties: { declaration_id: { type: "string" } }}},
 
   { name: "assign_declaration_to_device",
-    description: "⚠️ WRITE — Assign a declaration directly to a device.",
+    description: "WRITE — Assign a declaration directly to a device.",
     inputSchema: { type: "object", required: ["declaration_id", "device_id"], properties: {
       declaration_id: { type: "string" }, device_id: { type: "string" },
     }}},
 
   { name: "unassign_declaration_from_device",
-    description: "⚠️ WRITE — Remove a declaration from a device.",
+    description: "WRITE — Remove a declaration from a device.",
     inputSchema: { type: "object", required: ["declaration_id", "device_id"], properties: {
       declaration_id: { type: "string" }, device_id: { type: "string" },
     }}},
@@ -1265,13 +1265,13 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["profile_id"], properties: { profile_id: { type: "string" } }}},
 
   { name: "assign_profile_to_device",
-    description: "⚠️ WRITE — Assign a profile directly to a device.",
+    description: "WRITE — Assign a profile directly to a device.",
     inputSchema: { type: "object", required: ["profile_id", "device_id"], properties: {
       profile_id: { type: "string" }, device_id: { type: "string" },
     }}},
 
   { name: "unassign_profile_from_device",
-    description: "⚠️ WRITE — Remove a profile from a device.",
+    description: "WRITE — Remove a profile from a device.",
     inputSchema: { type: "object", required: ["profile_id", "device_id"], properties: {
       profile_id: { type: "string" }, device_id: { type: "string" },
     }}},
@@ -1288,7 +1288,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["dep_server_id"], properties: { dep_server_id: { type: "string" } }}},
 
   { name: "sync_dep_server",
-    description: "⚠️ WRITE — Trigger a sync with Apple for a DEP server.",
+    description: "WRITE — Trigger a sync with Apple for a DEP server.",
     inputSchema: { type: "object", required: ["dep_server_id"], properties: { dep_server_id: { type: "string" } }}},
 
   { name: "list_dep_devices",
@@ -1326,14 +1326,14 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["enrollment_id"], properties: { enrollment_id: { type: "string" } }}},
 
   { name: "send_enrollment_invitation",
-    description: "⚠️ WRITE — Send an enrollment invitation to an email address or phone number.",
+    description: "WRITE — Send an enrollment invitation to an email address or phone number.",
     inputSchema: { type: "object", required: ["enrollment_id", "contact"], properties: {
       enrollment_id: { type: "string" },
       contact: { type: "string", description: "Email address or phone number." },
     }}},
 
   { name: "delete_enrollment",
-    description: "⚠️ WRITE — Delete an enrollment configuration.",
+    description: "WRITE — Delete an enrollment configuration.",
     inputSchema: { type: "object", required: ["enrollment_id"], properties: { enrollment_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1357,7 +1357,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["app_id"], properties: { app_id: { type: "string" } }}},
 
   { name: "create_managed_app_config",
-    description: "⚠️ WRITE — Create a managed app configuration entry for an app.",
+    description: "WRITE — Create a managed app configuration entry for an app.",
     inputSchema: { type: "object", required: ["app_id", "key", "value", "kind"], properties: {
       app_id: { type: "string" },
       key: { type: "string" },
@@ -1366,13 +1366,13 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_managed_app_config",
-    description: "⚠️ WRITE — Delete a managed app configuration entry.",
+    description: "WRITE — Delete a managed app configuration entry.",
     inputSchema: { type: "object", required: ["app_id", "config_id"], properties: {
       app_id: { type: "string" }, config_id: { type: "string" },
     }}},
 
   { name: "push_managed_app_configs",
-    description: "⚠️ WRITE — Push managed app config updates to all devices with the app installed.",
+    description: "WRITE — Push managed app config updates to all devices with the app installed.",
     inputSchema: { type: "object", required: ["app_id"], properties: { app_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1398,14 +1398,14 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["script_id"], properties: { script_id: { type: "string" } }}},
 
   { name: "create_script",
-    description: "⚠️ WRITE — Create a new script.",
+    description: "WRITE — Create a new script.",
     inputSchema: { type: "object", required: ["name", "content"], properties: {
       name: { type: "string" },
       content: { type: "string", description: "The script content (shell script, etc.)." },
     }}},
 
   { name: "update_script",
-    description: "⚠️ WRITE — Update a script's name or content.",
+    description: "WRITE — Update a script's name or content.",
     inputSchema: { type: "object", required: ["script_id"], properties: {
       script_id: { type: "string" },
       name: { type: "string" },
@@ -1413,7 +1413,7 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "delete_script",
-    description: "⚠️ WRITE — Delete a script.",
+    description: "WRITE — Delete a script.",
     inputSchema: { type: "object", required: ["script_id"], properties: { script_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1430,14 +1430,14 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["job_id"], properties: { job_id: { type: "string" } }}},
 
   { name: "create_script_job",
-    description: "⚠️ WRITE — Run a script on one or more devices.",
+    description: "WRITE — Run a script on one or more devices.",
     inputSchema: { type: "object", required: ["script_id", "device_ids"], properties: {
       script_id: { type: "string" },
       device_ids: { type: "array", items: { type: "string" } },
     }}},
 
   { name: "cancel_script_job",
-    description: "⚠️ WRITE — Cancel a pending script job.",
+    description: "WRITE — Cancel a pending script job.",
     inputSchema: { type: "object", required: ["job_id"], properties: { job_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
