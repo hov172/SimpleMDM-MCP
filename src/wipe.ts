@@ -19,5 +19,7 @@ export function buildWipeBody(args: Record<string, unknown>): Record<string, unk
     return_to_service: args.return_to_service,
     wifi_network_id: args.wifi_network_id,
     obliteration_behavior: args.obliteration_behavior,
+    clear_custom_attributes: args.clear_custom_attributes,
+    unassign_direct_profiles: args.unassign_direct_profiles,
   };
 }
