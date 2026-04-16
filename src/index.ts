@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
+import { validateWipeArgs, buildWipeBody } from "./wipe.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -842,10 +843,18 @@ const TOOLS: Tool[] = [
     }}},
 
   { name: "wipe_device",
-    description: "⚠️ WRITE DESTRUCTIVE — Remote wipe. Erases all data on the device. Irreversible.",
+    description: "⚠️ WRITE DESTRUCTIVE — Remote wipe. Erases all data on the device. Irreversible. " +
+                 "Supports iOS 17+ Return-to-Service and eSIM/data-plan preservation.",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
       pin: { type: "string", description: "Optional 6-digit PIN to set after wipe (macOS)." },
+      preserve_data_plan: { type: "boolean", description: "iOS. Preserve eSIM/cellular data plan during wipe." },
+      disable_activation_lock: { type: "boolean", description: "iOS/macOS. Server default: true. Pass false to retain Activation Lock." },
+      disallow_proximity_setup: { type: "boolean", description: "iOS. Suppress Proximity Setup on the wiped device." },
+      return_to_service: { type: "boolean", description: "iOS 17+/tvOS 18+. Auto re-enrolls after wipe. Requires wifi_network_id." },
+      wifi_network_id: { type: "string", description: "SimpleMDM id of a WiFi profile attached to the device's assignment group. Required when return_to_service=true. Not an SSID, UUID, or profile name." },
+      obliteration_behavior: { type: "string", enum: ["DoNotObliterate", "ObliterateWithWarning"],
+        description: "macOS 12+ (T2/Apple Silicon). Server default: ObliterateWithWarning." },
     }}},
 
   { name: "sync_device",
@@ -2484,9 +2493,14 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "lock_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/lock`, { method: "POST", body: j({ message: args.message, pin: args.pin }) });
-    case "wipe_device":
+    case "wipe_device": {
       requireWrites();
-      return api(`/devices/${seg(args.device_id, "device_id")}/wipe`, { method: "POST", body: j({ pin: args.pin }) });
+      validateWipeArgs(args);
+      return api(`/devices/${seg(args.device_id, "device_id")}/wipe`, {
+        method: "POST",
+        body: j(buildWipeBody(args)),
+      });
+    }
     case "sync_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/push_apps`, { method: "POST" });
