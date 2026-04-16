@@ -1,9 +1,14 @@
 # Design: Extended wipe options for `wipe_device`
 
-**Status:** Draft
+**Status:** Shipped (v0.8.1)
 **Date:** 2026-04-16
-**Target version:** v0.8.0
+**Target version:** v0.8.0 → corrected in v0.8.1
 **Scope:** Add five optional parameters to the existing `wipe_device` MCP tool to reach parity with the SimpleMDM admin portal's wipe dialog.
+
+**2026-04-16 amendment (v0.8.1):** After initial ship, cross-checked against SimpleMDM's published API docs and found:
+- `wifi_network_id` is an **integer** (not a string) — corrected schema to `{ type: "integer", minimum: 1 }`. Serialization now emits `42`, not `"42"`, avoiding a likely 422.
+- Two additional parameters already supported by the endpoint but not exposed here: `clear_custom_attributes` and `unassign_direct_profiles`. Both are optional booleans (server default: `false`). Added to the schema and `buildWipeBody`.
+- Section 3 table, §4.1 schema, and §4.2 helper body below reflect the v0.8.1 shipped state.
 
 ---
 
@@ -35,8 +40,10 @@ All fields are optional. Omitted fields are not serialized (JSON.stringify drops
 | `disable_activation_lock` | boolean | iOS, macOS | Server default: `true`. Pass `false` to retain Activation Lock. |
 | `disallow_proximity_setup` | boolean | iOS | Suppresses Proximity Setup on the wiped device. |
 | `return_to_service` | boolean | iOS 17+, tvOS 18+ | Auto re-enrolls after wipe. Requires `wifi_network_id`. |
-| `wifi_network_id` | string | iOS 17+, tvOS 18+ | SimpleMDM integer id (serialized as a string per repo convention) of a WiFi profile attached to the device's assignment group. Not an SSID, UUID, or profile name. Required when `return_to_service=true`. |
+| `wifi_network_id` | integer (≥1) | iOS 17+, tvOS 18+ | Integer id of a WiFi configuration profile assigned to the device. Not an SSID, UUID, or profile name. Required when `return_to_service=true`. |
 | `obliteration_behavior` | enum | macOS 12+ (T2 / Apple Silicon) | `DoNotObliterate` \| `ObliterateWithWarning`. Server default: `ObliterateWithWarning`. |
+| `clear_custom_attributes` | boolean | all | Clear custom attribute values on the device record. Server default: `false`. Added in v0.8.1. |
+| `unassign_direct_profiles` | boolean | all | Remove directly assigned profiles from the device record. Server default: `false`. Added in v0.8.1. |
 
 ### 3.1 Parameter interactions
 
@@ -62,9 +69,11 @@ Replace the existing `wipe_device` entry:
     disable_activation_lock: { type: "boolean", description: "iOS/macOS. Server default: true. Pass false to retain Activation Lock." },
     disallow_proximity_setup: { type: "boolean", description: "iOS. Suppress Proximity Setup on the wiped device." },
     return_to_service: { type: "boolean", description: "iOS 17+/tvOS 18+. Auto re-enrolls after wipe. Requires wifi_network_id." },
-    wifi_network_id: { type: "string", description: "WiFi profile id assigned to the device. Required when return_to_service=true." },
+    wifi_network_id: { type: "integer", minimum: 1, description: "Integer id of a WiFi configuration profile assigned to the device. Required when return_to_service=true. Not an SSID, UUID, or profile name." },
     obliteration_behavior: { type: "string", enum: ["DoNotObliterate", "ObliterateWithWarning"],
       description: "macOS 12+ (T2/Apple Silicon). Server default: ObliterateWithWarning." },
+    clear_custom_attributes: { type: "boolean", description: "Clear custom attribute values on the device record. Defaults to false." },
+    unassign_direct_profiles: { type: "boolean", description: "Remove directly assigned profiles from the device record. Defaults to false." },
   }}},
 ```
 
@@ -110,6 +119,8 @@ export function buildWipeBody(args: Record<string, unknown>): Record<string, unk
     return_to_service: args.return_to_service,
     wifi_network_id: args.wifi_network_id,
     obliteration_behavior: args.obliteration_behavior,
+    clear_custom_attributes: args.clear_custom_attributes,
+    unassign_direct_profiles: args.unassign_direct_profiles,
   };
 }
 ```
@@ -171,7 +182,7 @@ test("validateWipeArgs — return_to_service without wifi_network_id throws", ()
 
 test("validateWipeArgs — return_to_service with wifi_network_id passes", () => {
   assert.doesNotThrow(() =>
-    validateWipeArgs({ return_to_service: true, wifi_network_id: "42" })
+    validateWipeArgs({ return_to_service: true, wifi_network_id: 42 })
   );
 });
 
@@ -187,8 +198,10 @@ test("buildWipeBody — all fields serialize", () => {
     disable_activation_lock: false,
     disallow_proximity_setup: true,
     return_to_service: true,
-    wifi_network_id: "42",
+    wifi_network_id: 42,
     obliteration_behavior: "DoNotObliterate",
+    clear_custom_attributes: true,
+    unassign_direct_profiles: true,
   })));
   assert.deepEqual(body, {
     pin: "123456",
@@ -196,8 +209,10 @@ test("buildWipeBody — all fields serialize", () => {
     disable_activation_lock: false,
     disallow_proximity_setup: true,
     return_to_service: true,
-    wifi_network_id: "42",
+    wifi_network_id: 42,
     obliteration_behavior: "DoNotObliterate",
+    clear_custom_attributes: true,
+    unassign_direct_profiles: true,
   });
 });
 ```
