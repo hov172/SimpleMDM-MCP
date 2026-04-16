@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "simplemdm": {
+      "command": "node",
+      "args": ["/absolute/path/to/SimpleMDM-MCP/dist/index.js"],
+      "env": {
+        "SIMPLEMDM_API_KEY": "your-api-key-here",
+        "SIMPLEMDM_ALLOW_WRITES": "true"
+      }
+    }
+  }
+}

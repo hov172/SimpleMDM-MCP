@@ -11,3 +11,4 @@ dist/
 .docker.out
 .verify.out
 .DS_Store
+.prd-current.md

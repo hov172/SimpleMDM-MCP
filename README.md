@@ -18,6 +18,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Connect to ChatGPT](#connect-to-chatgpt)
 - [Use With Other MCP Clients](#use-with-other-mcp-clients)
 - [Enable write actions](#enable-write-actions)
+- [Examples](#examples)
 - [Tools](#tools)
 - [Resources](#resources)
 - [Prompts](#prompts)
@@ -344,6 +345,20 @@ To enable write actions, add `SIMPLEMDM_ALLOW_WRITES=true` to your config:
 ```
 
 See [API key permissions](#api-key-permissions) below for what each action requires.
+
+---
+
+## Examples
+
+The [`examples/`](examples/) directory ships drop-in client configs and a starter query cookbook:
+
+- [`claude-desktop.json`](examples/claude-desktop.json) — read-only Claude Desktop block
+- [`claude-desktop-with-writes.json`](examples/claude-desktop-with-writes.json) — same with `SIMPLEMDM_ALLOW_WRITES=true`
+- [`claude-desktop-with-munkireport.json`](examples/claude-desktop-with-munkireport.json) — Claude Desktop + MunkiReport enrichment
+- [`claude-code-add.sh`](examples/claude-code-add.sh) — one-line Claude Code registration
+- [`codex.toml`](examples/codex.toml) — Codex CLI config snippet
+- [`docker-run.sh`](examples/docker-run.sh) — versioned `docker build` + run
+- [`query-cookbook.md`](examples/query-cookbook.md) — 30+ natural-language queries grouped by intent
 
 ---
 
