@@ -46,6 +46,7 @@ const MR_COOKIE  = process.env.MUNKIREPORT_COOKIE ?? "";
 const REQUEST_TIMEOUT_MS = Number(process.env.SIMPLEMDM_TIMEOUT_MS ?? 30_000);
 const MAX_RETRIES        = Number(process.env.SIMPLEMDM_MAX_RETRIES ?? 3);
 const MAX_PAGES          = Number(process.env.SIMPLEMDM_MAX_PAGES ?? 200);
+const CACHE_TTL_MS       = Number(process.env.SIMPLEMDM_CACHE_TTL_MS ?? 300_000); // 5 min default
 
 // macOS support matrix keyed by Apple model identifier prefix.
 // Source: Apple support docs as of 2024-11. Update on each macOS major release.
@@ -264,8 +265,12 @@ async function* paginateDevices(): AsyncGenerator<DeviceRecord> {
 }
 
 async function collectDevices(): Promise<DeviceRecord[]> {
+  const cacheKey = "__collectDevices__";
+  const hit = listCache.get(cacheKey);
+  if (hit && Date.now() <= hit.expiry) return hit.data as DeviceRecord[];
   const out: DeviceRecord[] = [];
   for await (const d of paginateDevices()) out.push(d);
+  listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS });
   return out;
 }
 
@@ -273,6 +278,9 @@ async function collectDevices(): Promise<DeviceRecord[]> {
 // Throws on MAX_PAGES exhaustion to match paginateDevices() behavior — silent
 // truncation in an aggregation tool produces wrong rollups, not partial ones.
 async function collectInstalledApps(deviceId: string | number): Promise<InstalledAppRecord[]> {
+  const cacheKey = `__installedApps__${deviceId}`;
+  const hit = listCache.get(cacheKey);
+  if (hit && Date.now() <= hit.expiry) return hit.data as InstalledAppRecord[];
   const id = encodeURIComponent(String(deviceId));
   const out: InstalledAppRecord[] = [];
   let cursor: string | number | undefined;
@@ -280,11 +288,163 @@ async function collectInstalledApps(deviceId: string | number): Promise<Installe
     const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
     const p = await simpleMDM(`/devices/${id}/installed_apps?limit=100${q}`) as PaginatedResponse<InstalledAppRecord>;
     for (const a of p.data) out.push(a);
-    if (!p.has_more) return out;
+    if (!p.has_more) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
     cursor = p.data.at(-1)?.id;
-    if (cursor == null) return out;
+    if (cursor == null) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
   }
   throw new Error(`collectInstalledApps(${deviceId}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
+}
+
+// ─── In-memory TTL cache for paginated list results ──────────────────────────
+// Keyed by request path (includes query-string filters). Entries auto-expire
+// after CACHE_TTL_MS. Write operations invalidate related entries via prefix
+// matching so subsequent reads pick up changes immediately.
+
+type CacheEntry = { data: unknown[]; expiry: number };
+const listCache = new Map<string, CacheEntry>();
+
+function cacheGet<T>(key: string): { data: T[]; has_more: false } | undefined {
+  const entry = listCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiry) { listCache.delete(key); return undefined; }
+  return { data: entry.data as T[], has_more: false };
+}
+
+function cacheSet(key: string, data: unknown[]): void {
+  listCache.set(key, { data, expiry: Date.now() + CACHE_TTL_MS });
+}
+
+// Invalidate all cache entries whose key starts with any of the given prefixes.
+// The special prefix "/devices" also clears collectDevices() and per-device
+// installed-app caches, since device mutations can affect fleet rollups.
+function cacheInvalidate(...prefixes: string[]): void {
+  const alsoDevices = prefixes.some(p => p === "/devices");
+  const alsoApps = prefixes.some(p => p === "/apps" || p === "/installed_apps");
+  for (const key of listCache.keys()) {
+    if (prefixes.some(p => key.startsWith(p))) { listCache.delete(key); continue; }
+    if (alsoDevices && key === "__collectDevices__") { listCache.delete(key); continue; }
+    if ((alsoDevices || alsoApps) && key.startsWith("__installedApps__")) { listCache.delete(key); continue; }
+  }
+}
+
+// Maps a write-operation tool name to the cache key prefixes it should
+// invalidate. Covers every tool that calls requireWrites().
+const INVALIDATION_MAP: Record<string, string[]> = {
+  create_device:                       ["/devices"],
+  update_device:                       ["/devices"],
+  delete_device:                       ["/devices"],
+  delete_device_user:                  ["/devices"],
+  lock_device:                         ["/devices"],
+  wipe_device:                         ["/devices"],
+  sync_device:                         ["/devices"],
+  restart_device:                      ["/devices"],
+  shutdown_device:                     ["/devices"],
+  unenroll_device:                     ["/devices"],
+  clear_passcode:                      ["/devices"],
+  clear_restrictions_password:         ["/devices"],
+  update_os:                           ["/devices"],
+  enable_lost_mode:                    ["/devices"],
+  disable_lost_mode:                   ["/devices"],
+  play_lost_mode_sound:                ["/devices"],
+  update_lost_mode_location:           ["/devices"],
+  clear_firmware_password:             ["/devices"],
+  rotate_firmware_password:            ["/devices"],
+  clear_recovery_lock_password:        ["/devices"],
+  rotate_recovery_lock_password:       ["/devices"],
+  rotate_filevault_recovery_key:       ["/devices"],
+  set_admin_password:                  ["/devices"],
+  rotate_admin_password:               ["/devices"],
+  enable_remote_desktop:               ["/devices"],
+  disable_remote_desktop:              ["/devices"],
+  enable_bluetooth:                    ["/devices"],
+  disable_bluetooth:                   ["/devices"],
+  set_time_zone:                       ["/devices"],
+  create_assignment_group:             ["/assignment_groups"],
+  update_assignment_group:             ["/assignment_groups"],
+  delete_assignment_group:             ["/assignment_groups"],
+  assign_device_to_group:              ["/assignment_groups", "/devices"],
+  unassign_device_from_group:          ["/assignment_groups", "/devices"],
+  assign_app_to_group:                 ["/assignment_groups", "/apps"],
+  unassign_app_from_group:             ["/assignment_groups", "/apps"],
+  assign_profile_to_group:             ["/assignment_groups", "/profiles"],
+  unassign_profile_from_group:         ["/assignment_groups", "/profiles"],
+  push_apps_to_group:                  ["/assignment_groups"],
+  update_apps_in_group:                ["/assignment_groups", "/apps"],
+  sync_profiles_in_group:              ["/assignment_groups", "/profiles"],
+  clone_assignment_group:              ["/assignment_groups"],
+  create_app:                          ["/apps"],
+  update_app:                          ["/apps"],
+  delete_app:                          ["/apps"],
+  request_app_management:              ["/installed_apps", "/apps"],
+  update_installed_app:                ["/installed_apps", "/apps"],
+  uninstall_app:                       ["/installed_apps", "/apps"],
+  create_custom_attribute:             ["/custom_attributes"],
+  update_custom_attribute:             ["/custom_attributes"],
+  delete_custom_attribute:             ["/custom_attributes"],
+  set_device_attribute_value:          ["/custom_attributes"],
+  set_attribute_for_multiple_devices:  ["/custom_attributes"],
+  set_group_attribute_value:           ["/custom_attributes"],
+  create_custom_configuration_profile: ["/custom_configuration_profiles"],
+  update_custom_configuration_profile: ["/custom_configuration_profiles"],
+  delete_custom_configuration_profile: ["/custom_configuration_profiles"],
+  assign_custom_profile_to_device:     ["/custom_configuration_profiles"],
+  unassign_custom_profile_from_device: ["/custom_configuration_profiles"],
+  create_custom_declaration:           ["/custom_declarations"],
+  update_custom_declaration:           ["/custom_declarations"],
+  delete_custom_declaration:           ["/custom_declarations"],
+  assign_declaration_to_device:        ["/custom_declarations"],
+  unassign_declaration_from_device:    ["/custom_declarations"],
+  assign_profile_to_device:            ["/profiles"],
+  unassign_profile_from_device:        ["/profiles"],
+  sync_dep_server:                     ["/dep_servers"],
+  send_enrollment_invitation:          ["/enrollments"],
+  delete_enrollment:                   ["/enrollments"],
+  create_managed_app_config:           ["/apps"],
+  delete_managed_app_config:           ["/apps"],
+  push_managed_app_configs:            ["/apps"],
+  create_script:                       ["/scripts"],
+  update_script:                       ["/scripts"],
+  delete_script:                       ["/scripts"],
+  create_script_job:                   ["/script_jobs"],
+  cancel_script_job:                   ["/script_jobs"],
+  update_account:                      [],
+};
+
+// Stampede guard: if multiple callers request the same path concurrently, only
+// one fetch runs; the rest await its result.
+const inflight = new Map<string, Promise<{ data: unknown[]; has_more: false }>>();
+
+// Generic paginator for SimpleMDM list endpoints. SimpleMDM caps page size at
+// 100; we walk pages with starting_after until has_more is false. Returns the
+// standard { data, has_more: false } shape so callers can treat it as one page.
+// Results are cached in-memory for CACHE_TTL_MS; write operations invalidate
+// the relevant entries via INVALIDATION_MAP.
+async function collectAllPages<T extends { id: string | number }>(
+  path: string,
+): Promise<{ data: T[]; has_more: false }> {
+  const cached = cacheGet<T>(path);
+  if (cached) return cached;
+
+  const existing = inflight.get(path);
+  if (existing) return existing as Promise<{ data: T[]; has_more: false }>;
+
+  const work = (async (): Promise<{ data: T[]; has_more: false }> => {
+    const sep = path.includes("?") ? "&" : "?";
+    const out: T[] = [];
+    let cursor: string | number | undefined;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
+      const p = await api(`${path}${sep}limit=100${q}`) as PaginatedResponse<T>;
+      for (const r of p.data) out.push(r);
+      if (!p.has_more) { cacheSet(path, out); return { data: out, has_more: false }; }
+      cursor = p.data.at(-1)?.id;
+      if (cursor == null) { cacheSet(path, out); return { data: out, has_more: false }; }
+    }
+    throw new Error(`collectAllPages(${path}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
+  })();
+
+  inflight.set(path, work as Promise<{ data: unknown[]; has_more: false }>);
+  try { return await work; } finally { inflight.delete(path); }
 }
 
 // Generic concurrent per-device iteration. Caller supplies a filter (which
@@ -563,12 +723,10 @@ const TOOLS: Tool[] = [
   // DEVICES — read
   // ══════════════════════════════════════════════════════════════════════════
   { name: "list_devices",
-    description: "List and search devices. Filter by name, serial, UDID, IMEI, or MAC. Paginate with starting_after.",
+    description: "List and search devices. Filter by name, serial, UDID, IMEI, or MAC. Auto-paginates to return all results.",
     inputSchema: { type: "object", properties: {
       search: { type: "string" },
       include_awaiting_enrollment: { type: "boolean" },
-      limit: { type: "number" },
-      starting_after: { type: "string" },
     }}},
 
   { name: "get_device",
@@ -862,11 +1020,9 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["app_id"], properties: { app_id: { type: "string" } }}},
 
   { name: "list_app_installs",
-    description: "List all devices that have a specific catalog app installed.",
+    description: "List all devices that have a specific catalog app installed. Auto-paginates to return all results.",
     inputSchema: { type: "object", required: ["app_id"], properties: {
       app_id: { type: "string" },
-      limit: { type: "number" },
-      starting_after: { type: "string" },
     }}},
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1075,11 +1231,9 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["dep_server_id"], properties: { dep_server_id: { type: "string" } }}},
 
   { name: "list_dep_devices",
-    description: "List DEP devices registered under a DEP server.",
+    description: "List DEP devices registered under a DEP server. Auto-paginates to return all results.",
     inputSchema: { type: "object", required: ["dep_server_id"], properties: {
       dep_server_id: { type: "string" },
-      limit: { type: "number" },
-      starting_after: { type: "string" },
     }}},
 
   { name: "get_dep_device",
@@ -1125,11 +1279,9 @@ const TOOLS: Tool[] = [
   // LOGS
   // ══════════════════════════════════════════════════════════════════════════
   { name: "list_logs",
-    description: "List MDM logs. Filter by serial_number to get logs for a specific device.",
+    description: "List MDM logs. Filter by serial_number to get logs for a specific device. Auto-paginates to return all results.",
     inputSchema: { type: "object", properties: {
       serial_number: { type: "string" },
-      limit: { type: "number" },
-      starting_after: { type: "string" },
     }}},
 
   { name: "get_log",
@@ -1207,11 +1359,9 @@ const TOOLS: Tool[] = [
   // SCRIPT JOBS
   // ══════════════════════════════════════════════════════════════════════════
   { name: "list_script_jobs",
-    description: "List script jobs. Filter by status: pending, acknowledged, complete, failed.",
+    description: "List script jobs. Filter by status: pending, acknowledged, complete, failed. Auto-paginates to return all results.",
     inputSchema: { type: "object", properties: {
       status: { type: "string" },
-      limit: { type: "number" },
-      starting_after: { type: "string" },
     }}},
 
   { name: "get_script_job",
@@ -1316,14 +1466,14 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       const devicePromise = api(`/devices/${id}`);
       const [device, profiles, installedApps, users, logs] = await Promise.allSettled([
         devicePromise,
-        api(`/devices/${id}/profiles`),
-        api(`/devices/${id}/installed_apps`),
-        api(`/devices/${id}/users`),
+        collectAllPages(`/devices/${id}/profiles`),
+        collectAllPages(`/devices/${id}/installed_apps`),
+        collectAllPages(`/devices/${id}/users`),
         (async () => {
           const d = await devicePromise as { data?: { attributes?: { serial_number?: string } } };
           const sn = d?.data?.attributes?.serial_number;
           if (!sn) return { data: [] };
-          return api(`/logs?serial_number=${encodeURIComponent(sn)}&limit=25`);
+          return collectAllPages(`/logs?serial_number=${encodeURIComponent(sn)}`);
         })(),
       ]);
       const unwrap = <T>(r: PromiseSettledResult<T>) => r.status === "fulfilled" ? r.value : { error: String((r as PromiseRejectedResult).reason) };
@@ -1529,11 +1679,9 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       const minCount = Math.max(1, Number(args.min_install_count ?? 5));
       const limit = Math.max(1, Math.min(500, Number(args.limit ?? 50)));
       const excludeApple = args.exclude_apple !== false;
-      // Build catalog set. list_apps in SimpleMDM does not paginate via the
-      // public endpoint, so a single call captures the full catalog.
-      const catalog = await api("/apps") as PaginatedResponse<{ attributes?: { bundle_identifier?: string | null } }>;
+      const catalog = await collectAllPages<{ id: string|number; attributes?: { bundle_identifier?: string | null } }>("/apps?include_shared=true");
       const catalogBids = new Set<string>();
-      for (const c of catalog.data ?? []) {
+      for (const c of catalog.data) {
         const b = c.attributes?.bundle_identifier;
         if (b) catalogBids.add(b);
       }
@@ -1753,16 +1901,16 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 
     case "get_dep_drift": {
       const restrict = args.dep_server_id != null ? String(args.dep_server_id) : undefined;
-      const serversResp = await api("/dep_servers") as { data?: Array<{ id: string|number; attributes?: Record<string, unknown> }> };
-      const servers = (serversResp.data ?? []).filter(s => !restrict || String(s.id) === restrict);
+      const serversResp = await collectAllPages<{ id: string|number; attributes?: Record<string, unknown> }>("/dep_servers");
+      const servers = serversResp.data.filter(s => !restrict || String(s.id) === restrict);
       const drift: Array<{ dep_server_id: string|number; serial: string; assigned_profile_uuid?: string|null; expected_profile_uuid?: string|null }> = [];
       for (const s of servers) {
         const expected = (s.attributes?.default_assignment_profile_uuid
                        ?? s.attributes?.default_profile_uuid
                        ?? null) as string | null;
         if (!expected) continue; // no default → can't define drift for this server
-        const r = await api(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices?limit=100`) as { data?: Array<{ attributes?: Record<string, unknown> }> };
-        for (const dep of r.data ?? []) {
+        const r = await collectAllPages<{ id: string|number; attributes?: Record<string, unknown> }>(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices`);
+        for (const dep of r.data) {
           const a = dep.attributes ?? {};
           const sn = a.serial_number as string | undefined;
           const assigned = (a.profile_uuid as string | null | undefined) ?? null;
@@ -1815,11 +1963,11 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       const serverId = args.dep_server_id != null ? String(args.dep_server_id) : undefined;
       const servers = serverId
         ? [{ id: serverId }]
-        : (((await api("/dep_servers")) as { data?: Array<{ id: string|number }> }).data ?? []);
+        : (await collectAllPages<{ id: string|number }>("/dep_servers")).data;
       const unassigned: Array<{ dep_server_id: string|number; serial: string; model?: string; profile_uuid?: string|null }> = [];
       for (const s of servers) {
-        const r = await api(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices?limit=100`) as { data?: Array<{ attributes?: Record<string, unknown> }> };
-        for (const dep of r.data ?? []) {
+        const r = await collectAllPages<{ id: string|number; attributes?: Record<string, unknown> }>(`/dep_servers/${encodeURIComponent(String(s.id))}/dep_devices`);
+        for (const dep of r.data) {
           const a = dep.attributes ?? {};
           if (a.profile_uuid == null || a.profile_uuid === "") {
             unassigned.push({
@@ -1986,37 +2134,37 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     }
 
     case "get_inactive_assignment_groups": {
-      const r = await api("/assignment_groups?limit=100") as { data?: Array<{ id: string|number; attributes?: { name?: string }; relationships?: { devices?: { data?: unknown[] } } }> };
-      const inactive = (r.data ?? [])
+      const r = await collectAllPages<{ id: string|number; attributes?: { name?: string }; relationships?: { devices?: { data?: unknown[] } } }>("/assignment_groups");
+      const inactive = r.data
         .filter(g => !g.relationships?.devices?.data?.length)
         .map(g => ({ id: g.id, name: g.attributes?.name }));
-      return { total_groups: (r.data ?? []).length, inactive_count: inactive.length, groups: inactive };
+      return { total_groups: r.data.length, inactive_count: inactive.length, groups: inactive };
     }
 
     case "get_orphaned_profiles": {
-      const profilesResp = await api("/custom_configuration_profiles?limit=100") as { data?: Array<{ id: string|number; attributes?: { name?: string } }> };
-      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{ relationships?: { profiles?: { data?: Array<{ id: string|number }> } } }> };
+      const profilesResp = await collectAllPages<{ id: string|number; attributes?: { name?: string } }>("/custom_configuration_profiles");
+      const groupsResp = await collectAllPages<{ id: string|number; relationships?: { profiles?: { data?: Array<{ id: string|number }> } } }>("/assignment_groups");
       const usedProfileIds = new Set<string>();
-      for (const g of groupsResp.data ?? []) {
+      for (const g of groupsResp.data) {
         for (const p of g.relationships?.profiles?.data ?? []) usedProfileIds.add(String(p.id));
       }
-      const orphans = (profilesResp.data ?? [])
+      const orphans = profilesResp.data
         .filter(p => !usedProfileIds.has(String(p.id)))
         .map(p => ({ id: p.id, name: p.attributes?.name }));
-      return { total_profiles: (profilesResp.data ?? []).length, orphan_count: orphans.length, profiles: orphans };
+      return { total_profiles: profilesResp.data.length, orphan_count: orphans.length, profiles: orphans };
     }
 
     case "get_orphaned_apps": {
-      const apps = await api("/apps") as { data?: Array<{ id: string|number; attributes?: { name?: string } }> };
-      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{ relationships?: { apps?: { data?: Array<{ id: string|number }> } } }> };
+      const apps = await collectAllPages<{ id: string|number; attributes?: { name?: string } }>("/apps?include_shared=true");
+      const groupsResp = await collectAllPages<{ id: string|number; relationships?: { apps?: { data?: Array<{ id: string|number }> } } }>("/assignment_groups");
       const usedAppIds = new Set<string>();
-      for (const g of groupsResp.data ?? []) {
+      for (const g of groupsResp.data) {
         for (const a of g.relationships?.apps?.data ?? []) usedAppIds.add(String(a.id));
       }
-      const orphans = (apps.data ?? [])
+      const orphans = apps.data
         .filter(a => !usedAppIds.has(String(a.id)))
         .map(a => ({ id: a.id, name: a.attributes?.name }));
-      return { total_apps: (apps.data ?? []).length, orphan_count: orphans.length, apps: orphans };
+      return { total_apps: apps.data.length, orphan_count: orphans.length, apps: orphans };
     }
 
     case "get_app_size_footprint": {
@@ -2043,15 +2191,15 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 
     case "get_assignment_group_drift": {
       const restrictGroupId = args.assignment_group_id != null ? String(args.assignment_group_id) : undefined;
-      const groupsResp = await api("/assignment_groups?limit=100") as { data?: Array<{
+      const groupsResp = await collectAllPages<{
         id: string|number;
         attributes?: { name?: string };
         relationships?: { apps?: { data?: Array<{ id: string|number }> }; devices?: { data?: Array<{ id: string|number }> } };
-      }> };
-      const groups = (groupsResp.data ?? []).filter(g => !restrictGroupId || String(g.id) === restrictGroupId);
-      const catalog = await api("/apps") as { data?: Array<{ id: string|number; attributes?: { bundle_identifier?: string|null } }> };
+      }>("/assignment_groups");
+      const groups = groupsResp.data.filter(g => !restrictGroupId || String(g.id) === restrictGroupId);
+      const catalog = await collectAllPages<{ id: string|number; attributes?: { bundle_identifier?: string|null } }>("/apps?include_shared=true");
       const appIdToBid = new Map<string, string>();
-      for (const a of catalog.data ?? []) {
+      for (const a of catalog.data) {
         const b = a.attributes?.bundle_identifier;
         if (b) appIdToBid.set(String(a.id), b);
       }
@@ -2115,8 +2263,8 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_enrollment_token_audit": {
       const staleDays = Math.max(1, Number(args.stale_days ?? 90));
       const cutoff = Date.now() - staleDays * 86_400_000;
-      const r = await api("/enrollments?limit=100") as { data?: Array<{ id: string|number; attributes?: Record<string, unknown> }> };
-      const rows = (r.data ?? []).map(e => {
+      const r = await collectAllPages<{ id: string|number; attributes?: Record<string, unknown> }>("/enrollments");
+      const rows = r.data.map(e => {
         const at = e.attributes ?? {};
         const created = at.created_at as string | undefined;
         const lastUsed = (at.last_used_at as string | undefined) ?? (at.welcome_screen_dismissed_at as string | undefined);
@@ -2206,14 +2354,14 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     }
 
     // ── Devices read ─────────────────────────────────────────────────────────
-    case "list_devices": return api(`/devices${qs(args, ["search", "include_awaiting_enrollment", "limit", "starting_after"])}`);
+    case "list_devices": return collectAllPages(`/devices${qs(args, ["search", "include_awaiting_enrollment"])}`);
     case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
-    case "get_device_profiles": return api(`/devices/${seg(args.device_id, "device_id")}/profiles`);
-    case "get_device_installed_apps": return api(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
-    case "get_device_users": return api(`/devices/${seg(args.device_id, "device_id")}/users`);
+    case "get_device_profiles": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/profiles`);
+    case "get_device_installed_apps": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
+    case "get_device_users": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/users`);
     case "get_device_logs":
     case "list_logs":
-      return api(`/logs${qs(args, ["serial_number", "limit", "starting_after"])}`);
+      return collectAllPages(`/logs${qs(args, ["serial_number"])}`);
     case "get_log": return api(`/logs/${seg(args.log_id, "log_id")}`);
 
     // ── Devices write ────────────────────────────────────────────────────────
@@ -2308,7 +2456,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/devices/${seg(args.device_id, "device_id")}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
 
     // ── Assignment groups ────────────────────────────────────────────────────
-    case "list_assignment_groups": return api("/assignment_groups");
+    case "list_assignment_groups": return collectAllPages("/assignment_groups");
     case "get_assignment_group": return api(`/assignment_groups/${seg(args.group_id, "group_id")}`);
     case "create_assignment_group":
       requireWrites();
@@ -2351,7 +2499,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/assignment_groups/${seg(args.group_id, "group_id")}/clone`, { method: "POST" });
 
     // ── Apps ─────────────────────────────────────────────────────────────────
-    case "list_apps": return api(`/apps?include_shared=${args.include_shared !== false}`);
+    case "list_apps": return collectAllPages(`/apps?include_shared=${args.include_shared !== false}`);
     case "get_app": return api(`/apps/${seg(args.app_id, "app_id")}`);
     case "create_app":
       requireWrites();
@@ -2362,7 +2510,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "delete_app":
       requireWrites();
       return api(`/apps/${seg(args.app_id, "app_id")}`, { method: "DELETE" });
-    case "list_app_installs": return api(`/apps/${seg(args.app_id, "app_id")}/installs${qs(args, ["limit", "starting_after"])}`);
+    case "list_app_installs": return collectAllPages(`/apps/${seg(args.app_id, "app_id")}/installs`);
 
     // ── Installed apps ────────────────────────────────────────────────────────
     case "get_installed_app": return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}`);
@@ -2377,7 +2525,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/installed_apps/${seg(args.installed_app_id, "installed_app_id")}`, { method: "DELETE" });
 
     // ── Custom attributes ─────────────────────────────────────────────────────
-    case "list_custom_attributes": return api("/custom_attributes");
+    case "list_custom_attributes": return collectAllPages("/custom_attributes");
     case "get_custom_attribute": return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}`);
     case "create_custom_attribute":
       requireWrites();
@@ -2401,7 +2549,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "PUT", body: j({ value: args.value }) });
 
     // ── Custom configuration profiles ─────────────────────────────────────────
-    case "list_custom_configuration_profiles": return api("/custom_configuration_profiles");
+    case "list_custom_configuration_profiles": return collectAllPages("/custom_configuration_profiles");
     case "create_custom_configuration_profile":
       requireWrites();
       return api("/custom_configuration_profiles", { method: "POST", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope, attribute_support: args.attribute_support }) });
@@ -2419,7 +2567,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_configuration_profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Custom declarations ───────────────────────────────────────────────────
-    case "list_custom_declarations": return api("/custom_declarations");
+    case "list_custom_declarations": return collectAllPages("/custom_declarations");
     case "get_custom_declaration": return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`);
     case "create_custom_declaration":
       requireWrites();
@@ -2438,7 +2586,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── Profiles ─────────────────────────────────────────────────────────────
-    case "list_profiles": return api("/profiles");
+    case "list_profiles": return collectAllPages("/profiles");
     case "get_profile": return api(`/profiles/${seg(args.profile_id, "profile_id")}`);
     case "assign_profile_to_device":
       requireWrites();
@@ -2448,20 +2596,20 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/profiles/${seg(args.profile_id, "profile_id")}/devices/${seg(args.device_id, "device_id")}`, { method: "DELETE" });
 
     // ── DEP servers ───────────────────────────────────────────────────────────
-    case "list_dep_servers": return api("/dep_servers");
+    case "list_dep_servers": return collectAllPages("/dep_servers");
     case "get_dep_server": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}`);
     case "sync_dep_server":
       requireWrites();
       return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/sync`, { method: "POST" });
-    case "list_dep_devices": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices${qs(args, ["limit", "starting_after"])}`);
+    case "list_dep_devices": return collectAllPages(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices`);
     case "get_dep_device": return api(`/dep_servers/${seg(args.dep_server_id, "dep_server_id")}/dep_devices/${seg(args.dep_device_id, "dep_device_id")}`);
 
     // ── Device groups (legacy) ────────────────────────────────────────────────
-    case "list_device_groups": return api("/device_groups");
+    case "list_device_groups": return collectAllPages("/device_groups");
     case "get_device_group": return api(`/device_groups/${seg(args.group_id, "group_id")}`);
 
     // ── Enrollments ───────────────────────────────────────────────────────────
-    case "list_enrollments": return api("/enrollments");
+    case "list_enrollments": return collectAllPages("/enrollments");
     case "get_enrollment": return api(`/enrollments/${seg(args.enrollment_id, "enrollment_id")}`);
     case "send_enrollment_invitation":
       requireWrites();
@@ -2471,7 +2619,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/enrollments/${seg(args.enrollment_id, "enrollment_id")}`, { method: "DELETE" });
 
     // ── Managed app configs ───────────────────────────────────────────────────
-    case "list_managed_app_configs": return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs`);
+    case "list_managed_app_configs": return collectAllPages(`/apps/${seg(args.app_id, "app_id")}/managed_configs`);
     case "create_managed_app_config":
       requireWrites();
       return api(`/apps/${seg(args.app_id, "app_id")}/managed_configs`, { method: "POST", body: j({ key: args.key, value: args.value, kind: args.kind }) });
@@ -2487,7 +2635,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_signed_csr": return api("/push_certificate/scsr");
 
     // ── Scripts ───────────────────────────────────────────────────────────────
-    case "list_scripts": return api("/scripts");
+    case "list_scripts": return collectAllPages("/scripts");
     case "get_script": return api(`/scripts/${seg(args.script_id, "script_id")}`);
     case "create_script":
       requireWrites();
@@ -2500,7 +2648,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/scripts/${seg(args.script_id, "script_id")}`, { method: "DELETE" });
 
     // ── Script jobs ───────────────────────────────────────────────────────────
-    case "list_script_jobs": return api(`/script_jobs${qs(args, ["status", "limit", "starting_after"])}`);
+    case "list_script_jobs": return collectAllPages(`/script_jobs${qs(args, ["status"])}`);
     case "get_script_job": return api(`/script_jobs/${seg(args.job_id, "job_id")}`);
     case "create_script_job":
       requireWrites();
@@ -2599,9 +2747,9 @@ const RESOURCES = [
   { uri: "simplemdm://reports/os-versions",    name: "OS version report",      description: "Device count by OS major/minor version across the fleet.",                                         mimeType: "application/json" },
   { uri: "simplemdm://reports/enrollment",     name: "Enrollment status",      description: "Enrolled vs unenrolled counts and the list of unenrolled devices for cleanup.",                    mimeType: "application/json" },
   { uri: "simplemdm://reports/filevault",      name: "FileVault status",       description: "Which enrolled Macs have FileVault on vs off (name, serial, OS).",                                 mimeType: "application/json" },
-  { uri: "simplemdm://inventory/devices",      name: "Device inventory",       description: "First page of the device list. For paging, call the list_devices tool with starting_after.",       mimeType: "application/json" },
+  { uri: "simplemdm://inventory/devices",      name: "Device inventory",       description: "Full device list (auto-paginated, cached).",       mimeType: "application/json" },
   { uri: "simplemdm://inventory/assignment-groups", name: "Assignment groups", description: "Full list of assignment groups with their apps/devices/profiles.",                                  mimeType: "application/json" },
-  { uri: "simplemdm://inventory/apps",         name: "App catalog",            description: "First page of the app catalog (list_apps does not paginate).",                                     mimeType: "application/json" },
+  { uri: "simplemdm://inventory/apps",         name: "App catalog",            description: "Full app catalog (auto-paginated, cached).",                                     mimeType: "application/json" },
   { uri: "simplemdm://reports/top-apps",       name: "Top installed apps",     description: "Apps ranked by install count across the fleet (excludes com.apple.*). Slow — iterates every device.", mimeType: "application/json" },
   { uri: "simplemdm://reports/unmanaged-apps", name: "Unmanaged apps",         description: "Apps installed on the fleet but missing from the SimpleMDM catalog. Shadow-IT discovery.",          mimeType: "application/json" },
   { uri: "simplemdm://reports/stale-devices",  name: "Stale devices (14d)",    description: "Enrolled devices that have not checked in for more than 14 days. Fast.",                              mimeType: "application/json" },
@@ -2651,7 +2799,7 @@ async function readResource(uri: string): Promise<unknown> {
       const off = rows.length - on;
       return { macs_total: rows.length, filevault_on: on, filevault_off: off, devices: rows };
     }
-    case "simplemdm://inventory/devices":             return handleTool("list_devices", { limit: 100 });
+    case "simplemdm://inventory/devices":             return handleTool("list_devices", {});
     case "simplemdm://inventory/assignment-groups":   return handleTool("list_assignment_groups", {});
     case "simplemdm://inventory/apps":                return handleTool("list_apps", {});
     case "simplemdm://reports/top-apps":              return handleTool("get_top_installed_apps", {});
@@ -2805,6 +2953,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     validateArgs(name, args as Args);
     const result = await handleTool(name, args as Args);
+    const prefixes = INVALIDATION_MAP[name];
+    if (prefixes?.length) cacheInvalidate(...prefixes);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (err) {
     return { content: [{ type: "text", text: `Error: ${formatError(err)}` }], isError: true };

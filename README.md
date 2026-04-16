@@ -379,7 +379,7 @@ The server registers **153 tools** covering the full SimpleMDM API surface (28 d
 **Devices**
 | Tool | Description |
 |------|-------------|
-| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (paginated) |
+| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (auto-paginates) |
 | `get_device` | Full device detail — hardware, OS, posture, battery, storage |
 | `get_device_profiles` | Installed configuration profiles on a device |
 | `get_device_installed_apps` | Installed apps with managed/unmanaged state |
@@ -448,7 +448,7 @@ The server registers **153 tools** covering the full SimpleMDM API surface (28 d
 
 **Fleet analytics (derived — iterate the fleet)**
 
-These tools answer questions the raw API can't in a single call. They iterate every enrolled device under a bounded worker pool (`SIMPLEMDM_FLEET_CONCURRENCY`, default 8). Slow on large fleets but bounded; results are not cached between calls. Full per-tool reference: [`docs/aggregation-tools-roadmap.md`](docs/aggregation-tools-roadmap.md).
+These tools answer questions the raw API can't in a single call. They iterate every enrolled device under a bounded worker pool (`SIMPLEMDM_FLEET_CONCURRENCY`, default 8). Slow on large fleets but bounded; results are cached in-memory with a configurable TTL (default 5 min, see `SIMPLEMDM_CACHE_TTL_MS`). Full per-tool reference: [`docs/aggregation-tools-roadmap.md`](docs/aggregation-tools-roadmap.md).
 
 | Tool | Description |
 |------|-------------|
@@ -590,9 +590,9 @@ Alongside tools, this server exposes canonical **MCP resources** that clients ca
 | `simplemdm://reports/unmanaged-apps` | Apps installed on the fleet but missing from the catalog |
 | `simplemdm://reports/stale-devices` | Enrolled devices not checked in for >14 days |
 | `simplemdm://reports/storage-health` | Devices below disk/battery thresholds |
-| `simplemdm://inventory/devices` | First page of the device list |
+| `simplemdm://inventory/devices` | Full device list (auto-paginated) |
 | `simplemdm://inventory/assignment-groups` | All assignment groups with membership |
-| `simplemdm://inventory/apps` | First page of the app catalog |
+| `simplemdm://inventory/apps` | Full app catalog (auto-paginated) |
 
 Resources are loaded via the client's resource picker (Claude Desktop/Code → `Resources` menu; ChatGPT connectors → resource references in a chat). Tools remain the right choice when you need to pass parameters or perform mutations.
 
@@ -642,7 +642,8 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `SIMPLEMDM_ALLOW_WRITES` | No | `false` | Set `true` to enable write actions. Off by default. |
 | `SIMPLEMDM_TIMEOUT_MS` | No | `30000` | Per-request timeout in milliseconds. Requests that exceed this are aborted. |
 | `SIMPLEMDM_MAX_RETRIES` | No | `3` | Retry count for `429` and `5xx` responses. Uses Retry-After when present, otherwise exponential backoff. |
-| `SIMPLEMDM_MAX_PAGES` | No | `200` | Safety cap on fleet-wide pagination (`get_fleet_summary`, `get_security_posture`, all fleet-analytics tools, filevault/enrollment resources). Raise for very large fleets. |
+| `SIMPLEMDM_MAX_PAGES` | No | `200` | Safety cap on pagination (all list tools, fleet-analytics tools, resources). Each page fetches 100 records, so `200` = 20,000 max. Raise for very large fleets. |
+| `SIMPLEMDM_CACHE_TTL_MS` | No | `300000` | In-memory cache TTL in milliseconds (default 5 min). All list endpoints and fleet-iteration results are cached; write operations automatically invalidate affected entries. Set to `0` to disable caching. |
 | `SIMPLEMDM_FLEET_CONCURRENCY` | No | `8` | Worker count for fleet-iteration analytics tools. Lower (`4`) if you see 429s; raise (`16`) only if your tenant tolerates it. |
 | `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
 | `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":15,"ios":18,"ipad":18}`. Update on each Apple major release. |
@@ -790,10 +791,11 @@ How the server behaves on common API responses:
 
 **Tips for large fleets**
 - Prefer `get_fleet_summary` over `list_devices` for posture/KPI questions — it's one call.
-- When iterating over devices, let Claude paginate naturally rather than asking for "all 5000 devices at once."
-- Fleet-wide pagination is capped at `SIMPLEMDM_MAX_PAGES` pages (default 200 × 100 = 20k devices). Raise it if your fleet is larger.
+- All list tools auto-paginate at 100 records per page until every page is collected. No manual pagination needed.
+- Fleet-wide pagination is capped at `SIMPLEMDM_MAX_PAGES` pages (default 200 × 100 = 20k records). Raise it if your fleet is larger.
+- **Results are cached in-memory** (default TTL: 5 min, configurable via `SIMPLEMDM_CACHE_TTL_MS`). Repeated calls to the same list endpoint or fleet-analytics tool within the TTL window return instantly from cache with zero API calls. Write operations automatically invalidate affected cache entries so subsequent reads pick up changes.
 - For writes that touch many devices (e.g. `push_apps_to_group`), SimpleMDM queues server-side — check `list_script_jobs` / app install status a minute later rather than re-triggering.
-- The fleet-analytics tools (`get_top_installed_apps`, `get_app_coverage`, `get_compliance_violators`, etc.) issue 1 HTTP per device under a bounded worker pool. Tune `SIMPLEMDM_FLEET_CONCURRENCY` (default 8) up or down based on your tenant's rate-limit headroom. Results are not cached — chain calls via prompts to keep the result in conversation context rather than re-invoking the tool.
+- The fleet-analytics tools (`get_top_installed_apps`, `get_app_coverage`, `get_compliance_violators`, etc.) issue 1 HTTP per device under a bounded worker pool. Tune `SIMPLEMDM_FLEET_CONCURRENCY` (default 8) up or down based on your tenant's rate-limit headroom.
 
 ---
 

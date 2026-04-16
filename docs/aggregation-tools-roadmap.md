@@ -2,7 +2,7 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.5.0):** 28 derived tools shipped. 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant.
+> **Status (0.5.0):** 28 derived tools shipped. 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL) with automatic invalidation on writes.
 
 Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 
@@ -101,7 +101,10 @@ Drafted but removed before merge — would have produced misleading or empty out
 - The new derived tools **do not** have local-app shortcuts yet — they always iterate the SimpleMDM API. If you run heavy analytics regularly against a large fleet, an upcoming improvement is to add `/enrichment/top_apps`, `/enrichment/compliance_violators`, etc., in the local app.
 
 ### Caching
-- Tools do **not** cache between calls. Every invocation re-iterates the fleet. For repeated questions in the same session, prefer chaining via prompts (so the LLM keeps the result in context) rather than calling the same tool twice.
+- All list endpoints, `collectDevices()` fleet iterations, and per-device `collectInstalledApps()` calls are cached in-memory with a configurable TTL (default 5 min, `SIMPLEMDM_CACHE_TTL_MS`). Repeated calls within the TTL window return instantly from cache — zero API calls, minimal token usage.
+- Write operations automatically invalidate affected cache entries (all 78 write tools are mapped to cache key prefixes). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
+- Concurrent identical requests are deduplicated (stampede protection) so only one fetch runs.
+- Set `SIMPLEMDM_CACHE_TTL_MS=0` to disable caching entirely.
 
 ### Sparse fields
 The tools below depend on fields that SimpleMDM populates only when the device's MDM payload includes them, the integration is configured, or your tenant has the relevant feature enabled. They return empty when the field isn't there:
@@ -139,7 +142,7 @@ Open work (not yet started):
 
 - **0.5.0** (this release): 28 derived tools. Minor bump (additive, no breaking changes).
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
-- **Tool-count drift**: the README quotes a count (`154`); update it in the same commit that adds/removes a tool. There is no script to enforce this — discipline only.
+- **Tool-count drift**: the README quotes a count (`153`); update it in the same commit that adds/removes a tool. There is no script to enforce this — discipline only.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
 
 ---
@@ -152,6 +155,7 @@ Mitigations available today:
 - **Per-tool hide via `skillOverrides`** (Claude Code): users can hide individual tools in their `~/.claude/settings.json` without modifying this server. Useful for clients that never use the analytics surface.
 - **Plugin split (future)**: the analytics tools could move to a sibling MCP server (e.g. `simplemdm-analytics-mcp`) that's enabled only in admin contexts. Not done in 0.5.0 — single server is simpler to install — but the Tier-0/1/2/3 boundary maps cleanly to a future split if catalog size becomes a problem.
 - **Description discipline**: keep tool descriptions tight. Every word in a description ships on every conversation.
+- **Caching**: in-memory TTL cache means repeated tool calls within a session cost zero API calls and return minimal tokens. The cache also deduplicates concurrent identical requests.
 
 ---
 
