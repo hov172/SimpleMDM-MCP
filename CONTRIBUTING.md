@@ -13,7 +13,7 @@ npm run build
 ```
 
 Node 18 is the minimum supported version. CI runs against 18, 20, and 22;
-the published Docker image uses `node:22-alpine`.
+the published Docker image uses `node:26-alpine`.
 
 Run against your own SimpleMDM account for testing:
 

@@ -658,7 +658,7 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `SIMPLEMDM_CACHE_TTL_MS` | No | `300000` | In-memory cache TTL in milliseconds (default 5 min). All list endpoints and fleet-iteration results are cached; write operations automatically invalidate affected entries. Set to `0` to disable caching. |
 | `SIMPLEMDM_FLEET_CONCURRENCY` | No | `8` | Worker count for fleet-iteration analytics tools. Lower (`4`) if you see 429s; raise (`16`) only if your tenant tolerates it. |
 | `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
-| `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":15,"ios":18,"ipad":18}`. Update on each Apple major release. |
+| `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":26,"ios":26,"ipad":26}`. Update on each Apple major release. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
 | `MUNKIREPORT_BASE_URL` | No | — | Base URL of your MunkiReport instance (e.g. `https://munkireport.example.com`). Required for `get_munkireport_*` tools when not using the local app bridge. |
 | `MUNKIREPORT_MODULE_PREFIX` | No | `/module/simplemdm` | Path prefix for the MunkiReport simplemdm module endpoints. |
