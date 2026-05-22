@@ -276,9 +276,10 @@ async function* paginateDevices(): AsyncGenerator<DeviceRecord> {
   for (let page = 0; page < MAX_PAGES; page++) {
     const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
     const p = await simpleMDM(`/devices?limit=100${q}`) as PaginatedResponse<DeviceRecord>;
-    for (const d of p.data) yield d;
+    const devPage = Array.isArray(p?.data) ? p.data : [];
+    for (const d of devPage) yield d;
     if (!p.has_more) return;
-    cursor = p.data.at(-1)?.id;
+    cursor = devPage.at(-1)?.id;
     if (cursor == null) return;
   }
   throw new Error(`paginateDevices: exceeded ${MAX_PAGES}-page cap; set SIMPLEMDM_MAX_PAGES to raise.`);
@@ -307,9 +308,10 @@ async function collectInstalledApps(deviceId: string | number): Promise<Installe
   for (let page = 0; page < MAX_PAGES; page++) {
     const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
     const p = await simpleMDM(`/devices/${id}/installed_apps?limit=100${q}`) as PaginatedResponse<InstalledAppRecord>;
-    for (const a of p.data) out.push(a);
+    const appPage = Array.isArray(p?.data) ? p.data : [];
+    for (const a of appPage) out.push(a);
     if (!p.has_more) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
-    cursor = p.data.at(-1)?.id;
+    cursor = appPage.at(-1)?.id;
     if (cursor == null) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
   }
   throw new Error(`collectInstalledApps(${deviceId}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
@@ -486,9 +488,10 @@ async function collectAllPages<T extends { id: string | number }>(
     for (let page = 0; page < MAX_PAGES; page++) {
       const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
       const p = await api(`${path}${sep}limit=100${q}`) as PaginatedResponse<T>;
-      for (const r of p.data) out.push(r);
+      const page = Array.isArray(p?.data) ? p.data : [];
+      for (const r of page) out.push(r);
       if (!p.has_more) { cacheSet(path, out); return { data: out, has_more: false }; }
-      cursor = p.data.at(-1)?.id;
+      cursor = page.at(-1)?.id;
       if (cursor == null) { cacheSet(path, out); return { data: out, has_more: false }; }
     }
     throw new Error(`collectAllPages(${path}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
@@ -1517,7 +1520,8 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       let deviceId = typeof args.device_id === "string" ? args.device_id : undefined;
       if (!deviceId && args.serial_number) {
         const found = await api(`/devices?search=${encodeURIComponent(String(args.serial_number))}&limit=10`) as PaginatedResponse<DeviceRecord>;
-        const match = found.data.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number) ?? found.data[0];
+        const foundData = Array.isArray(found?.data) ? found.data : [];
+        const match = foundData.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number) ?? foundData[0];
         if (!match) throw new Error(`No device found for serial_number=${args.serial_number}`);
         deviceId = String(match.id);
       }
