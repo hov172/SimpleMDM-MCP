@@ -14,6 +14,12 @@ All notable changes to this project are documented here. Format follows
   iteration threw a `TypeError` instead of degrading gracefully. Each call
   site now applies an `Array.isArray()` check and falls back to an empty
   page, so a malformed response yields an empty result rather than a crash.
+- **`checkLocalApp()` guards the `/health` response against non-object JSON.**
+  The local-app health check asserted the response shape and then read
+  `data.connected` outside the `try`/`catch`. A response body of JSON `null`
+  or a non-object threw an uncaught `TypeError`. Any non-object parse result
+  now coalesces to `{}`, so a malformed health response is treated as "not
+  connected" instead of crashing startup.
 
 ## [0.8.1] - 2026-04-16
 
