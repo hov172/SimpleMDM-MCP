@@ -2,7 +2,7 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.6.0):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
+> **Status (0.8.3):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
 
 Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 
@@ -44,7 +44,7 @@ Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 | `get_battery_health_report` | `[shipped]` | Cycle-count / max-capacity flags require fields most tenants don't populate; falls back to level only. |
 | `get_network_summary` | `[shipped]` | Carrier / Wi-Fi / IP rollup. |
 | `get_user_attribution(custom_attribute_name)` | `[shipped]` | Reads a custom attribute holding the primary user. |
-| `get_os_eligibility` | `[shipped]` | Static model→max-macOS table (last updated 2024-11). Override via `MAC_OS_ELIGIBILITY_OVERRIDE` env var. |
+| `get_os_eligibility` | `[shipped]` | Static model→max-macOS table (last updated 2026-04, macOS 26 Tahoe). Override via `MAC_OS_ELIGIBILITY_OVERRIDE` env var. |
 | `get_inactive_assignment_groups` | `[shipped]` | Groups with 0 devices. |
 | `get_orphaned_profiles` | `[shipped]` | Profiles not in any assignment group. |
 | `get_orphaned_apps` | `[shipped]` | Catalog apps not in any assignment group. |

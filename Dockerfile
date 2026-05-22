@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # For fully reproducible builds, pin the base image by digest, e.g.
-#   FROM node:22-alpine@sha256:<digest> AS build
-# Resolve the current digest with: docker buildx imagetools inspect node:22-alpine
+#   FROM node:26-alpine@sha256:<digest> AS build
+# Resolve the current digest with: docker buildx imagetools inspect node:26-alpine
 
 FROM node:26-alpine AS build
 
