@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.8.2] - 2026-05-22
+
+### Fixed
+- **Pagination loops now guard against non-array `data` in API responses.**
+  `paginateDevices`, `collectInstalledApps`, `collectAllPages`, and the
+  serial-number device lookup previously iterated `response.data` directly.
+  If the SimpleMDM API returned a `200` with an unexpected body shape, the
+  iteration threw a `TypeError` instead of degrading gracefully. Each call
+  site now applies an `Array.isArray()` check and falls back to an empty
+  page, so a malformed response yields an empty result rather than a crash.
+
 ## [0.8.1] - 2026-04-16
 
 ### Fixed
