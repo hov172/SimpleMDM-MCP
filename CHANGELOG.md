@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.8.3] - 2026-05-22
+
+Maintenance release — no change to MCP tool behavior.
+
+### Security
+- **`npm audit fix` cleared 4 advisories** in transitive dependencies of
+  `@modelcontextprotocol/sdk` (lockfile-only): `fast-uri` 3.1.0 → 3.1.2
+  (high — path traversal / host confusion), `hono` 4.12.12 → 4.12.21,
+  `ip-address` 10.1.0 → 10.2.0, and `express-rate-limit` 8.3.2 → 8.5.2.
+  `npm audit` now reports zero vulnerabilities. The vulnerable code paths
+  live in the SDK's HTTP/SSE transport, which this stdio server does not
+  use, so real-world exposure was already low.
+
+### Changed
+- **Dev toolchain upgraded** via Dependabot: `typescript` 5.9 → 6.0.3,
+  `@types/node` 22 → 25, `tsx` 4.21 → 4.22.
+- **`tsconfig.json` now sets `"types": ["node"]`.** TypeScript 6.0 no
+  longer auto-discovers `@types/*` packages the way 5.x did; without this,
+  the 6.0 build failed to resolve Node globals. Backward-compatible with
+  5.x.
+- CI/runtime image bumps: Docker base `node` 22-alpine → 26-alpine,
+  `actions/checkout` v4 → v6, `actions/setup-node` v4 → v6.
+- `.mcp.json` added to `.gitignore` to prevent accidental commit of the
+  SimpleMDM API key it carries.
+
 ## [0.8.2] - 2026-05-22
 
 ### Fixed
