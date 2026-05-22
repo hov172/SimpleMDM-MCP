@@ -38,7 +38,8 @@ export async function checkLocalApp(): Promise<void> {
   try {
     const res = await fetch(`${LOCAL_APP_BASE}/health`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json() as { status: string; connected: boolean };
+    const parsed = await res.json();
+    data = (parsed && typeof parsed === "object" ? parsed : {}) as { status?: string; connected?: boolean };
   } catch (err) {
     throw new Error(
       `Could not reach Report-SimpleMDM at ${LOCAL_APP_BASE}. ` +
