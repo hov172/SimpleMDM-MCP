@@ -860,6 +860,7 @@ const TOOLS: Tool[] = [
         description: "macOS 12+ (T2/Apple Silicon). Server default: ObliterateWithWarning." },
       clear_custom_attributes: { type: "boolean", description: "Clear custom attribute values on the device record. Defaults to false." },
       unassign_direct_profiles: { type: "boolean", description: "Remove directly assigned profiles from the device record. Defaults to false." },
+      preserve_managed_apps: { type: "boolean", description: "iOS 17+. Keep managed apps and their data installed through the wipe (Return-to-Service style). Defaults to false." },
     }}},
 
   { name: "sync_device",
