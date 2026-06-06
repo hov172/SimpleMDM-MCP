@@ -2511,6 +2511,8 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       const attrs = dev.data?.attributes ?? {};
       return {
         device_id: id,
+        name: attrs.name ?? attrs.device_name ?? null,
+        serial_number: attrs.serial_number ?? null,
         activation_lock_enabled: attrs.is_activation_lock_enabled ?? null,
         is_supervised: attrs.is_supervised ?? null,
         dep_enrolled: attrs.dep_enrolled ?? null,
