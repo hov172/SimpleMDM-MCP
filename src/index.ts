@@ -392,6 +392,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   sync_device:                         ["/devices"],
   restart_device:                      ["/devices"],
   shutdown_device:                     ["/devices"],
+  refresh_cellular_plans:              ["/devices"],
   unenroll_device:                     ["/devices"],
   clear_passcode:                      ["/devices"],
   clear_restrictions_password:         ["/devices"],
@@ -873,6 +874,10 @@ const TOOLS: Tool[] = [
 
   { name: "shutdown_device",
     description: "WRITE — Remote shutdown. Device must be supervised.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "refresh_cellular_plans",
+    description: "WRITE — Refresh the device's cellular plans (eSIM). Prompts the device to re-query carrier provisioning. iOS/iPadOS with cellular.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   { name: "unenroll_device",
@@ -2517,6 +2522,9 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "shutdown_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/shutdown`, { method: "POST" });
+    case "refresh_cellular_plans":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/refresh_cellular_plans`, { method: "POST" });
     case "unenroll_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/unenroll`, { method: "POST" });
@@ -2817,7 +2825,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 const WRITE_TOOLS = new Set<string>([
   "update_account",
   "create_device", "update_device", "delete_device", "delete_device_user",
-  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device",
+  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device", "refresh_cellular_plans",
   "unenroll_device", "clear_passcode", "clear_restrictions_password", "update_os",
   "enable_lost_mode", "disable_lost_mode", "play_lost_mode_sound", "update_lost_mode_location",
   "clear_firmware_password", "rotate_firmware_password",
