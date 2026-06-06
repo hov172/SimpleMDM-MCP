@@ -45,6 +45,7 @@ test("buildWipeBody — all fields serialize verbatim", () => {
     obliteration_behavior: "DoNotObliterate",
     clear_custom_attributes: true,
     unassign_direct_profiles: true,
+    preserve_managed_apps: true,
   })));
   assert.deepEqual(body, {
     pin: "123456",
@@ -56,6 +57,7 @@ test("buildWipeBody — all fields serialize verbatim", () => {
     obliteration_behavior: "DoNotObliterate",
     clear_custom_attributes: true,
     unassign_direct_profiles: true,
+    preserve_managed_apps: true,
   });
 });
 
@@ -92,10 +94,7 @@ test("buildWipeBody — unassign_direct_profiles alone serializes", () => {
   assert.equal(body, '{"unassign_direct_profiles":true}');
 });
 
-test("buildWipeBody — preserve_managed_apps serializes through", () => {
-  const body = JSON.parse(JSON.stringify(buildWipeBody({
-    device_id: "1",
-    preserve_managed_apps: true,
-  })));
-  assert.equal(body.preserve_managed_apps, true);
+test("buildWipeBody — preserve_managed_apps alone serializes only that field", () => {
+  const body = JSON.stringify(buildWipeBody({ device_id: "1", preserve_managed_apps: true }));
+  assert.equal(body, '{"preserve_managed_apps":true}');
 });
