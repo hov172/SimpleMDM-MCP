@@ -10,29 +10,32 @@ All notable changes to this project are documented here. Format follows
 - `preserve_managed_apps` parameter on `wipe_device` (iOS 17+) — keeps managed
   apps installed through a wipe. Optional boolean; when omitted SimpleMDM applies
   its server-side default.
-- `refresh_cellular_plans` (WRITE) — refresh a device's cellular/eSIM plans
-  (`POST /devices/{id}/refresh_cellular_plans`).
-- `disable_activation_lock` (WRITE) — clear Activation Lock on a single device
-  without wiping it (`POST /devices/{id}/disable_activation_lock`).
-- `disable_activation_lock_bulk` (WRITE) — clear Activation Lock across an
-  explicit list of `device_ids`; returns a per-device success/failure report.
+- `refresh_cellular_plans` (WRITE) — refresh a device's cellular/eSIM plans from
+  the carrier's eSIM server (`POST /devices/{id}/refresh_cellular_plans`).
+  **Requires** `esim_server_url` (the carrier-provided eSIM server URL), per the
+  SimpleMDM API.
 - `get_activation_lock_status` (READ) — report whether Activation Lock is
   enabled on a device (reads `is_activation_lock_enabled`).
-- `send_device_message` (WRITE) — send a text message/notification to a
-  supervised device (`POST /devices/{id}/send_message`).
-- `send_bulk_device_message` (WRITE) — send the same message to an explicit
-  list of `device_ids`.
 - `get_api_coverage` (READ) — static introspection: counts of exposed tools
   by capability area (no API call).
 
 ### Notes
-- The `send_device_message` / `send_bulk_device_message` request body field
-  names (`message`, `title`) are best-effort and **pending confirmation** against
-  the live SimpleMDM API. If the API expects different field names the tools will
-  need a follow-up fix.
-- A Safari Bookmarks push helper was drafted but **deferred** pending
-  confirmation of the real SimpleMDM endpoint and payload. It is not shipped
-  in this release.
+These features were drafted from a product spec, then reconciled against the
+live SimpleMDM API reference before release. The reconciliation removed three
+endpoints the spec claimed but the public API does not expose:
+
+- **No `send_message` endpoint.** Sending a device message is a SimpleMDM
+  web-console action that relies on the SimpleMDM mobile app; it is not part of
+  the public REST API. The drafted `send_device_message` / `send_bulk_device_message`
+  tools were therefore **removed** rather than shipped (they would have returned
+  404).
+- **No standalone `disable_activation_lock` endpoint.** Activation Lock can only
+  be cleared via the `disable_activation_lock` *parameter* of `wipe_device`. The
+  drafted standalone `disable_activation_lock` / `disable_activation_lock_bulk`
+  tools were **removed**.
+- **No Safari Bookmarks endpoint.** Bookmarks can be delivered as a Configuration
+  Profile via the existing `create_custom_configuration_profile` tool; no
+  dedicated Safari-bookmarks tool is provided.
 
 ## [0.8.3] - 2026-05-22
 

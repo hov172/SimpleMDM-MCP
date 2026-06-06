@@ -364,7 +364,7 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 ## Tools
 
-The server registers **160 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **156 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -520,16 +520,13 @@ All tools below modify fleet state. The API permission column tells you what the
 | `clear_recovery_lock_password` / `rotate_recovery_lock_password` | Devices: write |
 | `rotate_filevault_recovery_key` | Devices: write |
 | `rotate_admin_password` / `set_admin_password` | Devices: write |
-| `refresh_cellular_plans` | Devices: write — refresh a device's cellular/eSIM plans |
-| `disable_activation_lock` | Devices: write — clear Activation Lock on a device without wiping it |
-| `disable_activation_lock_bulk` | Devices: write — clear Activation Lock across an explicit list of `device_ids`; returns a per-device success/failure report |
-| `send_device_message` | Devices: write — send a text message/notification to a supervised device |
-| `send_bulk_device_message` | Devices: write — send the same message to an explicit list of `device_ids` |
+| `refresh_cellular_plans` | Devices: write — refresh a device's cellular/eSIM plans from the carrier's eSIM server (requires `esim_server_url`) |
 
 > **Notes on Device actions:**
-> - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed. The `disable_activation_lock` *parameter* on `wipe_device` controls whether Activation Lock is cleared *during* the wipe; the standalone `disable_activation_lock` *tool* clears it independently without wiping.
-> - The `send_device_message` / `send_bulk_device_message` request body field names (`message`, `title`) are best-effort and pending confirmation against the live SimpleMDM API. Behavior may differ if the API expects different field names.
-> - A Safari Bookmarks push helper was drafted but **deferred** pending confirmation of the real SimpleMDM endpoint/payload; it is **not** included in this release.
+> - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed.
+> - **Disabling Activation Lock** is done through the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). The SimpleMDM public API exposes **no standalone "disable Activation Lock" endpoint**, so this server intentionally does not provide a separate `disable_activation_lock` tool. Use `get_activation_lock_status` to check current state.
+> - **Sending device messages** is a SimpleMDM web-console action that depends on the SimpleMDM mobile app and is **not exposed by the public REST API** — there is no `send_message` endpoint. This server therefore does not provide `send_device_message`. (Removed in this release after live-API verification.)
+> - **Safari Bookmarks**: the SimpleMDM API has no bookmarks endpoint. Bookmarks can be delivered as a Configuration Profile payload via the existing `create_custom_configuration_profile` tool. No dedicated Safari-bookmarks tool is provided.
 
 **Device CRUD**
 | Tool | API Permission |
