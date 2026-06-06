@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
+import { buildSafariBookmarksPayload, SAFARI_BOOKMARKS_DECLARATION_TYPE } from "./safariBookmarks.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -444,6 +445,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   assign_custom_profile_to_device:     ["/custom_configuration_profiles"],
   unassign_custom_profile_from_device: ["/custom_configuration_profiles"],
   create_custom_declaration:           ["/custom_declarations"],
+  create_safari_bookmarks_declaration: ["/custom_declarations"],
   update_custom_declaration:           ["/custom_declarations"],
   delete_custom_declaration:           ["/custom_declarations"],
   assign_declaration_to_device:        ["/custom_declarations"],
@@ -1256,6 +1258,19 @@ const TOOLS: Tool[] = [
   { name: "delete_custom_declaration",
     description: "WRITE — Delete a custom declaration.",
     inputSchema: { type: "object", required: ["declaration_id"], properties: { declaration_id: { type: "string" } }}},
+
+  { name: "create_safari_bookmarks_declaration",
+    description: "WRITE — Push managed Safari bookmarks. Creates a DDM custom declaration of type " +
+                "com.apple.configuration.safari.bookmarks. Requires iOS 26+, macOS 26+, or visionOS 26+ " +
+                "(supervised/device enrollment). Assign the resulting declaration to devices/groups to deploy.",
+    inputSchema: { type: "object", required: ["name", "group_title", "bookmarks"], properties: {
+      name: { type: "string", description: "Name for the declaration in SimpleMDM." },
+      group_title: { type: "string", description: "Folder name Safari shows for this managed bookmarks group." },
+      group_identifier: { type: "string", description: "Optional stable id; Safari merges groups that share one. Defaults to a slug of group_title." },
+      bookmarks: { type: "array", minItems: 1, description:
+        "Bookmark tree. Each item is { title, url } for a link OR { title, folder: [ ...items ] } for a nested folder (recursive). Each item needs exactly one of url or folder." },
+      user_scope: { type: "boolean", description: "Install at user scope. Default false (device scope)." },
+    }}},
 
   { name: "assign_declaration_to_device",
     description: "WRITE — Assign a declaration directly to a device.",
@@ -2740,6 +2755,23 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "create_custom_declaration":
       requireWrites();
       return api("/custom_declarations", { method: "POST", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update, user_scope: args.user_scope }) });
+    case "create_safari_bookmarks_declaration": {
+      requireWrites();
+      const bookmarksPayload = buildSafariBookmarksPayload({
+        group_title: args.group_title,
+        group_identifier: args.group_identifier,
+        bookmarks: args.bookmarks,
+      });
+      // Delivered as a DDM custom declaration. `declaration_type` names the Apple
+      // configuration; `payload` carries the configuration body. SimpleMDM assigns
+      // the declaration's Identifier/ServerToken.
+      return api("/custom_declarations", { method: "POST", body: j({
+        name: args.name,
+        declaration_type: SAFARI_BOOKMARKS_DECLARATION_TYPE,
+        payload: JSON.stringify(bookmarksPayload),
+        user_scope: args.user_scope,
+      }) });
+    }
     case "update_custom_declaration":
       requireWrites();
       return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "PATCH", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update }) });
@@ -2896,6 +2928,7 @@ const WRITE_TOOLS = new Set<string>([
   "create_custom_configuration_profile", "update_custom_configuration_profile", "delete_custom_configuration_profile",
   "assign_custom_profile_to_device", "unassign_custom_profile_from_device",
   "create_custom_declaration", "update_custom_declaration", "delete_custom_declaration",
+  "create_safari_bookmarks_declaration",
   "assign_declaration_to_device", "unassign_declaration_from_device",
   "assign_profile_to_device", "unassign_profile_from_device",
   "sync_dep_server",
