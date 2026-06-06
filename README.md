@@ -529,6 +529,7 @@ All tools below modify fleet state. The API permission column tells you what the
 > **Notes on Device actions:**
 > - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed. The `disable_activation_lock` *parameter* on `wipe_device` controls whether Activation Lock is cleared *during* the wipe; the standalone `disable_activation_lock` *tool* clears it independently without wiping.
 > - The `send_device_message` / `send_bulk_device_message` request body field names (`message`, `title`) are best-effort and pending confirmation against the live SimpleMDM API. Behavior may differ if the API expects different field names.
+> - A Safari Bookmarks push helper was drafted but **deferred** pending confirmation of the real SimpleMDM endpoint/payload; it is **not** included in this release.
 
 **Device CRUD**
 | Tool | API Permission |
