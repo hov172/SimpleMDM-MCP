@@ -37,3 +37,18 @@ export async function runBulk(
   await Promise.all(Array.from({ length: conc }, worker));
   return { results, succeeded, failed };
 }
+
+export function validateSendMessageArgs(args: Record<string, unknown>): void {
+  const msg = args.message;
+  if (typeof msg !== "string" || msg.trim() === "") {
+    throw new Error("send message requires a non-empty message.");
+  }
+}
+
+// NOTE: field names ("message", "title") are best-effort from the spec; confirm
+// against live SimpleMDM API docs and update this body + its tests together.
+export function buildSendMessageBody(args: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { message: args.message };
+  if (typeof args.title === "string" && args.title !== "") body.title = args.title;
+  return body;
+}
