@@ -417,6 +417,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   disable_activation_lock:             ["/devices"],
   disable_activation_lock_bulk:        ["/devices"],
   send_device_message:                 ["/devices"],
+  send_bulk_device_message:            ["/devices"],
   create_assignment_group:             ["/assignment_groups"],
   update_assignment_group:             ["/assignment_groups"],
   delete_assignment_group:             ["/assignment_groups"],
@@ -890,6 +891,15 @@ const TOOLS: Tool[] = [
       device_id: { type: "string" },
       message: { type: "string", description: "Message body shown on the device." },
       title: { type: "string", description: "Optional message title." },
+    }}},
+
+  { name: "send_bulk_device_message",
+    description: "WRITE — Send the same message to many devices. Pass an explicit list of device_ids. Returns a per-device success/failure report.",
+    inputSchema: { type: "object", required: ["device_ids", "message"], properties: {
+      device_ids: { type: "array", items: { type: "string" }, minItems: 1, description: "Array of device id strings." },
+      message: { type: "string", description: "Message body shown on each device." },
+      title: { type: "string", description: "Optional message title." },
+      concurrency: { type: "integer", minimum: 1, maximum: 16, description: "Parallel requests. Default 5." },
     }}},
 
   { name: "unenroll_device",
@@ -2640,6 +2650,15 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return runBulk(ids, conc, (id) =>
         api(`/devices/${id}/disable_activation_lock`, { method: "POST" }));
     }
+    case "send_bulk_device_message": {
+      requireWrites();
+      validateSendMessageArgs(args);
+      const ids = (args.device_ids as unknown[]).map(x => seg(x, "device_ids[]"));
+      const conc = typeof args.concurrency === "number" ? args.concurrency : 5;
+      const body = buildSendMessageBody(args);
+      return runBulk(ids, conc, (id) =>
+        api(`/devices/${id}/send_message`, { method: "POST", body: j(body) }));
+    }
 
     // ── Assignment groups ────────────────────────────────────────────────────
     case "list_assignment_groups": {
@@ -2888,7 +2907,7 @@ const WRITE_TOOLS = new Set<string>([
   "clear_recovery_lock_password", "rotate_recovery_lock_password",
   "rotate_filevault_recovery_key", "set_admin_password", "rotate_admin_password",
   "enable_remote_desktop", "disable_remote_desktop",
-  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock", "disable_activation_lock_bulk",
+  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock", "disable_activation_lock_bulk", "send_bulk_device_message",
   "create_assignment_group", "update_assignment_group", "delete_assignment_group",
   "assign_device_to_group", "unassign_device_from_group",
   "assign_app_to_group", "unassign_app_from_group",
