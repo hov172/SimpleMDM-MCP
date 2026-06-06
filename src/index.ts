@@ -413,6 +413,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   enable_bluetooth:                    ["/devices"],
   disable_bluetooth:                   ["/devices"],
   set_time_zone:                       ["/devices"],
+  disable_activation_lock:             ["/devices"],
   create_assignment_group:             ["/assignment_groups"],
   update_assignment_group:             ["/assignment_groups"],
   delete_assignment_group:             ["/assignment_groups"],
@@ -970,6 +971,14 @@ const TOOLS: Tool[] = [
       device_id: { type: "string" },
       time_zone: { type: "string", description: "IANA time zone name e.g. America/New_York." },
     }}},
+
+  { name: "disable_activation_lock",
+    description: "WRITE — Clear Activation Lock on a supervised/DEP device so it can be re-set-up after wipe or reassignment. Recovery action.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "get_activation_lock_status",
+    description: "Read — Whether Activation Lock is currently enabled on a device. Reads is_activation_lock_enabled from the device record.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
   // ASSIGNMENT GROUPS
@@ -2479,6 +2488,17 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return { data: slimRelationships(r.data), has_more: r.has_more };
     }
     case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
+    case "get_activation_lock_status": {
+      const id = seg(args.device_id, "device_id");
+      const dev = await api(`/devices/${id}`) as { data?: { attributes?: Record<string, unknown> } };
+      const attrs = dev.data?.attributes ?? {};
+      return {
+        device_id: id,
+        activation_lock_enabled: attrs.is_activation_lock_enabled ?? null,
+        is_supervised: attrs.is_supervised ?? null,
+        dep_enrolled: attrs.dep_enrolled ?? null,
+      };
+    }
     case "get_device_profiles": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/profiles`);
     case "get_device_installed_apps": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
     case "get_device_users": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/users`);
@@ -2585,6 +2605,9 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "set_time_zone":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
+    case "disable_activation_lock":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/disable_activation_lock`, { method: "POST" });
 
     // ── Assignment groups ────────────────────────────────────────────────────
     case "list_assignment_groups": {
@@ -2832,7 +2855,7 @@ const WRITE_TOOLS = new Set<string>([
   "clear_recovery_lock_password", "rotate_recovery_lock_password",
   "rotate_filevault_recovery_key", "set_admin_password", "rotate_admin_password",
   "enable_remote_desktop", "disable_remote_desktop",
-  "enable_bluetooth", "disable_bluetooth", "set_time_zone",
+  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock",
   "create_assignment_group", "update_assignment_group", "delete_assignment_group",
   "assign_device_to_group", "unassign_device_from_group",
   "assign_app_to_group", "unassign_app_from_group",
