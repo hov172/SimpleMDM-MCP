@@ -91,3 +91,11 @@ test("buildWipeBody — unassign_direct_profiles alone serializes", () => {
   }));
   assert.equal(body, '{"unassign_direct_profiles":true}');
 });
+
+test("buildWipeBody — preserve_managed_apps serializes through", () => {
+  const body = JSON.parse(JSON.stringify(buildWipeBody({
+    device_id: "1",
+    preserve_managed_apps: true,
+  })));
+  assert.equal(body.preserve_managed_apps, true);
+});
