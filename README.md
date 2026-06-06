@@ -364,7 +364,7 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 ## Tools
 
-The server registers **156 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **157 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -526,7 +526,7 @@ All tools below modify fleet state. The API permission column tells you what the
 > - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed.
 > - **Disabling Activation Lock** is done through the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). The SimpleMDM public API exposes **no standalone "disable Activation Lock" endpoint**, so this server intentionally does not provide a separate `disable_activation_lock` tool. Use `get_activation_lock_status` to check current state.
 > - **Sending device messages** is a SimpleMDM web-console action that depends on the SimpleMDM mobile app and is **not exposed by the public REST API** — there is no `send_message` endpoint. This server therefore does not provide `send_device_message`. (Removed in this release after live-API verification.)
-> - **Safari Bookmarks**: the SimpleMDM API has no bookmarks endpoint. Bookmarks can be delivered as a Configuration Profile payload via the existing `create_custom_configuration_profile` tool. No dedicated Safari-bookmarks tool is provided.
+> - **Safari Bookmarks**: SimpleMDM has no bookmarks-specific endpoint. Managed Safari bookmarks are an Apple **Declarative Device Management** configuration (`com.apple.configuration.safari.bookmarks`, iOS/macOS/visionOS **26+**). The `create_safari_bookmarks_declaration` tool builds that declaration from a simple `{title, url}` / nested-`folder` tree and delivers it via SimpleMDM's `/custom_declarations` API. Assign the resulting declaration to devices or groups to deploy.
 
 **Device CRUD**
 | Tool | API Permission |
@@ -558,6 +558,7 @@ All tools below modify fleet state. The API permission column tells you what the
 |------|---------------|
 | `assign_declaration_to_device` / `unassign_declaration_from_device` | Profiles: write |
 | `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` | Profiles: write |
+| `create_safari_bookmarks_declaration` | Profiles: write — push managed Safari bookmarks (DDM; iOS/macOS/visionOS 26+) |
 
 **Assignment groups**
 | Tool | API Permission |
