@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
+import { runBulk, validateSendMessageArgs, buildSendMessageBody } from "./deviceActions.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -392,6 +393,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   sync_device:                         ["/devices"],
   restart_device:                      ["/devices"],
   shutdown_device:                     ["/devices"],
+  refresh_cellular_plans:              ["/devices"],
   unenroll_device:                     ["/devices"],
   clear_passcode:                      ["/devices"],
   clear_restrictions_password:         ["/devices"],
@@ -412,6 +414,10 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   enable_bluetooth:                    ["/devices"],
   disable_bluetooth:                   ["/devices"],
   set_time_zone:                       ["/devices"],
+  disable_activation_lock:             ["/devices"],
+  disable_activation_lock_bulk:        ["/devices"],
+  send_device_message:                 ["/devices"],
+  send_bulk_device_message:            ["/devices"],
   create_assignment_group:             ["/assignment_groups"],
   update_assignment_group:             ["/assignment_groups"],
   delete_assignment_group:             ["/assignment_groups"],
@@ -860,6 +866,7 @@ const TOOLS: Tool[] = [
         description: "macOS 12+ (T2/Apple Silicon). Server default: ObliterateWithWarning." },
       clear_custom_attributes: { type: "boolean", description: "Clear custom attribute values on the device record. Defaults to false." },
       unassign_direct_profiles: { type: "boolean", description: "Remove directly assigned profiles from the device record. Defaults to false." },
+      preserve_managed_apps: { type: "boolean", description: "iOS 17+. Keep managed apps and their data installed through the wipe (Return-to-Service style). Defaults to false." },
     }}},
 
   { name: "sync_device",
@@ -873,6 +880,27 @@ const TOOLS: Tool[] = [
   { name: "shutdown_device",
     description: "WRITE — Remote shutdown. Device must be supervised.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "refresh_cellular_plans",
+    description: "WRITE — Refresh the device's cellular plans (eSIM). Prompts the device to re-query carrier provisioning. iOS/iPadOS with cellular.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "send_device_message",
+    description: "WRITE — Send a text message / notification to a supervised device (appears as an MDM message). Requires a non-empty message.",
+    inputSchema: { type: "object", required: ["device_id", "message"], properties: {
+      device_id: { type: "string" },
+      message: { type: "string", description: "Message body shown on the device." },
+      title: { type: "string", description: "Optional message title." },
+    }}},
+
+  { name: "send_bulk_device_message",
+    description: "WRITE — Send the same message to many devices. Pass an explicit list of device_ids. Returns a per-device success/failure report.",
+    inputSchema: { type: "object", required: ["device_ids", "message"], properties: {
+      device_ids: { type: "array", items: { type: "string" }, minItems: 1, description: "Array of device id strings." },
+      message: { type: "string", description: "Message body shown on each device." },
+      title: { type: "string", description: "Optional message title." },
+      concurrency: { type: "integer", minimum: 1, maximum: 16, description: "Parallel requests. Default 5." },
+    }}},
 
   { name: "unenroll_device",
     description: "WRITE — Unenroll a device from MDM management.",
@@ -964,6 +992,21 @@ const TOOLS: Tool[] = [
       device_id: { type: "string" },
       time_zone: { type: "string", description: "IANA time zone name e.g. America/New_York." },
     }}},
+
+  { name: "disable_activation_lock",
+    description: "WRITE — Clear Activation Lock on a supervised/DEP device so it can be re-set-up after wipe or reassignment. Recovery action.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "disable_activation_lock_bulk",
+    description: "WRITE — Clear Activation Lock on many devices at once. Pass an explicit list of device_ids. Returns a per-device success/failure report.",
+    inputSchema: { type: "object", required: ["device_ids"], properties: {
+      device_ids: { type: "array", items: { type: "string" }, minItems: 1, description: "Array of device id strings to clear Activation Lock on." },
+      concurrency: { type: "integer", minimum: 1, maximum: 16, description: "Parallel requests. Default 5." },
+    }}},
+
+  { name: "get_activation_lock_status",
+    description: "Read — Whether Activation Lock is currently enabled on a device. Reads is_activation_lock_enabled from the device record.",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
 
   // ══════════════════════════════════════════════════════════════════════════
   // ASSIGNMENT GROUPS
@@ -1464,6 +1507,10 @@ const TOOLS: Tool[] = [
 
   { name: "get_munkireport_supplemental_overview",
     description: "Supplemental fleet overview from the MunkiReport module.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_api_coverage",
+    description: "Read — Report which SimpleMDM capability areas this MCP server exposes (tool count per area, total tools, write vs read). Static introspection of the registered tool list.",
     inputSchema: { type: "object", properties: {} } },
 ];
 
@@ -2473,6 +2520,17 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       return { data: slimRelationships(r.data), has_more: r.has_more };
     }
     case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
+    case "get_activation_lock_status": {
+      const id = seg(args.device_id, "device_id");
+      const dev = await api(`/devices/${id}`) as { data?: { attributes?: Record<string, unknown> } };
+      const attrs = dev.data?.attributes ?? {};
+      return {
+        device_id: id,
+        activation_lock_enabled: attrs.is_activation_lock_enabled ?? null,
+        is_supervised: attrs.is_supervised ?? null,
+        dep_enrolled: attrs.dep_enrolled ?? null,
+      };
+    }
     case "get_device_profiles": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/profiles`);
     case "get_device_installed_apps": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/installed_apps`);
     case "get_device_users": return collectAllPages(`/devices/${seg(args.device_id, "device_id")}/users`);
@@ -2516,6 +2574,16 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "shutdown_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/shutdown`, { method: "POST" });
+    case "refresh_cellular_plans":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/refresh_cellular_plans`, { method: "POST" });
+    case "send_device_message":
+      requireWrites();
+      validateSendMessageArgs(args);
+      return api(`/devices/${seg(args.device_id, "device_id")}/send_message`, {
+        method: "POST",
+        body: j(buildSendMessageBody(args)),
+      });
     case "unenroll_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/unenroll`, { method: "POST" });
@@ -2576,6 +2644,25 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "set_time_zone":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/set_time_zone`, { method: "POST", body: j({ time_zone: args.time_zone }) });
+    case "disable_activation_lock":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/disable_activation_lock`, { method: "POST" });
+    case "disable_activation_lock_bulk": {
+      requireWrites();
+      const ids = (args.device_ids as unknown[]).map(x => seg(x, "device_ids[]"));
+      const conc = typeof args.concurrency === "number" ? args.concurrency : 5;
+      return runBulk(ids, conc, (id) =>
+        api(`/devices/${id}/disable_activation_lock`, { method: "POST" }));
+    }
+    case "send_bulk_device_message": {
+      requireWrites();
+      validateSendMessageArgs(args);
+      const ids = (args.device_ids as unknown[]).map(x => seg(x, "device_ids[]"));
+      const conc = typeof args.concurrency === "number" ? args.concurrency : 5;
+      const body = buildSendMessageBody(args);
+      return runBulk(ids, conc, (id) =>
+        api(`/devices/${id}/send_message`, { method: "POST", body: j(body) }));
+    }
 
     // ── Assignment groups ────────────────────────────────────────────────────
     case "list_assignment_groups": {
@@ -2804,6 +2891,32 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/simplemdm/data/apple_care_stats");
     case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/simplemdm/data/supplemental_overview");
 
+    case "get_api_coverage": {
+      const areas: Record<string, RegExp> = {
+        devices:        /^(get_device|list_devices|create_device|update_device|delete_device|lock_device|wipe_device|sync_device|restart_device|shutdown_device|unenroll_device|clear_|update_os|enable_lost|disable_lost|play_lost|update_lost)/,
+        recovery:       /^(rotate_|set_admin_password|clear_firmware|clear_recovery|disable_activation_lock|get_activation_lock)/,
+        cellular:       /cellular/,
+        messaging:      /message/,
+        activation_lock:/activation_lock/,
+        profiles:       /(profile|declaration)/,
+        apps:           /app/,
+        groups:         /assignment_group|group/,
+        attributes:     /attribute/,
+        scripts:        /script/,
+      };
+      const counts: Record<string, number> = {};
+      for (const [area, re] of Object.entries(areas)) {
+        counts[area] = TOOLS.filter(t => re.test(t.name)).length;
+      }
+      return {
+        total_tools: TOOLS.length,
+        write_tools: TOOLS.filter(t => WRITE_TOOLS.has(t.name)).length,
+        read_tools: TOOLS.filter(t => !WRITE_TOOLS.has(t.name)).length,
+        coverage_by_area: counts,
+        note: "Static coverage derived from registered tools; does not probe the live SimpleMDM API.",
+      };
+    }
+
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -2816,14 +2929,15 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
 const WRITE_TOOLS = new Set<string>([
   "update_account",
   "create_device", "update_device", "delete_device", "delete_device_user",
-  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device",
+  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device", "refresh_cellular_plans",
+  "send_device_message",
   "unenroll_device", "clear_passcode", "clear_restrictions_password", "update_os",
   "enable_lost_mode", "disable_lost_mode", "play_lost_mode_sound", "update_lost_mode_location",
   "clear_firmware_password", "rotate_firmware_password",
   "clear_recovery_lock_password", "rotate_recovery_lock_password",
   "rotate_filevault_recovery_key", "set_admin_password", "rotate_admin_password",
   "enable_remote_desktop", "disable_remote_desktop",
-  "enable_bluetooth", "disable_bluetooth", "set_time_zone",
+  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock", "disable_activation_lock_bulk", "send_bulk_device_message",
   "create_assignment_group", "update_assignment_group", "delete_assignment_group",
   "assign_device_to_group", "unassign_device_from_group",
   "assign_app_to_group", "unassign_app_from_group",
