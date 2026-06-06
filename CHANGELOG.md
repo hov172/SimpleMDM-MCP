@@ -24,29 +24,28 @@ All notable changes to this project are documented here. Format follows
   `/custom_declarations` API. Requires iOS 26+, macOS 26+, or visionOS 26+.
 
 ### Notes
-These features were drafted from a product spec, then reconciled against the
-live SimpleMDM API reference before release. The reconciliation removed three
-endpoints the spec claimed but the public API does not expose:
+These features were drafted from a product spec, then **reconciled against the
+live SimpleMDM API reference** before release. The spec claimed several endpoints
+that the public REST API does not actually expose; each was resolved as follows:
 
-- **No `send_message` endpoint.** Sending a device message is a SimpleMDM
-  web-console action that relies on the SimpleMDM mobile app; it is not part of
-  the public REST API. The drafted `send_device_message` / `send_bulk_device_message`
-  tools were therefore **removed** rather than shipped (they would have returned
-  404).
-- **No standalone `disable_activation_lock` endpoint.** Activation Lock can only
-  be cleared via the `disable_activation_lock` *parameter* of `wipe_device`. The
+- **`send_message` — no REST endpoint.** SimpleMDM's "Send Message" is a
+  web-console / mobile-app feature with no public API. The drafted
+  `send_device_message` / `send_bulk_device_message` tools were **removed** (they
+  would have returned 404). To display text on a device via the API, use
+  `lock_device` with a `message`.
+- **`disable_activation_lock` — no standalone endpoint.** Activation Lock is
+  cleared only via the `disable_activation_lock` *parameter* of `wipe_device`. The
   drafted standalone `disable_activation_lock` / `disable_activation_lock_bulk`
-  tools were **removed**.
-- **No Safari Bookmarks *endpoint*** — but managed Safari bookmarks are a real
-  Apple **DDM configuration** (`com.apple.configuration.safari.bookmarks`,
-  iOS/macOS/visionOS 26+), so they are now supported via
-  `create_safari_bookmarks_declaration` over the `/custom_declarations` API
-  (see Added). The declaration's SimpleMDM envelope (`declaration_type` + inner
-  `payload`) follows the documented custom-declarations API and should be
-  validated against your tenant on first use.
-- **No `send_message` endpoint.** SimpleMDM's "Send Message" is a web-console /
-  mobile-app feature with no REST API. To display text on a device via the API,
-  use `lock_device` with a `message`.
+  tools were **removed**; use `get_activation_lock_status` to check current state.
+- **`refresh_cellular_plans` — requires `esim_server_url`.** The endpoint is real
+  but rejects calls without the carrier-provided eSIM server URL; the tool now
+  sends it.
+- **Safari Bookmarks — no endpoint, but a real Apple DDM configuration.** Managed
+  bookmarks are delivered as `com.apple.configuration.safari.bookmarks`
+  (iOS/macOS/visionOS 26+), now supported via `create_safari_bookmarks_declaration`
+  over the `/custom_declarations` API (see Added). The SimpleMDM declaration
+  envelope (`declaration_type` + inner `payload`) follows the documented API and
+  should be validated against your tenant on first use.
 
 ## [0.8.3] - 2026-05-22
 
