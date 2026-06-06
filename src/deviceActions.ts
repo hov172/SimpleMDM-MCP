@@ -49,6 +49,6 @@ export function validateSendMessageArgs(args: Record<string, unknown>): void {
 // against live SimpleMDM API docs and update this body + its tests together.
 export function buildSendMessageBody(args: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = { message: args.message };
-  if (typeof args.title === "string" && args.title !== "") body.title = args.title;
+  if (typeof args.title === "string" && args.title.trim() !== "") body.title = args.title;
   return body;
 }

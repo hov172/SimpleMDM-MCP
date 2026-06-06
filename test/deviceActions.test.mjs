@@ -45,3 +45,12 @@ test("validateSendMessageArgs — empty message throws", () => {
 test("validateSendMessageArgs — non-empty message passes", () => {
   assert.doesNotThrow(() => validateSendMessageArgs({ message: "ok" }));
 });
+
+test("validateSendMessageArgs — whitespace-only message throws", () => {
+  assert.throws(() => validateSendMessageArgs({ message: "   " }), /message/);
+});
+
+test("buildSendMessageBody — whitespace-only title is omitted", () => {
+  const body = buildSendMessageBody({ message: "hi", title: "   " });
+  assert.deepEqual(body, { message: "hi" });
+});
