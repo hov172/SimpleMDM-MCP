@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
+import { runBulk } from "./deviceActions.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -414,6 +415,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   disable_bluetooth:                   ["/devices"],
   set_time_zone:                       ["/devices"],
   disable_activation_lock:             ["/devices"],
+  disable_activation_lock_bulk:        ["/devices"],
   create_assignment_group:             ["/assignment_groups"],
   update_assignment_group:             ["/assignment_groups"],
   delete_assignment_group:             ["/assignment_groups"],
@@ -975,6 +977,13 @@ const TOOLS: Tool[] = [
   { name: "disable_activation_lock",
     description: "WRITE — Clear Activation Lock on a supervised/DEP device so it can be re-set-up after wipe or reassignment. Recovery action.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "disable_activation_lock_bulk",
+    description: "WRITE — Clear Activation Lock on many devices at once. Pass an explicit list of device_ids. Returns a per-device success/failure report.",
+    inputSchema: { type: "object", required: ["device_ids"], properties: {
+      device_ids: { type: "array", description: "Array of device id strings to clear Activation Lock on." },
+      concurrency: { type: "integer", minimum: 1, maximum: 16, description: "Parallel requests. Default 5." },
+    }}},
 
   { name: "get_activation_lock_status",
     description: "Read — Whether Activation Lock is currently enabled on a device. Reads is_activation_lock_enabled from the device record.",
@@ -2608,6 +2617,13 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "disable_activation_lock":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/disable_activation_lock`, { method: "POST" });
+    case "disable_activation_lock_bulk": {
+      requireWrites();
+      const ids = (args.device_ids as unknown[]).map(x => seg(x, "device_ids[]"));
+      const conc = typeof args.concurrency === "number" ? args.concurrency : 5;
+      return runBulk(ids, conc, (id) =>
+        api(`/devices/${id}/disable_activation_lock`, { method: "POST" }));
+    }
 
     // ── Assignment groups ────────────────────────────────────────────────────
     case "list_assignment_groups": {
@@ -2855,7 +2871,7 @@ const WRITE_TOOLS = new Set<string>([
   "clear_recovery_lock_password", "rotate_recovery_lock_password",
   "rotate_filevault_recovery_key", "set_admin_password", "rotate_admin_password",
   "enable_remote_desktop", "disable_remote_desktop",
-  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock",
+  "enable_bluetooth", "disable_bluetooth", "set_time_zone", "disable_activation_lock", "disable_activation_lock_bulk",
   "create_assignment_group", "update_assignment_group", "delete_assignment_group",
   "assign_device_to_group", "unassign_device_from_group",
   "assign_app_to_group", "unassign_app_from_group",
