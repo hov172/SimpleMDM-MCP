@@ -1,5 +1,25 @@
 # SimpleMDM API Modernization Implementation Plan
 
+> ⚠️ **ADDENDUM (2026-06-06, post-implementation reality check):** This plan was
+> built from a product spec (`SimpleMDM_Master_API_Modernization_Specification.docx`)
+> that turned out to be **partly aspirational**. After implementation, the tools were
+> reconciled against the **live SimpleMDM API reference**, which revealed:
+> - **`send_message`** — no such public REST endpoint exists (web-console + mobile-app
+>   feature only). Tasks 5 & 6 (`send_device_message`, `send_bulk_device_message`) were
+>   **removed**.
+> - **`disable_activation_lock`** — no standalone endpoint; it exists only as a `wipe`
+>   parameter. Tasks 3 & 4's standalone/bulk tools were **removed** (kept
+>   `get_activation_lock_status`, which reads a real device attribute).
+> - **`refresh_cellular_plans`** — real, but **requires `esim_server_url`** (was missing).
+>   Fixed.
+> - **Safari Bookmarks (Task 8)** — no API endpoint; achievable only via a Configuration
+>   Profile. Correctly not implemented as a dedicated tool.
+>
+> Net result actually shipped: `preserve_managed_apps` (wipe param), `refresh_cellular_plans`
+> (with `esim_server_url`), `get_activation_lock_status`, and `get_api_coverage`. See the
+> "fix/api-reality-alignment" branch and CHANGELOG `[Unreleased]`. **Always verify a spec
+> against the live API before building.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Expose the SimpleMDM API additions through API v1.55 (advanced wipe, send message, disable activation lock, refresh cellular plans, plus API coverage tracking) as new MCP tools in `simplemdm-mcp`.
