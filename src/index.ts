@@ -1270,7 +1270,6 @@ const TOOLS: Tool[] = [
       bookmarks: { type: "array", minItems: 1, description:
         "Bookmark tree. Each item is { title, url } for a link OR { title, folder: [ ...items ] } for a nested folder (recursive). Each item needs exactly one of url or folder." },
       user_scope: { type: "boolean", description: "Install at user scope. Default false (device scope)." },
-      reinstall_after_os_update: { type: "boolean", description: "Reinstall after a major OS update." },
     }}},
 
   { name: "assign_declaration_to_device",
@@ -2771,7 +2770,6 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
         declaration_type: SAFARI_BOOKMARKS_DECLARATION_TYPE,
         payload: JSON.stringify(bookmarksPayload),
         user_scope: args.user_scope,
-        reinstall_after_os_update: args.reinstall_after_os_update,
       }) });
     }
     case "update_custom_declaration":
