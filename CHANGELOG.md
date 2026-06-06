@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-06
+
 ### Added
 - `preserve_managed_apps` parameter on `wipe_device` (iOS 17+) — keeps managed
   apps installed through a wipe. Optional boolean; when omitted SimpleMDM applies
