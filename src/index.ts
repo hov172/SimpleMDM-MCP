@@ -1508,6 +1508,10 @@ const TOOLS: Tool[] = [
   { name: "get_munkireport_supplemental_overview",
     description: "Supplemental fleet overview from the MunkiReport module.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_api_coverage",
+    description: "Read — Report which SimpleMDM capability areas this MCP server exposes (tool count per area, total tools, write vs read). Static introspection of the registered tool list.",
+    inputSchema: { type: "object", properties: {} } },
 ];
 
 // ─── Tool handlers ────────────────────────────────────────────────────────────
@@ -2886,6 +2890,32 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_munkireport_device_resources":  return USE_LOCAL_APP ? api(`/enrichment/device/${encodeURIComponent(String(args.serial_number))}`) : munkiReport(`/get_device_resources/${encodeURIComponent(String(args.serial_number))}`);
     case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/simplemdm/data/apple_care_stats");
     case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/simplemdm/data/supplemental_overview");
+
+    case "get_api_coverage": {
+      const areas: Record<string, RegExp> = {
+        devices:        /^(get_device|list_devices|create_device|update_device|delete_device|lock_device|wipe_device|sync_device|restart_device|shutdown_device|unenroll_device|clear_|update_os|enable_lost|disable_lost|play_lost|update_lost)/,
+        recovery:       /^(rotate_|set_admin_password|clear_firmware|clear_recovery|disable_activation_lock|get_activation_lock)/,
+        cellular:       /cellular/,
+        messaging:      /message/,
+        activation_lock:/activation_lock/,
+        profiles:       /(profile|declaration)/,
+        apps:           /app/,
+        groups:         /assignment_group|group/,
+        attributes:     /attribute/,
+        scripts:        /script/,
+      };
+      const counts: Record<string, number> = {};
+      for (const [area, re] of Object.entries(areas)) {
+        counts[area] = TOOLS.filter(t => re.test(t.name)).length;
+      }
+      return {
+        total_tools: TOOLS.length,
+        write_tools: TOOLS.filter(t => WRITE_TOOLS.has(t.name)).length,
+        read_tools: TOOLS.filter(t => !WRITE_TOOLS.has(t.name)).length,
+        coverage_by_area: counts,
+        note: "Static coverage derived from registered tools; does not probe the live SimpleMDM API.",
+      };
+    }
 
     default: throw new Error(`Unknown tool: ${name}`);
   }
