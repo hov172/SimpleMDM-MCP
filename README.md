@@ -382,7 +382,7 @@ The server registers **157 tools** covering the full SimpleMDM API surface (28 d
 |------|-------------|
 | `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (auto-paginates) |
 | `get_device` | Full device detail — hardware, OS, posture, battery, storage |
-| `get_activation_lock_status` | Whether Activation Lock is currently enabled on a device (`is_activation_lock_enabled`) |
+| `get_activation_lock_status` | Whether Activation Lock is enabled on a device (`is_activation_lock_enabled`), with the device `name`, `serial_number`, supervision, and DEP status |
 | `get_device_profiles` | Installed configuration profiles on a device |
 | `get_device_installed_apps` | Installed apps with managed/unmanaged state |
 | `get_device_users` | User accounts on a device (macOS) |
