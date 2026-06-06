@@ -981,7 +981,7 @@ const TOOLS: Tool[] = [
   { name: "disable_activation_lock_bulk",
     description: "WRITE — Clear Activation Lock on many devices at once. Pass an explicit list of device_ids. Returns a per-device success/failure report.",
     inputSchema: { type: "object", required: ["device_ids"], properties: {
-      device_ids: { type: "array", description: "Array of device id strings to clear Activation Lock on." },
+      device_ids: { type: "array", items: { type: "string" }, minItems: 1, description: "Array of device id strings to clear Activation Lock on." },
       concurrency: { type: "integer", minimum: 1, maximum: 16, description: "Parallel requests. Default 5." },
     }}},
 
