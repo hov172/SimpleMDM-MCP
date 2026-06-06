@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
-import { runBulk } from "./deviceActions.js";
+import { runBulk, validateSendMessageArgs, buildSendMessageBody } from "./deviceActions.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -416,6 +416,7 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   set_time_zone:                       ["/devices"],
   disable_activation_lock:             ["/devices"],
   disable_activation_lock_bulk:        ["/devices"],
+  send_device_message:                 ["/devices"],
   create_assignment_group:             ["/assignment_groups"],
   update_assignment_group:             ["/assignment_groups"],
   delete_assignment_group:             ["/assignment_groups"],
@@ -882,6 +883,14 @@ const TOOLS: Tool[] = [
   { name: "refresh_cellular_plans",
     description: "WRITE — Refresh the device's cellular plans (eSIM). Prompts the device to re-query carrier provisioning. iOS/iPadOS with cellular.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "send_device_message",
+    description: "WRITE — Send a text message / notification to a supervised device (appears as an MDM message). Requires a non-empty message.",
+    inputSchema: { type: "object", required: ["device_id", "message"], properties: {
+      device_id: { type: "string" },
+      message: { type: "string", description: "Message body shown on the device." },
+      title: { type: "string", description: "Optional message title." },
+    }}},
 
   { name: "unenroll_device",
     description: "WRITE — Unenroll a device from MDM management.",
@@ -2554,6 +2563,13 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "refresh_cellular_plans":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/refresh_cellular_plans`, { method: "POST" });
+    case "send_device_message":
+      requireWrites();
+      validateSendMessageArgs(args);
+      return api(`/devices/${seg(args.device_id, "device_id")}/send_message`, {
+        method: "POST",
+        body: j(buildSendMessageBody(args)),
+      });
     case "unenroll_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/unenroll`, { method: "POST" });
@@ -2865,6 +2881,7 @@ const WRITE_TOOLS = new Set<string>([
   "update_account",
   "create_device", "update_device", "delete_device", "delete_device_user",
   "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device", "refresh_cellular_plans",
+  "send_device_message",
   "unenroll_device", "clear_passcode", "clear_restrictions_password", "update_os",
   "enable_lost_mode", "disable_lost_mode", "play_lost_mode_sound", "update_lost_mode_location",
   "clear_firmware_password", "rotate_firmware_password",
