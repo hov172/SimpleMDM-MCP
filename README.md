@@ -364,7 +364,7 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 ## Tools
 
-The server registers **153 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **160 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ### Read tools (always available)
 
@@ -375,12 +375,14 @@ The server registers **153 tools** covering the full SimpleMDM API surface (28 d
 | `get_fleet_summary` | Total devices, enrolled/unenrolled, posture counts, OS breakdown |
 | `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
+| `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
 
 **Devices**
 | Tool | Description |
 |------|-------------|
 | `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (auto-paginates) |
 | `get_device` | Full device detail — hardware, OS, posture, battery, storage |
+| `get_activation_lock_status` | Whether Activation Lock is currently enabled on a device (`is_activation_lock_enabled`) |
 | `get_device_profiles` | Installed configuration profiles on a device |
 | `get_device_installed_apps` | Installed apps with managed/unmanaged state |
 | `get_device_users` | User accounts on a device (macOS) |
@@ -504,7 +506,7 @@ All tools below modify fleet state. The API permission column tells you what the
 | `sync_device` | Devices: write |
 | `restart_device` | Devices: write |
 | `shutdown_device` | Devices: write |
-| `wipe_device` ⚠️ destructive | Devices: write — supports `preserve_data_plan`, `disable_activation_lock`, `disallow_proximity_setup`, `return_to_service` (+ integer `wifi_network_id`), `obliteration_behavior`, `clear_custom_attributes`, `unassign_direct_profiles` |
+| `wipe_device` ⚠️ destructive | Devices: write — supports `preserve_data_plan`, `disable_activation_lock`, `disallow_proximity_setup`, `return_to_service` (+ integer `wifi_network_id`), `obliteration_behavior`, `clear_custom_attributes`, `unassign_direct_profiles`, `preserve_managed_apps` (iOS 17+ — keeps managed apps installed through a wipe) |
 | `unenroll_device` ⚠️ destructive | Devices: write |
 | `update_os` | Devices: write |
 | `set_time_zone` | Devices: write |
@@ -518,6 +520,15 @@ All tools below modify fleet state. The API permission column tells you what the
 | `clear_recovery_lock_password` / `rotate_recovery_lock_password` | Devices: write |
 | `rotate_filevault_recovery_key` | Devices: write |
 | `rotate_admin_password` / `set_admin_password` | Devices: write |
+| `refresh_cellular_plans` | Devices: write — refresh a device's cellular/eSIM plans |
+| `disable_activation_lock` | Devices: write — clear Activation Lock on a device without wiping it |
+| `disable_activation_lock_bulk` | Devices: write — clear Activation Lock across an explicit list of `device_ids`; returns a per-device success/failure report |
+| `send_device_message` | Devices: write — send a text message/notification to a supervised device |
+| `send_bulk_device_message` | Devices: write — send the same message to an explicit list of `device_ids` |
+
+> **Notes on Device actions:**
+> - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed. The `disable_activation_lock` *parameter* on `wipe_device` controls whether Activation Lock is cleared *during* the wipe; the standalone `disable_activation_lock` *tool* clears it independently without wiping.
+> - The `send_device_message` / `send_bulk_device_message` request body field names (`message`, `title`) are best-effort and pending confirmation against the live SimpleMDM API. Behavior may differ if the API expects different field names.
 
 **Device CRUD**
 | Tool | API Permission |
