@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-06
+
+### Changed
+- `get_activation_lock_status` now also returns the device `name` and
+  `serial_number` so the result is human-identifiable, not just a numeric
+  `device_id`.
+
 ## [0.9.0] - 2026-06-06
 
 ### Added
