@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-07
+
 ### Added
 - Audit now includes each device's **device group**: a `device_group` column on
   every per-device output (`all-devices.csv`, `security-report.csv`,
