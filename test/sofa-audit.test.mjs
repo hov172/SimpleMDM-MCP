@@ -135,11 +135,14 @@ test("summarize produces headline counts", () => {
   const ev = devices.map(d => evaluateDevice(d, t));
   const s = summarize(ev, aggregateCveDetail(ev, t));
   assert.equal(s.total, 4);
-  assert.equal(typeof s.osOutdated, "number");
-  assert.equal(typeof s.noFileVault, "number");
+  // not on newest-for-hardware: id1(26.0), id3(13.7.8->can run 26), id4(iPad 26.4.2) = 3; id2 on 26.5.1 = current
+  assert.equal(s.osOutdated, 3);
+  // all devices without FileVault enabled: id1(false), id3(false), id4(null) = 3; id2(true) has it
+  assert.equal(s.noFileVault, 3);
   assert.equal(typeof s.noSip, "number");
   assert.equal(typeof s.noFirewall, "number");
-  assert.equal(s.unfixedCves, 2);
+  // devices with >=1 unfixed CVE: only id1 (26.0 behind 26.5.1)
+  assert.equal(s.unfixedCves, 1);
 });
 
 import { toCsv, securityRows, allDeviceRows, cveRows } from "../scripts/lib/render.mjs";
