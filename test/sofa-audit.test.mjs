@@ -225,7 +225,7 @@ test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", 
   assert.equal(aaa1[0].unfixed_count, 2);
   assert.equal(aaa1[0].exploited_count, 1);
   assert.match(aaa1[0].cves, /CVE-2025-0001/);
-  assert.match(aaa1[0].cves, /🔴/);   // exploited CVE marked
+  assert.match(aaa1[0].cves, /\[exploited\]/);   // exploited CVE marked (ASCII, CSV-safe)
   assert.match(aaa1[0].cves, /\n/);    // multiple CVEs on separate lines in one cell
   // current device id 2 (serial BBB2) on 26.5.1 -> no row
   assert.equal(rows.filter(r => r.serial === "BBB2").length, 0);
