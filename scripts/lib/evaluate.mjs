@@ -18,3 +18,11 @@ export function compareVersions(a, b) {
   }
   return 0;
 }
+
+export function detectPlatform(device) {
+  const id = String(device.model ?? device.product_name ?? "");
+  if (/^iPad/i.test(id)) return "iPadOS";
+  if (/^(iPhone|iPod)/i.test(id)) return "iOS";
+  if (/^(MacBook|iMac|Macmini|MacPro|MacStudio|Mac\d)/i.test(id)) return "macOS";
+  return "unknown";
+}
