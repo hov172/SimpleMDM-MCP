@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- Audit report readability: the Vulnerability Check CVE list per release is now
+  capped (all actively-exploited CVEs are kept, plus up to 15 others, then
+  `…+N more (see cve-detail.csv)`) instead of dumping 80+ IDs on one 2,400-char
+  line that overflowed PDF/Word. `last_seen` is trimmed to `YYYY-MM-DD HH:MM`.
+
 ## [0.11.0] - 2026-06-07
 
 ### Added

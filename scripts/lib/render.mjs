@@ -13,12 +13,15 @@ export function toCsv(header, rows) {
   return lines.join("\r\n");
 }
 
+// "2026-06-06T21:51:22.000-04:00" -> "2026-06-06 21:51" (drop seconds/ms/tz)
+function shortTs(ts) { return ts ? String(ts).slice(0, 16).replace("T", " ") : ""; }
+
 export function securityRows(ev) {
   return ev.filter((d) => d.failCount > 0).map((d) => ({
     name: d.name, serial: d.serial, device_group: d.deviceGroup ?? "", model: d.model, os: d.osVersion,
     findings: d.findings.join("; "), unfixed_cves: d.cvesBehind ?? "",
     exploited: d.exploitedBehind ?? "", fail_count: d.failCount,
-    last_seen: d.lastSeen ?? "",
+    last_seen: shortTs(d.lastSeen),
   }));
 }
 
@@ -60,7 +63,7 @@ export function allDeviceRows(ev) {
     os_version: d.osVersion, latest_minor: d.latestMinor ?? "", latest_major: d.latestMajor ?? "",
     unfixed_cves: d.cvesBehind ?? "", product: d.model,
     fv: mark(d.filevaultOk), sip: mark(d.sipOk), fw: mark(d.firewallOk), xp: xpMark(d.xprotect.status),
-    last_seen: d.lastSeen ?? "",
+    last_seen: shortTs(d.lastSeen),
   }));
 }
 
@@ -122,8 +125,13 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
         const devs = ev.filter((d) => d.osVersion === r.ver).length;
         out.push(`- **${r.ver}** (${r.date}) — ${r.cves} CVEs, ${r.exploited} exploited, ${devs} device(s)`);
         if (r.cveList.length) {
-          const list = r.cveList.map((c) => (c.exploited ? `🔴 ${c.id}` : c.id)).join(", ");
-          out.push(`  - ${list}`);
+          // Keep every actively-exploited CVE; cap the rest so the line stays readable.
+          const CAP = 15;
+          const exploited = r.cveList.filter((c) => c.exploited).map((c) => `🔴 ${c.id}`);
+          const others = r.cveList.filter((c) => !c.exploited).map((c) => c.id);
+          const shown = [...exploited, ...others.slice(0, CAP)];
+          const extra = others.length - Math.min(others.length, CAP);
+          out.push(`  - ${shown.join(", ")}${extra > 0 ? `, …+${extra} more (see cve-detail.csv)` : ""}`);
         }
       }
     }
