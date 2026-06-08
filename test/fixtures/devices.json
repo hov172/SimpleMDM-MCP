@@ -1,0 +1,10 @@
+[
+  { "id": 1, "name": "Mac-Behind", "serial": "AAA1", "model": "Mac14,3", "osVersion": "26.0",
+    "filevault_enabled": false, "firewall_enabled": false, "sip_enabled": false, "xprotect_version": "5345" },
+  { "id": 2, "name": "Mac-Current", "serial": "BBB2", "model": "Mac14,3", "osVersion": "26.5.1",
+    "filevault_enabled": true, "firewall_enabled": true, "sip_enabled": true, "xprotect_version": "5347" },
+  { "id": 3, "name": "Mac-EOL", "serial": "CCC3", "model": "iMac21,1", "osVersion": "13.7.8",
+    "filevault_enabled": false, "firewall_enabled": false, "sip_enabled": true, "xprotect_version": null },
+  { "id": 4, "name": "iPad-1", "serial": "DDD4", "model": "iPad13,1", "osVersion": "26.4.2",
+    "filevault_enabled": null, "firewall_enabled": null, "sip_enabled": null, "xprotect_version": null }
+]
