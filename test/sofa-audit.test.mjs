@@ -83,3 +83,29 @@ test("recommendTarget builds supported upgrade path", () => {
   const r3 = recommendTarget("13.0", "UnknownModel", t);
   assert.equal(r3.target, null);
 });
+
+import { evaluateDevice } from "../scripts/lib/evaluate.mjs";
+
+test("evaluateDevice composes findings", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const d = { id: 1, name: "Mac-Behind", serial: "AAA1", model: "Mac14,3", osVersion: "26.0",
+    filevault_enabled: false, firewall_enabled: false, sip_enabled: false, xprotect_version: "5345" };
+  const e = evaluateDevice(d, t);
+  assert.equal(e.platform, "macOS");
+  assert.equal(e.osStatus, "outdated");
+  assert.equal(e.filevaultOk, false);
+  assert.equal(e.sipOk, false);
+  assert.equal(e.firewallOk, false);
+  assert.equal(e.xprotect.status, "outdated");
+  assert.equal(e.failCount, 5); // OS + FV + SIP + FW + XProtect
+
+  const ok = evaluateDevice({ id: 2, model: "Mac14,3", osVersion: "26.5.1",
+    filevault_enabled: true, firewall_enabled: true, sip_enabled: true, xprotect_version: "5347" }, t);
+  assert.equal(ok.failCount, 0);
+
+  // iPad: Mac-only checks N/A, not counted as failures
+  const ipad = evaluateDevice({ id: 4, model: "iPad13,1", osVersion: "26.4.2",
+    filevault_enabled: null, firewall_enabled: null, sip_enabled: null, xprotect_version: null }, t);
+  assert.equal(ipad.platform, "iPadOS");
+  assert.equal(ipad.filevaultOk, true); // N/A treated as not-a-failure off-platform
+});

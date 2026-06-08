@@ -27,6 +27,51 @@ export function detectPlatform(device) {
   return "unknown";
 }
 
+function assessXProtect(value, latest) {
+  if (value === null || value === undefined || value === "") return { value: value ?? null, status: "absent" };
+  if (!/^\d+$/.test(String(value))) return { value, status: "invalid" };
+  if (latest && parseInt(value, 10) < parseInt(latest, 10)) return { value, status: "outdated" };
+  return { value, status: "ok" };
+}
+
+export function evaluateDevice(device, tables) {
+  const platform = detectPlatform(device);
+  const osVersion = device.osVersion ?? device.os_version ?? "";
+  const os = assessOS(osVersion, platform, tables);
+  const isMac = platform === "macOS";
+  const findings = [];
+
+  // OS
+  if (os.status === "outdated") {
+    findings.push(`OS outdated (${os.cvesBehind} CVEs${os.exploitedBehind ? `, ${os.exploitedBehind} exploited` : ""})`);
+  } else if (os.status === "eol") {
+    findings.push("OS end-of-life");
+  }
+
+  // Mac-only security checks; off-platform => treated OK (N/A), not a failure
+  const filevaultOk = isMac ? device.filevault_enabled === true : true;
+  const sipOk = isMac ? device.sip_enabled !== false : true; // explicit false only
+  const firewallOk = isMac ? device.firewall_enabled === true : true;
+  if (isMac && !filevaultOk) findings.push("FileVault disabled");
+  if (isMac && !sipOk) findings.push("SIP disabled");
+  if (isMac && !firewallOk) findings.push("Firewall disabled");
+
+  const xprotect = isMac ? assessXProtect(device.xprotect_version, tables.xprotectLatest) : { value: null, status: "absent" };
+  if (xprotect.status === "outdated") findings.push(`XProtect outdated (${xprotect.value} -> ${tables.xprotectLatest})`);
+  if (xprotect.status === "invalid") findings.push("XProtect invalid");
+
+  const recommended = isMac ? recommendTarget(osVersion, device.model ?? "", tables) : { target: os.latest, path: [osVersion, os.latest].filter(Boolean), replace: false };
+
+  return {
+    id: device.id, name: device.name ?? "", serial: device.serial ?? device.serial_number ?? "",
+    model: device.model ?? "", osVersion, platform,
+    osStatus: os.status, latest: os.latest,
+    recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
+    filevaultOk, sipOk, firewallOk, xprotect,
+    findings, failCount: findings.length,
+  };
+}
+
 export function recommendTarget(version, model, tables) {
   const ceiling = tables.modelMaxMajor.get(model) ?? null;
   const supported = tables.supportedMacMajors; // macOS only
