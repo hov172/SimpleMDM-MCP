@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- README restructured for readability: the five per-client setup guides are
+  grouped under one **Connect a client** section; **Install** now precedes
+  **Quick Start**; the **Fleet Audit** section moved up to sit right after
+  **Examples**; and the full 157-tool catalog moved to **`docs/tools.md`** (the
+  README keeps a short Tools summary + link). No content removed.
+
 ## [0.12.0] - 2026-06-08
 
 ### Added
