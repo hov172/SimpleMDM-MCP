@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- `docs/fleet-audit.md` — a deep-dive explaining the `/audit` command: the
+  SimpleMDM × SOFA join, how each metric/check is computed, the full output
+  reference, the device-group rollup, PDF export, and the code map. Linked from
+  the README.
+
 ## [0.11.2] - 2026-06-08
 
 ### Added

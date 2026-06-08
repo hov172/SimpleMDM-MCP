@@ -864,6 +864,9 @@ It talks **directly to the SimpleMDM API** (read-only) joined with the public SO
 app, service, or database. Eligibility / "latest version your hardware can run" is derived from
 SOFA's `Models` map, so it stays current with Apple's support matrix automatically.
 
+> 📖 **Deep dive:** see [`docs/fleet-audit.md`](docs/fleet-audit.md) for how the join works, how each
+> metric is computed, the full output reference, and the code map.
+
 ### Running it
 
 In Claude Code, just ask for it (the **`/audit`** skill runs the engine):
