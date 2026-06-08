@@ -58,6 +58,25 @@ function topMajors(map, n = 3) {
   return [...map.keys()].sort((a, b) => b - a).slice(0, n);
 }
 
+export function assessOS(version, platform, tables) {
+  if (!version) return { status: "unknown", latest: null, releasesBehind: null, cvesBehind: null, exploitedBehind: null, isLatest: false };
+  const map = platform === "macOS" ? tables.macOS : tables.ios;
+  const supported = platform === "macOS" ? tables.supportedMacMajors : tables.supportedIosMajors;
+  const major = parseVersion(version)[0];
+  const info = map.get(major);
+  if (!info || !supported.includes(major)) {
+    return { status: "eol", latest: info?.latest ?? null, releasesBehind: null, cvesBehind: null, exploitedBehind: null, isLatest: false };
+  }
+  let releasesBehind = 0, cvesBehind = 0, exploitedBehind = 0;
+  for (const r of info.releases) {
+    if (compareVersions(r.ver, version) >= 0 && compareVersions(r.ver, info.latest) < 0) {
+      releasesBehind++; cvesBehind += r.cves; exploitedBehind += r.exploited;
+    }
+  }
+  const isLatest = compareVersions(version, info.latest) >= 0;
+  return { status: isLatest ? "current" : "outdated", latest: info.latest, releasesBehind, cvesBehind, exploitedBehind, isLatest };
+}
+
 export function buildMajorTables(macFeed, iosFeed) {
   const macOS = buildMajorMap(macFeed);
   const ios = buildMajorMap(iosFeed);
