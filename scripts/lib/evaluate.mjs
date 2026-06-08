@@ -200,8 +200,9 @@ export function aggregateCveDetail(evaluatedDevices, tables) {
   return rows;
 }
 
-// One row per (device, unfixed CVE): the specific CVEs each device is still missing.
-// Only enumerable for devices on a supported major (EOL majors have no newer release to diff against).
+// One row PER DEVICE, with that device's unfixed CVEs collapsed into a single
+// multi-line `cves` cell (e.g. "🔴 CVE-2025-0001 (→15.7.7)\nCVE-2025-0002 (→15.7.7)").
+// Only enumerable for devices on a supported major (EOL majors have no newer release to diff).
 export function deviceCveRows(evaluatedDevices, tables) {
   const rows = [];
   for (const d of evaluatedDevices) {
@@ -214,16 +215,20 @@ export function deviceCveRows(evaluatedDevices, tables) {
     if (!supported.includes(major)) continue;
     const info = map.get(major);
     if (!info) continue;
+    const cves = [];
     for (const r of info.releases) {
       if (compareVersions(r.ver, d.osVersion) > 0) {
-        for (const cve of r.cveList) {
-          rows.push({
-            name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
-            cve_id: cve.id, fixed_in_version: r.ver, actively_exploited: cve.exploited,
-          });
-        }
+        for (const cve of r.cveList) cves.push({ id: cve.id, fixed: r.ver, exploited: cve.exploited });
       }
     }
+    if (cves.length === 0) continue;
+    const lines = cves.map((c) => `${c.exploited ? "🔴 " : ""}${c.id} (→${c.fixed})`);
+    rows.push({
+      name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
+      unfixed_count: cves.length,
+      exploited_count: cves.filter((c) => c.exploited).length,
+      cves: lines.join("\n"),
+    });
   }
   return rows;
 }
