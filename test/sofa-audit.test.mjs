@@ -149,3 +149,17 @@ test("section row builders return arrays of objects", () => {
   assert.equal(allDeviceRows(ev).length, 4);
   assert.ok(cveRows(aggregateCveDetail(ev, t)).length >= 1);
 });
+
+import { renderMarkdown } from "../scripts/lib/render.mjs";
+
+test("renderMarkdown produces all four sections + CVE detail", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = devices.map(d => evaluateDevice(d, t));
+  const md = renderMarkdown(ev, aggregateCveDetail(ev, t), summarize(ev), t, "2026-06-07");
+  assert.match(md, /## Security Report/);
+  assert.match(md, /## Vulnerability Check/);
+  assert.match(md, /## Need Updates/);
+  assert.match(md, /## All Devices/);
+  assert.match(md, /CVE-2025-0001/);          // CVE detail present
+  assert.match(md, /🔴/);                      // exploited marker present
+});
