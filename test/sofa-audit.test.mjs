@@ -26,3 +26,21 @@ test("detectPlatform maps model identifiers", () => {
   assert.equal(detectPlatform({ model: "iPod9,1" }), "iOS");
   assert.equal(detectPlatform({ model: "" }), "unknown");
 });
+
+import { buildMajorTables } from "../scripts/lib/evaluate.mjs";
+import { readFileSync } from "node:fs";
+const macFeed = JSON.parse(readFileSync(new URL("./fixtures/sofa-macos.json", import.meta.url)));
+const iosFeed = JSON.parse(readFileSync(new URL("./fixtures/sofa-ios.json", import.meta.url)));
+
+test("buildMajorTables builds majors, xprotect, supported, model map", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  assert.equal(t.xprotectLatest, "5347");
+  assert.equal(t.macOS.get(15).latest, "15.7.7");
+  assert.equal(t.macOS.get(26).releases.find(r => r.ver === "26.0").exploited, 1);
+  assert.deepEqual(t.supportedMacMajors, [26, 15, 14]);
+  assert.equal(t.modelMaxMajor.get("Mac14,3"), 26);
+  assert.equal(t.modelMaxMajor.get("iMac21,1"), 26);
+  // CVE list captured with exploited flag
+  const r260 = t.macOS.get(26).releases.find(r => r.ver === "26.0");
+  assert.deepEqual(r260.cveList.find(c => c.id === "CVE-2025-0001"), { id: "CVE-2025-0001", exploited: true });
+});
