@@ -847,6 +847,22 @@ How the server behaves on common API responses:
 
 ---
 
+## Fleet Audit (/audit)
+
+Generate a full SOFA-based macOS security audit:
+
+```bash
+node scripts/sofa-audit.mjs --format all   # csv | md | docx | all
+```
+
+Outputs to `reports/audit-YYYY-MM-DD/` (gitignored): `security-report.csv`, `need-updates.csv`,
+`all-devices.csv`, `cve-detail.csv`, `full-audit.md`, and `full-audit.docx` (via pandoc).
+Sections mirror the Report-SimpleMDM tabs: Security Report, Vulnerability Check, Need Updates,
+All Devices — plus per-CVE detail. Read-only; requires `SIMPLEMDM_API_KEY` in `.env`.
+XProtect checks require the `xprotect_version` custom attribute (see `reports/xprotect/STAGING.md`).
+
+---
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
