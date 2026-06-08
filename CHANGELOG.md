@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-06-07
+
+### Fixed
+- Audit CSV exports now use ASCII-only cell values so they render correctly in
+  any spreadsheet app. FileVault/SIP/Firewall show `on`/`off`, XProtect shows
+  `ok`/`outdated`/`invalid`/`N/A`, and actively-exploited CVEs are marked
+  `[exploited]`. Previously the Unicode ✓/✗/🔴 glyphs were mangled when a `.csv`
+  was opened as MacRoman (e.g. `✓` → `‚úì`). The Markdown report keeps the glyphs.
+
 ## [0.10.0] - 2026-06-07
 
 ### Added
