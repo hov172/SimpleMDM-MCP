@@ -9,9 +9,9 @@
       "Latest": { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z",
         "SupportedDevices": ["Mac14,3", "iMac21,1"] },
       "SecurityReleases": [
-        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
-        { "ProductVersion": "26.0", "ReleaseDate": "2025-09-15T00:00:00Z", "UniqueCVEsCount": 2,
-          "CVEs": { "CVE-2025-0001": true, "CVE-2025-0002": false }, "ActivelyExploitedCVEs": ["CVE-2025-0001"] }
+        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 2,
+          "CVEs": { "CVE-2025-0001": true, "CVE-2025-0002": false }, "ActivelyExploitedCVEs": ["CVE-2025-0001"] },
+        { "ProductVersion": "26.0", "ReleaseDate": "2025-09-15T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] }
       ] },
     { "OSVersion": "Sequoia 15",
       "Latest": { "ProductVersion": "15.7.7", "ReleaseDate": "2026-05-01T00:00:00Z",

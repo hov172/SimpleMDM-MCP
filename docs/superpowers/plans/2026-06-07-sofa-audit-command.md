@@ -171,9 +171,9 @@ Create `test/fixtures/sofa-macos.json`:
       "Latest": { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z",
         "SupportedDevices": ["Mac14,3", "iMac21,1"] },
       "SecurityReleases": [
-        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
-        { "ProductVersion": "26.0", "ReleaseDate": "2025-09-15T00:00:00Z", "UniqueCVEsCount": 2,
-          "CVEs": { "CVE-2025-0001": true, "CVE-2025-0002": false }, "ActivelyExploitedCVEs": ["CVE-2025-0001"] }
+        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 2,
+          "CVEs": { "CVE-2025-0001": true, "CVE-2025-0002": false }, "ActivelyExploitedCVEs": ["CVE-2025-0001"] },
+        { "ProductVersion": "26.0", "ReleaseDate": "2025-09-15T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] }
       ] },
     { "OSVersion": "Sequoia 15",
       "Latest": { "ProductVersion": "15.7.7", "ReleaseDate": "2026-05-01T00:00:00Z",
@@ -315,13 +315,13 @@ test("buildMajorTables builds majors, xprotect, supported, model map", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   assert.equal(t.xprotectLatest, "5347");
   assert.equal(t.macOS.get(15).latest, "15.7.7");
-  assert.equal(t.macOS.get(26).releases.find(r => r.ver === "26.0").exploited, 1);
+  assert.equal(t.macOS.get(26).releases.find(r => r.ver === "26.5.1").exploited, 1);
   assert.deepEqual(t.supportedMacMajors, [26, 15, 14]);
   assert.equal(t.modelMaxMajor.get("Mac14,3"), 26);
   assert.equal(t.modelMaxMajor.get("iMac21,1"), 26);
-  // CVE list captured with exploited flag
-  const r260 = t.macOS.get(26).releases.find(r => r.ver === "26.0");
-  assert.deepEqual(r260.cveList.find(c => c.id === "CVE-2025-0001"), { id: "CVE-2025-0001", exploited: true });
+  // CVE list captured with exploited flag (CVEs are fixed in the latest release)
+  const r2651 = t.macOS.get(26).releases.find(r => r.ver === "26.5.1");
+  assert.deepEqual(r2651.cveList.find(c => c.id === "CVE-2025-0001"), { id: "CVE-2025-0001", exploited: true });
 });
 ```
 
@@ -671,11 +671,10 @@ test("aggregateCveDetail lists CVEs with exposure counts", () => {
   const rows = aggregateCveDetail(devices.map(d => evaluateDevice(d, t)), t);
   const c = rows.find(r => r.cve_id === "CVE-2025-0001");
   assert.equal(c.actively_exploited, true);
-  assert.equal(c.fixed_in_version, "26.0");
+  assert.equal(c.fixed_in_version, "26.5.1");
   assert.equal(c.os_track, "macOS");
-  // one macOS device (id 1) is on 26.0 which is < the release that fixed it? 26.0 IS the fix version,
-  // so devices on < 26.0 are exposed; id 1 is exactly 26.0 => not exposed by this CVE.
-  assert.equal(typeof c.devices_still_exposed, "number");
+  // CVE-2025-0001 is fixed in 26.5.1; device id 1 on 26.0 (< 26.5.1) is still exposed.
+  assert.equal(c.devices_still_exposed, 1);
 });
 
 test("summarize produces headline counts", () => {

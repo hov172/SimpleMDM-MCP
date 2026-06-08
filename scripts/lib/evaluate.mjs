@@ -141,7 +141,7 @@ export function assessOS(version, platform, tables) {
   }
   let releasesBehind = 0, cvesBehind = 0, exploitedBehind = 0;
   for (const r of info.releases) {
-    if (compareVersions(r.ver, version) >= 0 && compareVersions(r.ver, info.latest) < 0) {
+    if (compareVersions(r.ver, version) > 0) {
       releasesBehind++; cvesBehind += r.cves; exploitedBehind += r.exploited;
     }
   }
