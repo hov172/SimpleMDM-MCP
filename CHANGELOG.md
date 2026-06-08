@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-08
+
 ### Added
 - `cve-devices.csv` audit output — the inverse of `device-cves.csv`: one row per
   CVE with the affected device names/serials collapsed into a single multi-line
