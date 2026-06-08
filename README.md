@@ -28,6 +28,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Security](#security)
 - [Rate limits and error behavior](#rate-limits-and-error-behavior)
 - [Troubleshooting](#troubleshooting)
+- [Fleet Audit (/audit)](#fleet-audit-audit)
 - [Changelog](#changelog)
 - [License](#license)
 
@@ -50,6 +51,10 @@ Once connected, you can ask Claude things like:
 - *"List every managed app config pushed in the last 24 hours and the devices that received them"*
 
 Claude decides which tools to call and in what combination. You just ask the question.
+
+For a one-shot, exportable fleet security report (OS currency, CVEs, FileVault/SIP/Firewall/XProtect),
+see the [`/audit` command](#fleet-audit-audit) — it joins your live fleet against the
+[SOFA](https://sofa.macadmins.io) feed and writes CSV / Markdown / Word files.
 
 ---
 
@@ -849,21 +854,82 @@ How the server behaves on common API responses:
 
 ## Fleet Audit (/audit)
 
-Generate a full SOFA-based macOS security audit:
+A self-contained command that generates a full macOS fleet **security audit** by joining your live
+SimpleMDM device inventory with the [SOFA](https://sofa.macadmins.io) feed (Simple Organized Feed
+for Apple Software Updates). It reports OS currency, unfixed CVEs (including actively-exploited
+ones), upgrade paths, and FileVault / SIP / Firewall / XProtect posture — and exports the results to
+CSV, Markdown, and Word.
+
+It talks **directly to the SimpleMDM API** (read-only) joined with the public SOFA feed — no external
+app, service, or database. Eligibility / "latest version your hardware can run" is derived from
+SOFA's `Models` map, so it stays current with Apple's support matrix automatically.
+
+### Running it
+
+In Claude Code, just ask for it (the **`/audit`** skill runs the engine):
+
+> `/audit` &nbsp;·&nbsp; *"run a fleet security audit"* &nbsp;·&nbsp; *"export the SOFA report as a Word doc"*
+
+Or run the engine directly:
 
 ```bash
-node scripts/sofa-audit.mjs --format all   # csv | md | docx | all
+node scripts/sofa-audit.mjs --format all   # csv | md | docx | all  (default: all)
 ```
 
-Outputs to `reports/audit-YYYY-MM-DD/` (gitignored): `security-report.csv`, `need-updates.csv`,
-`all-devices.csv`, `vulnerability-check.csv`, `cve-detail.csv`, `device-cves.csv`, `full-audit.md`,
-and `full-audit.docx` (via pandoc). Four sections — Security Report, Vulnerability Check, Need
-Updates, All Devices — plus a per-CVE catalog (`cve-detail.csv`) and a per-device × per-CVE listing
-(`device-cves.csv`, one row per device for each CVE it is still missing).
+| Flag | Meaning |
+|------|---------|
+| `--format csv` | data files only (`.csv`) |
+| `--format md` | combined Markdown report + CSVs |
+| `--format docx` | adds a Word doc (requires [`pandoc`](https://pandoc.org)) |
+| `--format all` | everything (default) |
+| `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
+| `--no-network-cache` | ignore the cached SOFA feed and refetch |
 
-Data comes directly from the SimpleMDM API joined with the SOFA feed — no external app or service.
-Read-only; requires `SIMPLEMDM_API_KEY` in `.env`.
-XProtect checks require the `xprotect_version` custom attribute (see `reports/xprotect/STAGING.md`).
+**Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient — the audit never
+writes). `pandoc` only needed for `.docx`.
+
+### Output
+
+Everything is written to `reports/audit-YYYY-MM-DD/` (which is **gitignored** — reports contain live
+tenant data and are never committed):
+
+| File | Contents |
+|------|----------|
+| `summary.txt` | the headline breakdown (see below) |
+| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as ✓/✗, XP as ✓/✗/— when not collected) |
+| `security-report.csv` | one row per device **with issues**, with the findings, CVE count, and exploited count |
+| `need-updates.csv` | one row per device needing an update, with its `current → target` upgrade path |
+| `vulnerability-check.csv` | one row per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and a multi-line `cves` cell |
+| `cve-detail.csv` | one row per CVE: `cve_id, fixed_in_version, os_track, actively_exploited, devices_still_exposed` |
+| `device-cves.csv` | one row per device, with **every CVE that device is still missing** collapsed into a single multi-line cell (🔴 marks actively-exploited) |
+| `full-audit.md` | the four sections combined as Markdown |
+| `full-audit.docx` | Word version of `full-audit.md` (when `--format docx`/`all`) |
+
+### The four sections
+
+1. **Security Report** — devices with any issue (outdated OS, FileVault/SIP/Firewall off, XProtect outdated), with per-device findings.
+2. **Vulnerability Check** — per macOS/iOS release: CVEs fixed, actively-exploited, and the CVE IDs.
+3. **Need Updates** — devices needing updates with supported upgrade paths (e.g. `14.6.1 → 15.7.7 → 26.5.1`); hardware that can't reach a supported macOS is flagged **REPLACE**.
+4. **All Devices** — the complete inventory table (see `all-devices.csv` above).
+
+### Headline breakdown (`summary.txt`)
+
+```
+OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Outdated <n> | Unfixed CVEs <n>
+```
+
+- **OS Outdated** — devices not on the newest version their **hardware** can run.
+- **No FileVault** — all devices without FileVault enabled.
+- **No SIP / No Firewall** — Macs reporting System Integrity Protection / firewall off.
+- **XProtect Outdated** — Macs whose XProtect version is below SOFA's latest (requires the custom attribute below; otherwise `0`).
+- **Unfixed CVEs** — number of **devices** missing at least one CVE fix.
+
+### XProtect checks (optional)
+
+XProtect version isn't exposed by the SimpleMDM device API, so the two XProtect checks only populate
+if you collect it into a custom attribute named `xprotect_version`. A ready-to-run collector and the
+exact setup steps are staged in `reports/xprotect/STAGING.md`. Until then, XProtect reports `0` /
+`—` rather than false failures.
 
 ---
 
