@@ -134,3 +134,18 @@ test("summarize produces headline counts", () => {
   assert.equal(typeof s.noSip, "number");
   assert.equal(typeof s.noFirewall, "number");
 });
+
+import { toCsv, securityRows, allDeviceRows, cveRows } from "../scripts/lib/render.mjs";
+
+test("toCsv escapes and joins", () => {
+  const csv = toCsv([["a", "b"]], [{ a: "x,y", b: 'q"z' }]);
+  assert.equal(csv, 'a,b\r\n"x,y","q""z"');
+});
+
+test("section row builders return arrays of objects", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = devices.map(d => evaluateDevice(d, t));
+  assert.ok(securityRows(ev).length >= 1);
+  assert.equal(allDeviceRows(ev).length, 4);
+  assert.ok(cveRows(aggregateCveDetail(ev, t)).length >= 1);
+});
