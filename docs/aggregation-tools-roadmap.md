@@ -2,7 +2,9 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.9.1):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
+> **Status (0.11.2):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
+>
+> A complementary host-side **[`/audit` command](../README.md#fleet-audit-audit)** (added in 0.10.0) bundles much of this fleet analytics into a one-shot, exportable SOFA-based macOS security report (CSV / Markdown / Word / PDF). It talks directly to the SimpleMDM API + the SOFA feed and is independent of these MCP tools.
 
 Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 
