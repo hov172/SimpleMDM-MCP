@@ -79,6 +79,7 @@ export function evaluateDevice(device, tables) {
     osStatus: os.status, latest: os.latest, latestMinor: os.latest, latestMajor, maxMajor,
     recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
     filevaultOk, sipOk, firewallOk, xprotect,
+    hasFilevault: device.filevault_enabled === true, // raw, all-platform (for fleet count)
     findings, failCount: findings.length,
     lastSeen: device.last_seen_at ?? null,
   };
@@ -250,16 +251,22 @@ export function deviceCveRows(evaluatedDevices, tables) {
   return rows;
 }
 
+// Headline counts. Definitions chosen to mirror the dashboard layout:
+//  - osOutdated  : devices NOT on the newest version their hardware can run.
+//  - noFileVault : ALL devices without FileVault enabled (Mac-only feature, but
+//                  non-Macs count as "no", matching the dashboard's total).
+//  - noSip/noFirewall/xprotectOutdated : Mac-only.
+//  - unfixedCves : number of DEVICES that are missing at least one CVE fix.
 export function summarize(evaluatedDevices, cveDetail = []) {
   const macs = evaluatedDevices.filter((d) => d.platform === "macOS");
   return {
     total: evaluatedDevices.length,
     withIssues: evaluatedDevices.filter((d) => d.failCount > 0).length,
-    osOutdated: evaluatedDevices.filter((d) => d.osStatus === "outdated" || d.osStatus === "eol" || d.osStatus === "untracked").length,
-    noFileVault: macs.filter((d) => !d.filevaultOk).length,
+    osOutdated: evaluatedDevices.filter((d) => d.latestMajor && compareVersions(d.osVersion, d.latestMajor) < 0).length,
+    noFileVault: evaluatedDevices.filter((d) => !d.hasFilevault).length,
     noSip: macs.filter((d) => !d.sipOk).length,
     noFirewall: macs.filter((d) => !d.firewallOk).length,
     xprotectOutdated: macs.filter((d) => d.xprotect.status === "outdated").length,
-    unfixedCves: new Set(cveDetail.filter((c) => c.devices_still_exposed > 0).map((c) => c.cve_id)).size,
+    unfixedCves: evaluatedDevices.filter((d) => (d.cvesBehind || 0) > 0).length,
   };
 }
