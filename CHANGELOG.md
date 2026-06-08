@@ -8,10 +8,12 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 - Audit now includes each device's **device group**: a `device_group` column on
-  `all-devices.csv` / `security-report.csv` / `need-updates.csv`, plus a new
-  `by-group.csv` rollup (devices, OS-outdated, FileVault/SIP/Firewall, and
-  unfixed-CVE counts per group) and a "By Device Group" section in the Markdown
-  report — so remediation can be batched by group.
+  every per-device output (`all-devices.csv`, `security-report.csv`,
+  `need-updates.csv`, `device-cves.csv`, and the Security Report / Need Updates /
+  All Devices Markdown tables), plus a new `by-group.csv` rollup (devices,
+  OS-outdated, FileVault/SIP/Firewall, and unfixed-CVE counts per group) and a
+  "By Device Group" section in the Markdown report — so remediation can be
+  batched by group. (Per-release / per-CVE tables omit it, as it doesn't apply.)
 
 ## [0.10.1] - 2026-06-07
 

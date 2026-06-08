@@ -52,7 +52,7 @@ async function main() {
     write("by-group.csv", toCsv([["device_group", "devices", "os_outdated", "no_filevault", "no_sip", "no_firewall", "unfixed_cve_devices"]], groupBreakdownRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
     write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest", "cves"]], vulnerabilityRows(tables, ev)));
-    write("device-cves.csv", toCsv([["name", "serial", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(ev, tables)));
+    write("device-cves.csv", toCsv([["name", "serial", "device_group", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(ev, tables)));
   }
 
   const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr);

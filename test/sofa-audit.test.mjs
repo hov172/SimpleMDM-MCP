@@ -238,11 +238,13 @@ import { groupBreakdownRows } from "../scripts/lib/render.mjs";
 test("device group surfaces per-row and in the per-group rollup", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   const ev = [
-    evaluateDevice({ id: 1, model: "Mac14,3", osVersion: "26.0", device_group: "Lab A", filevault_enabled: false }, t),
+    evaluateDevice({ id: 1, model: "Mac14,3", serial: "S1", osVersion: "26.0", device_group: "Lab A", filevault_enabled: false }, t),
     evaluateDevice({ id: 2, model: "Mac14,3", osVersion: "26.5.1", device_group: "Lab A", filevault_enabled: true }, t),
     evaluateDevice({ id: 3, model: "iMac21,1", osVersion: "13.7.8", device_group: "Lab B" }, t),
   ];
   assert.equal(allDeviceRows(ev)[0].device_group, "Lab A");
+  // group also flows to the per-device CVE listing
+  assert.equal(deviceCveRows(ev, t).find((r) => r.serial === "S1").device_group, "Lab A");
   const g = groupBreakdownRows(ev);
   const labA = g.find((r) => r.device_group === "Lab A");
   assert.equal(labA.devices, 2);
