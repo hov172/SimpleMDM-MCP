@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-06-08
+
 ### Changed
 - README restructured for readability: the five per-client setup guides are
   grouped under one **Connect a client** section; **Install** now precedes
