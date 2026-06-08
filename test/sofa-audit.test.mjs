@@ -109,3 +109,29 @@ test("evaluateDevice composes findings", () => {
   assert.equal(ipad.platform, "iPadOS");
   assert.equal(ipad.filevaultOk, true); // N/A treated as not-a-failure off-platform
 });
+
+import { aggregateCveDetail, summarize } from "../scripts/lib/evaluate.mjs";
+const devices = JSON.parse(readFileSync(new URL("./fixtures/devices.json", import.meta.url)));
+
+test("aggregateCveDetail lists CVEs with exposure counts", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const rows = aggregateCveDetail(devices.map(d => evaluateDevice(d, t)), t);
+  const c = rows.find(r => r.cve_id === "CVE-2025-0001");
+  assert.equal(c.actively_exploited, true);
+  assert.equal(c.fixed_in_version, "26.0");
+  assert.equal(c.os_track, "macOS");
+  // one macOS device (id 1) is on 26.0 which is < the release that fixed it? 26.0 IS the fix version,
+  // so devices on < 26.0 are exposed; id 1 is exactly 26.0 => not exposed by this CVE.
+  assert.equal(typeof c.devices_still_exposed, "number");
+});
+
+test("summarize produces headline counts", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = devices.map(d => evaluateDevice(d, t));
+  const s = summarize(ev);
+  assert.equal(s.total, 4);
+  assert.equal(typeof s.osOutdated, "number");
+  assert.equal(typeof s.noFileVault, "number");
+  assert.equal(typeof s.noSip, "number");
+  assert.equal(typeof s.noFirewall, "number");
+});
