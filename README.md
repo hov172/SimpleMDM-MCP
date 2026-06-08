@@ -896,12 +896,12 @@ tenant data and are never committed):
 | File | Contents |
 |------|----------|
 | `summary.txt` | the headline breakdown (see below) |
-| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as ✓/✗; XP as ✓/✗, or `N/A` when the XProtect attribute isn't collected) |
+| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as `on`/`off`; XP as `ok`/`outdated`/`invalid`, or `N/A` when the XProtect attribute isn't collected) |
 | `security-report.csv` | one row per device **with issues**, with the findings, CVE count, and exploited count |
 | `need-updates.csv` | one row per device needing an update, with its `current → target` upgrade path |
 | `vulnerability-check.csv` | one row per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and a multi-line `cves` cell |
 | `cve-detail.csv` | one row per CVE: `cve_id, fixed_in_version, os_track, actively_exploited, devices_still_exposed` |
-| `device-cves.csv` | one row per device, with **every CVE that device is still missing** collapsed into a single multi-line cell (🔴 marks actively-exploited) |
+| `device-cves.csv` | one row per device, with **every CVE that device is still missing** collapsed into a single multi-line cell (`[exploited]` marks actively-exploited) |
 | `full-audit.md` | the four sections combined as Markdown |
 | `full-audit.docx` | Word version of `full-audit.md` (when `--format docx`/`all`) |
 

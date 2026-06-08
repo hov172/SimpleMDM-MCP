@@ -30,9 +30,10 @@ export function needUpdateRows(ev) {
   }));
 }
 
-// Mark per the screenshot: ✓ ok, ✗ off/fail, — not-applicable/not-collected.
-function mark(ok) { return ok ? "✓" : "✗"; }
-function xpMark(status) { return status === "ok" ? "✓" : status === "absent" ? "N/A" : "✗"; }
+// ASCII-only marks so CSV cells render correctly regardless of how a spreadsheet
+// app decodes the file (Unicode ✓/✗ get mangled when a .csv is read as MacRoman).
+function mark(ok) { return ok ? "on" : "off"; }
+function xpMark(status) { return status === "absent" ? "N/A" : status; } // ok | outdated | invalid
 
 export function allDeviceRows(ev) {
   return ev.map((d) => ({
@@ -61,7 +62,7 @@ export function vulnerabilityRows(tables, ev) {
           version: r.ver, track, date: r.date, cves_fixed: r.cves,
           actively_exploited: r.exploited, devices_on_release: devicesOnRelease,
           unfixed_to_latest: unfixedToLatest,
-          cves: r.cveList.map((c) => (c.exploited ? `🔴 ${c.id}` : c.id)).join("\n"),
+          cves: r.cveList.map((c) => (c.exploited ? `${c.id} [exploited]` : c.id)).join("\n"),
         });
       }
     }
