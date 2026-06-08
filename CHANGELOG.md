@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-06-08
+
 ### Fixed
 - Audit report readability: the Vulnerability Check CVE list per release is now
   capped (all actively-exploited CVEs are kept, plus up to 15 others, then
