@@ -30,11 +30,16 @@ export function needUpdateRows(ev) {
   }));
 }
 
+// Mark per the screenshot: ✓ ok, ✗ off/fail, — not-applicable/not-collected.
+function mark(ok) { return ok ? "✓" : "✗"; }
+function xpMark(status) { return status === "ok" ? "✓" : status === "absent" ? "—" : "✗"; }
+
 export function allDeviceRows(ev) {
   return ev.map((d) => ({
-    name: d.name, serial: d.serial, model: d.model, platform: d.platform, os: d.osVersion,
-    filevault: d.filevaultOk ? "ok" : "off", sip: d.sipOk ? "ok" : "off",
-    firewall: d.firewallOk ? "ok" : "off", xprotect: d.xprotect.status,
+    name: d.name, device_name: d.deviceName ?? "", serial: d.serial,
+    os_version: d.osVersion, latest_minor: d.latestMinor ?? "", latest_major: d.latestMajor ?? "",
+    unfixed_cves: d.cvesBehind ?? "", product: d.model,
+    fv: mark(d.filevaultOk), sip: mark(d.sipOk), fw: mark(d.firewallOk), xp: xpMark(d.xprotect.status),
     last_seen: d.lastSeen ?? "",
   }));
 }
@@ -108,7 +113,7 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
   out.push(mdTable(["name", "serial", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");
 
   out.push("## All Devices\n");
-  out.push(mdTable(["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect"], allDeviceRows(ev)) + "\n");
+  out.push(mdTable(["name", "device_name", "serial", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"], allDeviceRows(ev)) + "\n");
 
   return out.join("\n");
 }
