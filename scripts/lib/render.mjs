@@ -112,7 +112,7 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
     `No SIP ${summary.noSip} · No Firewall ${summary.noFirewall} · ` +
     `XProtect Outdated ${summary.xprotectCollected ? summary.xprotectOutdated : "N/A (not set up)"} · ` +
     `Unfixed CVEs ${summary.unfixedCves}\n`);
-  out.push(mdTable(["name", "serial", "os", "findings", "unfixed_cves", "fail_count"], securityRows(ev)) + "\n");
+  out.push(mdTable(["name", "serial", "device_group", "os", "findings", "unfixed_cves", "fail_count"], securityRows(ev)) + "\n");
 
   out.push("## Vulnerability Check\n");
   for (const [track, map] of [["macOS", tables.macOS], ["iOS/iPadOS", tables.ios]]) {
@@ -131,7 +131,7 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
   out.push("");
 
   out.push("## Need Updates\n");
-  out.push(mdTable(["name", "serial", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");
+  out.push(mdTable(["name", "serial", "device_group", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");
 
   out.push("## By Device Group\n");
   out.push(mdTable(["device_group", "devices", "os_outdated", "no_filevault", "no_sip", "no_firewall", "unfixed_cve_devices"], groupBreakdownRows(ev)) + "\n");
