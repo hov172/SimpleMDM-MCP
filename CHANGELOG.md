@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- **Fleet Audit (`/audit`)** — a self-contained command (`scripts/sofa-audit.mjs` + the `/audit`
+  Claude Code skill) that joins the live SimpleMDM device inventory with the
+  [SOFA](https://sofa.macadmins.io) feed and produces a full macOS security audit. Four sections
+  (Security Report, Vulnerability Check, Need Updates, All Devices) plus a per-CVE catalog and a
+  per-device CVE listing, exported to CSV / Markdown / Word (`.docx` via pandoc). Read-only; output
+  is written to the gitignored `reports/audit-YYYY-MM-DD/` directory. See the README
+  [Fleet Audit](README.md#fleet-audit-audit) section.
+- `all-devices.csv` device-overview layout: `name, device_name, serial, os_version, latest_minor,
+  latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen`.
+- Per-device upgrade eligibility ("latest version your hardware can run") derived from SOFA's
+  `Models` map, so it tracks Apple's support matrix without a maintained static table.
+- Staged XProtect collection pipeline (`reports/xprotect/STAGING.md`) and a no-secrets collector
+  script (`reports/xprotect/xprotect-version-check.sh`) to populate the `xprotect_version` custom
+  attribute and enable the XProtect checks.
+
+### Notes
+- The audit performs **no** SimpleMDM writes and works with a read-only API key.
+- Generated reports are never committed to git (they contain live tenant data).
+
 ## [0.9.1] - 2026-06-06
 
 ### Changed
