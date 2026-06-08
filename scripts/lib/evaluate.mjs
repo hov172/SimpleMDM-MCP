@@ -168,3 +168,43 @@ export function buildMajorTables(macFeed, iosFeed) {
     modelMaxMajor,
   };
 }
+
+export function aggregateCveDetail(evaluatedDevices, tables) {
+  const rows = [];
+  for (const [track, map] of [["macOS", tables.macOS], ["iOS", tables.ios]]) {
+    const platforms = track === "macOS" ? ["macOS"] : ["iOS", "iPadOS"];
+    for (const info of map.values()) {
+      for (const r of info.releases) {
+        for (const cve of r.cveList) {
+          const exposed = evaluatedDevices.filter((d) =>
+            platforms.includes(d.platform) &&
+            parseVersion(d.osVersion)[0] === info.major &&
+            compareVersions(d.osVersion, r.ver) < 0
+          ).length;
+          rows.push({
+            cve_id: cve.id,
+            fixed_in_version: r.ver,
+            os_track: track,
+            actively_exploited: cve.exploited,
+            devices_still_exposed: exposed,
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+export function summarize(evaluatedDevices) {
+  const macs = evaluatedDevices.filter((d) => d.platform === "macOS");
+  return {
+    total: evaluatedDevices.length,
+    withIssues: evaluatedDevices.filter((d) => d.failCount > 0).length,
+    osOutdated: evaluatedDevices.filter((d) => d.osStatus === "outdated" || d.osStatus === "eol").length,
+    noFileVault: macs.filter((d) => !d.filevaultOk).length,
+    noSip: macs.filter((d) => !d.sipOk).length,
+    noFirewall: macs.filter((d) => !d.firewallOk).length,
+    xprotectOutdated: macs.filter((d) => d.xprotect.status === "outdated").length,
+    unfixedCves: evaluatedDevices.reduce((sum, d) => sum + (d.cvesBehind || 0), 0),
+  };
+}
