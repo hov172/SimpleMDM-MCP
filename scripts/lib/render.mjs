@@ -118,25 +118,14 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
   out.push(mdTable(["name", "serial", "device_group", "os", "findings", "unfixed_cves", "fail_count"], securityRows(ev)) + "\n");
 
   out.push("## Vulnerability Check\n");
-  for (const [track, map] of [["macOS", tables.macOS], ["iOS/iPadOS", tables.ios]]) {
+  out.push("_Per-release CVE counts. The full CVE IDs for each release are in `cve-detail.csv` and `vulnerability-check.csv`._\n");
+  const vrows = vulnerabilityRows(tables, ev);
+  for (const track of ["macOS", "iOS/iPadOS"]) {
+    const rows = vrows.filter((r) => r.track === track);
+    if (!rows.length) continue;
     out.push(`### ${track}\n`);
-    for (const info of [...map.values()].sort((a, b) => b.major - a.major)) {
-      for (const r of info.releases) {
-        const devs = ev.filter((d) => d.osVersion === r.ver).length;
-        out.push(`- **${r.ver}** (${r.date}) — ${r.cves} CVEs, ${r.exploited} exploited, ${devs} device(s)`);
-        if (r.cveList.length) {
-          // Keep every actively-exploited CVE; cap the rest so the line stays readable.
-          const CAP = 15;
-          const exploited = r.cveList.filter((c) => c.exploited).map((c) => `🔴 ${c.id}`);
-          const others = r.cveList.filter((c) => !c.exploited).map((c) => c.id);
-          const shown = [...exploited, ...others.slice(0, CAP)];
-          const extra = others.length - Math.min(others.length, CAP);
-          out.push(`  - ${shown.join(", ")}${extra > 0 ? `, …+${extra} more (see cve-detail.csv)` : ""}`);
-        }
-      }
-    }
+    out.push(mdTable(["version", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest"], rows) + "\n");
   }
-  out.push("");
 
   out.push("## Need Updates\n");
   out.push(mdTable(["name", "serial", "device_group", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");

@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+- Audit report **Vulnerability Check** is now a clean per-release **table**
+  (`version, date, cves_fixed, actively_exploited, devices_on_release,
+  unfixed_to_latest`) instead of bulleted lists with inline CVE-ID dumps and
+  emoji markers. The full CVE IDs per release remain in `cve-detail.csv` /
+  `vulnerability-check.csv`. Looks consistent with the other report sections.
+
 ### Added
 - `docs/fleet-audit.md` — a deep-dive explaining the `/audit` command: the
   SimpleMDM × SOFA join, how each metric/check is computed, the full output
