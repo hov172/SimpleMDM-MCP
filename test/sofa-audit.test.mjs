@@ -184,8 +184,8 @@ test("renderMarkdown produces all four sections + CVE detail", () => {
   assert.match(md, /## Vulnerability Check/);
   assert.match(md, /## Need Updates/);
   assert.match(md, /## All Devices/);
-  assert.match(md, /CVE-2025-0001/);          // CVE detail present
-  assert.match(md, /🔴/);                      // exploited marker present
+  // Vulnerability Check is a per-release table (CVE IDs live in cve-detail.csv)
+  assert.match(md, /\| version \| date \| cves_fixed \| actively_exploited \|/);
 });
 
 test("vulnerabilityRows lists releases with unfixed-to-latest", () => {
