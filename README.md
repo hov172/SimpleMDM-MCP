@@ -896,7 +896,7 @@ tenant data and are never committed):
 | File | Contents |
 |------|----------|
 | `summary.txt` | the headline breakdown (see below) |
-| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as ✓/✗, XP as ✓/✗/— when not collected) |
+| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as ✓/✗; XP as ✓/✗, or `N/A` when the XProtect attribute isn't collected) |
 | `security-report.csv` | one row per device **with issues**, with the findings, CVE count, and exploited count |
 | `need-updates.csv` | one row per device needing an update, with its `current → target` upgrade path |
 | `vulnerability-check.csv` | one row per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and a multi-line `cves` cell |
@@ -921,15 +921,15 @@ OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Out
 - **OS Outdated** — devices not on the newest version their **hardware** can run.
 - **No FileVault** — all devices without FileVault enabled.
 - **No SIP / No Firewall** — Macs reporting System Integrity Protection / firewall off.
-- **XProtect Outdated** — Macs whose XProtect version is below SOFA's latest (requires the custom attribute below; otherwise `0`).
+- **XProtect Outdated** — Macs whose XProtect version is below SOFA's latest. Requires the custom attribute below; when it isn't collected this reads **`N/A (not set up)`** rather than `0`.
 - **Unfixed CVEs** — number of **devices** missing at least one CVE fix.
 
 ### XProtect checks (optional)
 
 XProtect version isn't exposed by the SimpleMDM device API, so the two XProtect checks only populate
 if you collect it into a custom attribute named `xprotect_version`. A ready-to-run collector and the
-exact setup steps are staged in `reports/xprotect/STAGING.md`. Until then, XProtect reports `0` /
-`—` rather than false failures.
+exact setup steps are staged in `reports/xprotect/STAGING.md`. Until then, XProtect reports
+`N/A (not set up)` (and `N/A` per device) rather than `0` / false failures.
 
 ---
 
