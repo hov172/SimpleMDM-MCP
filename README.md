@@ -896,9 +896,10 @@ tenant data and are never committed):
 | File | Contents |
 |------|----------|
 | `summary.txt` | the headline breakdown (see below) |
-| `all-devices.csv` | one row per device: `name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as `on`/`off`; XP as `ok`/`outdated`/`invalid`, or `N/A` when the XProtect attribute isn't collected) |
-| `security-report.csv` | one row per device **with issues**, with the findings, CVE count, and exploited count |
-| `need-updates.csv` | one row per device needing an update, with its `current → target` upgrade path |
+| `all-devices.csv` | one row per device: `name, device_name, serial, device_group, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW shown as `on`/`off`; XP as `ok`/`outdated`/`invalid`, or `N/A` when the XProtect attribute isn't collected) |
+| `security-report.csv` | one row per device **with issues**, with its `device_group`, findings, CVE count, and exploited count |
+| `need-updates.csv` | one row per device needing an update, with its `device_group` and `current → target` upgrade path |
+| `by-group.csv` | per **device group** rollup: `device_group, devices, os_outdated, no_filevault, no_sip, no_firewall, unfixed_cve_devices` — for batching remediation by group |
 | `vulnerability-check.csv` | one row per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and a multi-line `cves` cell |
 | `cve-detail.csv` | one row per CVE: `cve_id, fixed_in_version, os_track, actively_exploited, devices_still_exposed` |
 | `device-cves.csv` | one row per device, with **every CVE that device is still missing** collapsed into a single multi-line cell (`[exploited]` marks actively-exploited) |
@@ -910,7 +911,7 @@ tenant data and are never committed):
 1. **Security Report** — devices with any issue (outdated OS, FileVault/SIP/Firewall off, XProtect outdated), with per-device findings.
 2. **Vulnerability Check** — per macOS/iOS release: CVEs fixed, actively-exploited, and the CVE IDs.
 3. **Need Updates** — devices needing updates with supported upgrade paths (e.g. `14.6.1 → 15.7.7 → 26.5.1`); hardware that can't reach a supported macOS is flagged **REPLACE**.
-4. **All Devices** — the complete inventory table (see `all-devices.csv` above).
+4. **All Devices** — the complete inventory table (see `all-devices.csv` above), plus a **By Device Group** rollup so you can batch remediation by group.
 
 ### Headline breakdown (`summary.txt`)
 

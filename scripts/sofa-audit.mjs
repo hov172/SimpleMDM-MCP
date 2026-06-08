@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { loadSofa } from "./lib/sofa.mjs";
-import { fetchAllDevices } from "./lib/simplemdm.mjs";
+import { fetchAllDevices, fetchDeviceGroups } from "./lib/simplemdm.mjs";
 import { buildMajorTables, evaluateDevice, aggregateCveDetail, deviceCveRows, summarize } from "./lib/evaluate.mjs";
 import {
-  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows,
+  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows, groupBreakdownRows,
 } from "./lib/render.mjs";
 import { mdToDocx } from "./lib/docx.mjs";
 
@@ -36,6 +36,8 @@ async function main() {
   const { macFeed, iosFeed } = await loadSofa(`${outDir}/.cache`, { noCache });
   const tables = buildMajorTables(macFeed, iosFeed);
   const devices = await fetchAllDevices(apiKey);
+  const groups = await fetchDeviceGroups(apiKey);
+  for (const d of devices) d.device_group = groups.get(d.device_group_id) ?? "";
   const ev = devices.map((d) => evaluateDevice(d, tables));
   const cveDetail = aggregateCveDetail(ev, tables);
   const summary = summarize(ev, cveDetail);
@@ -44,9 +46,10 @@ async function main() {
   const write = (name, content) => writeFileSync(`${outDir}/${name}`, content);
 
   if (["csv", "all", "md", "docx"].includes(format)) {
-    write("security-report.csv", toCsv([["name", "serial", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count", "last_seen"]], securityRows(ev)));
-    write("need-updates.csv", toCsv([["name", "serial", "model", "current", "path", "target", "replace"]], needUpdateRows(ev)));
-    write("all-devices.csv", toCsv([["name", "device_name", "serial", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(ev)));
+    write("security-report.csv", toCsv([["name", "serial", "device_group", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count", "last_seen"]], securityRows(ev)));
+    write("need-updates.csv", toCsv([["name", "serial", "device_group", "model", "current", "path", "target", "replace"]], needUpdateRows(ev)));
+    write("all-devices.csv", toCsv([["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(ev)));
+    write("by-group.csv", toCsv([["device_group", "devices", "os_outdated", "no_filevault", "no_sip", "no_firewall", "unfixed_cve_devices"]], groupBreakdownRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
     write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest", "cves"]], vulnerabilityRows(tables, ev)));
     write("device-cves.csv", toCsv([["name", "serial", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(ev, tables)));

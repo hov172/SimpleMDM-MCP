@@ -15,7 +15,7 @@ export function toCsv(header, rows) {
 
 export function securityRows(ev) {
   return ev.filter((d) => d.failCount > 0).map((d) => ({
-    name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
+    name: d.name, serial: d.serial, device_group: d.deviceGroup ?? "", model: d.model, os: d.osVersion,
     findings: d.findings.join("; "), unfixed_cves: d.cvesBehind ?? "",
     exploited: d.exploitedBehind ?? "", fail_count: d.failCount,
     last_seen: d.lastSeen ?? "",
@@ -24,10 +24,29 @@ export function securityRows(ev) {
 
 export function needUpdateRows(ev) {
   return ev.filter((d) => d.recommended?.target).map((d) => ({
-    name: d.name, serial: d.serial, model: d.model,
+    name: d.name, serial: d.serial, device_group: d.deviceGroup ?? "", model: d.model,
     current: d.osVersion, path: d.recommended.path.join(" -> "),
     target: d.recommended.target, replace: d.recommended.replace,
   }));
+}
+
+// Per-device-group rollup of the headline posture.
+export function groupBreakdownRows(ev) {
+  const byGroup = new Map();
+  for (const d of ev) {
+    const g = d.deviceGroup || "(none)";
+    if (!byGroup.has(g)) {
+      byGroup.set(g, { device_group: g, devices: 0, os_outdated: 0, no_filevault: 0, no_sip: 0, no_firewall: 0, unfixed_cve_devices: 0 });
+    }
+    const r = byGroup.get(g);
+    r.devices++;
+    if (d.latestMajor && compareVersions(d.osVersion, d.latestMajor) < 0) r.os_outdated++;
+    if (!d.hasFilevault) r.no_filevault++;
+    if (d.platform === "macOS" && !d.sipOk) r.no_sip++;
+    if (d.platform === "macOS" && !d.firewallOk) r.no_firewall++;
+    if ((d.cvesBehind || 0) > 0) r.unfixed_cve_devices++;
+  }
+  return [...byGroup.values()].sort((a, b) => b.devices - a.devices);
 }
 
 // ASCII-only marks so CSV cells render correctly regardless of how a spreadsheet
@@ -37,7 +56,7 @@ function xpMark(status) { return status === "absent" ? "N/A" : status; } // ok |
 
 export function allDeviceRows(ev) {
   return ev.map((d) => ({
-    name: d.name, device_name: d.deviceName ?? "", serial: d.serial,
+    name: d.name, device_name: d.deviceName ?? "", serial: d.serial, device_group: d.deviceGroup ?? "",
     os_version: d.osVersion, latest_minor: d.latestMinor ?? "", latest_major: d.latestMajor ?? "",
     unfixed_cves: d.cvesBehind ?? "", product: d.model,
     fv: mark(d.filevaultOk), sip: mark(d.sipOk), fw: mark(d.firewallOk), xp: xpMark(d.xprotect.status),
@@ -114,8 +133,11 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
   out.push("## Need Updates\n");
   out.push(mdTable(["name", "serial", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");
 
+  out.push("## By Device Group\n");
+  out.push(mdTable(["device_group", "devices", "os_outdated", "no_filevault", "no_sip", "no_firewall", "unfixed_cve_devices"], groupBreakdownRows(ev)) + "\n");
+
   out.push("## All Devices\n");
-  out.push(mdTable(["name", "device_name", "serial", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"], allDeviceRows(ev)) + "\n");
+  out.push(mdTable(["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"], allDeviceRows(ev)) + "\n");
 
   return out.join("\n");
 }

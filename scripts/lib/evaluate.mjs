@@ -75,6 +75,7 @@ export function evaluateDevice(device, tables) {
   return {
     id: device.id, name: device.name ?? "", deviceName: device.device_name ?? "",
     serial: device.serial ?? device.serial_number ?? "",
+    deviceGroup: device.device_group ?? "",
     model: device.model ?? "", osVersion, platform,
     osStatus: os.status, latest: os.latest, latestMinor: os.latest, latestMajor, maxMajor,
     recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
