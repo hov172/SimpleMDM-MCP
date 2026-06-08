@@ -1,0 +1,38 @@
+{
+  "XProtectPlistConfigData": { "com.apple.XProtect": "5347" },
+  "Models": {
+    "Mac14,3": { "MarketingName": "Mac mini" },
+    "iMac21,1": { "MarketingName": "iMac" }
+  },
+  "OSVersions": [
+    { "OSVersion": "Tahoe 26",
+      "Latest": { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z",
+        "SupportedDevices": ["Mac14,3", "iMac21,1"] },
+      "SecurityReleases": [
+        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
+        { "ProductVersion": "26.0", "ReleaseDate": "2025-09-15T00:00:00Z", "UniqueCVEsCount": 2,
+          "CVEs": { "CVE-2025-0001": true, "CVE-2025-0002": false }, "ActivelyExploitedCVEs": ["CVE-2025-0001"] }
+      ] },
+    { "OSVersion": "Sequoia 15",
+      "Latest": { "ProductVersion": "15.7.7", "ReleaseDate": "2026-05-01T00:00:00Z",
+        "SupportedDevices": ["Mac14,3", "iMac21,1"] },
+      "SecurityReleases": [
+        { "ProductVersion": "15.7.7", "ReleaseDate": "2026-05-01T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
+        { "ProductVersion": "15.6.1", "ReleaseDate": "2025-08-01T00:00:00Z", "UniqueCVEsCount": 3,
+          "CVEs": { "CVE-2025-1001": false, "CVE-2025-1002": false, "CVE-2025-1003": true }, "ActivelyExploitedCVEs": ["CVE-2025-1003"] }
+      ] },
+    { "OSVersion": "Sonoma 14",
+      "Latest": { "ProductVersion": "14.8.7", "ReleaseDate": "2026-04-01T00:00:00Z",
+        "SupportedDevices": ["iMac21,1"] },
+      "SecurityReleases": [
+        { "ProductVersion": "14.8.7", "ReleaseDate": "2026-04-01T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
+        { "ProductVersion": "14.6.1", "ReleaseDate": "2025-07-01T00:00:00Z", "UniqueCVEsCount": 1,
+          "CVEs": { "CVE-2025-2001": false }, "ActivelyExploitedCVEs": [] }
+      ] },
+    { "OSVersion": "Ventura 13",
+      "Latest": { "ProductVersion": "13.7.8", "ReleaseDate": "2025-09-01T00:00:00Z", "SupportedDevices": [] },
+      "SecurityReleases": [
+        { "ProductVersion": "13.7.8", "ReleaseDate": "2025-09-01T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] }
+      ] }
+  ]
+}
