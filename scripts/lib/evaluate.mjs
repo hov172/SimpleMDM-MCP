@@ -220,6 +220,40 @@ export function aggregateCveDetail(evaluatedDevices, tables) {
   return rows;
 }
 
+// Inverse of deviceCveRows: one row PER CVE, with the affected devices collapsed
+// into a single multi-line `devices` cell. Only CVEs with >=1 exposed device.
+export function cveDeviceRows(evaluatedDevices, tables) {
+  const label = (d) => {
+    const id = d.name && d.name !== d.serial ? `${d.name} (${d.serial})` : (d.serial || d.name || String(d.id));
+    return d.deviceGroup ? `${id} — ${d.deviceGroup}` : id;
+  };
+  const rows = [];
+  for (const [track, map] of [["macOS", tables.macOS], ["iOS", tables.ios]]) {
+    const platforms = track === "macOS" ? ["macOS"] : ["iOS", "iPadOS"];
+    for (const info of map.values()) {
+      for (const r of info.releases) {
+        for (const cve of r.cveList) {
+          const exposed = evaluatedDevices.filter((d) =>
+            platforms.includes(d.platform) &&
+            parseVersion(d.osVersion)[0] === info.major &&
+            compareVersions(d.osVersion, r.ver) < 0
+          );
+          if (exposed.length === 0) continue;
+          rows.push({
+            cve_id: cve.id,
+            fixed_in_version: r.ver,
+            os_track: track,
+            actively_exploited: cve.exploited,
+            devices_exposed: exposed.length,
+            devices: exposed.map(label).join("\n"),
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
 // One row PER DEVICE, with that device's unfixed CVEs collapsed into a single
 // multi-line `cves` cell (e.g. "🔴 CVE-2025-0001 (→15.7.7)\nCVE-2025-0002 (→15.7.7)").
 // Enumerable for any major present in the feed, INCLUDING EOL majors (up to that

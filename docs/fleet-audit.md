@@ -163,6 +163,7 @@ contain live tenant data and are never committed.
 | `vulnerability-check.csv` | per OS release | `version, track, date, cves_fixed, actively_exploited, devices_on_release, unfixed_to_latest, cves` |
 | `cve-detail.csv` | per CVE | `cve_id, fixed_in_version, os_track, actively_exploited, devices_still_exposed` |
 | `device-cves.csv` | per device | each device's full list of unfixed CVEs in one multi-line `cves` cell (`[exploited]` marks actively-exploited) |
+| `cve-devices.csv` | per CVE | the inverse: each CVE's affected device names/serials in one multi-line `devices` cell (`cve_id, fixed_in_version, os_track, actively_exploited, devices_exposed, devices`) |
 | `full-audit.md` | combined | the four sections + By Device Group, as Markdown |
 | `full-audit.docx` | combined | Word version (via pandoc) |
 | `full-audit.pdf` | combined | print-ready PDF (via `make-audit-pdf.sh`) |
