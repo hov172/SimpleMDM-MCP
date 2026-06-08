@@ -267,6 +267,9 @@ export function summarize(evaluatedDevices, cveDetail = []) {
     noSip: macs.filter((d) => !d.sipOk).length,
     noFirewall: macs.filter((d) => !d.firewallOk).length,
     xprotectOutdated: macs.filter((d) => d.xprotect.status === "outdated").length,
+    // false when the xprotect_version custom attribute isn't collected anywhere
+    // (so the XProtect check should report N/A / "not set up", not 0).
+    xprotectCollected: macs.some((d) => d.xprotect.status !== "absent"),
     unfixedCves: evaluatedDevices.filter((d) => (d.cvesBehind || 0) > 0).length,
   };
 }
