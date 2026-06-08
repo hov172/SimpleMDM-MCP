@@ -56,6 +56,7 @@ export function vulnerabilityRows(tables, ev) {
           version: r.ver, track, date: r.date, cves_fixed: r.cves,
           actively_exploited: r.exploited, devices_on_release: devicesOnRelease,
           unfixed_to_latest: unfixedToLatest,
+          cves: r.cveList.map((c) => (c.exploited ? `🔴 ${c.id}` : c.id)).join("\n"),
         });
       }
     }
