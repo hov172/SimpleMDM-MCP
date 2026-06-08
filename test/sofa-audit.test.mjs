@@ -233,6 +233,21 @@ test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", 
   assert.equal(rows.filter(r => r.serial === "CCC3").length, 0);
 });
 
+import { cveDeviceRows } from "../scripts/lib/evaluate.mjs";
+
+test("cveDeviceRows lists affected devices per CVE (inverse of device-cves)", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = devices.map(d => evaluateDevice(d, t));
+  const rows = cveDeviceRows(ev, t);
+  const c = rows.find(r => r.cve_id === "CVE-2025-0001");
+  assert.equal(c.os_track, "macOS");
+  assert.equal(c.actively_exploited, true);
+  assert.equal(c.devices_exposed, 1);     // device id1 (AAA1) on 26.0 < 26.5.1
+  assert.match(c.devices, /AAA1/);        // affected device's serial in the multi-line cell
+  // a CVE with no exposed device is omitted entirely
+  assert.equal(rows.every(r => r.devices_exposed > 0), true);
+});
+
 import { groupBreakdownRows } from "../scripts/lib/render.mjs";
 
 test("device group surfaces per-row and in the per-group rollup", () => {

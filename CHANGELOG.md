@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- `cve-devices.csv` audit output — the inverse of `device-cves.csv`: one row per
+  CVE with the affected device names/serials collapsed into a single multi-line
+  `devices` cell (`cve_id, fixed_in_version, os_track, actively_exploited,
+  devices_exposed, devices`). Answers "which devices are exposed to CVE-X?".
+
 ## [0.11.3] - 2026-06-08
 
 ### Changed

@@ -906,6 +906,7 @@ tenant data and are never committed):
 | `vulnerability-check.csv` | one row per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and a multi-line `cves` cell |
 | `cve-detail.csv` | one row per CVE: `cve_id, fixed_in_version, os_track, actively_exploited, devices_still_exposed` |
 | `device-cves.csv` | one row per device, with **every CVE that device is still missing** collapsed into a single multi-line cell (`[exploited]` marks actively-exploited) |
+| `cve-devices.csv` | the inverse — one row per CVE, with the **affected device names/serials** collapsed into a single multi-line cell (`cve_id, fixed_in_version, os_track, actively_exploited, devices_exposed, devices`) |
 | `full-audit.md` | the four sections combined as Markdown |
 | `full-audit.docx` | Word version of `full-audit.md` (when `--format docx`/`all`) |
 

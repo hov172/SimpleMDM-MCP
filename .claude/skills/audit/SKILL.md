@@ -25,6 +25,7 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 - `vulnerability-check.csv` — per-release CVEs (with a multi-line CVE cell).
 - `cve-detail.csv` — per-CVE catalog with devices-exposed counts.
 - `device-cves.csv` — per device, every CVE it is still missing (one multi-line cell).
+- `cve-devices.csv` — the inverse: per CVE, the affected device names/serials (one multi-line cell).
 - `full-audit.md` / `full-audit.docx` — combined report (docx needs pandoc).
 - For a print-ready PDF, after the audit run `scripts/make-audit-pdf.sh [audit-dir]` (pandoc + headless Chrome; A3 landscape, full-width tables).
 
