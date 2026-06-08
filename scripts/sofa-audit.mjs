@@ -2,7 +2,7 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { loadSofa } from "./lib/sofa.mjs";
 import { fetchAllDevices } from "./lib/simplemdm.mjs";
-import { buildMajorTables, evaluateDevice, aggregateCveDetail, summarize } from "./lib/evaluate.mjs";
+import { buildMajorTables, evaluateDevice, aggregateCveDetail, deviceCveRows, summarize } from "./lib/evaluate.mjs";
 import {
   toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows,
 } from "./lib/render.mjs";
@@ -49,6 +49,7 @@ async function main() {
     write("all-devices.csv", toCsv([["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect", "last_seen"]], allDeviceRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
     write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest"]], vulnerabilityRows(tables, ev)));
+    write("device-cves.csv", toCsv([["name", "serial", "model", "os", "cve_id", "fixed_in_version", "actively_exploited"]], deviceCveRows(ev, tables)));
   }
 
   const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr);

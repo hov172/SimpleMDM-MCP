@@ -200,6 +200,34 @@ export function aggregateCveDetail(evaluatedDevices, tables) {
   return rows;
 }
 
+// One row per (device, unfixed CVE): the specific CVEs each device is still missing.
+// Only enumerable for devices on a supported major (EOL majors have no newer release to diff against).
+export function deviceCveRows(evaluatedDevices, tables) {
+  const rows = [];
+  for (const d of evaluatedDevices) {
+    const isMac = d.platform === "macOS";
+    const isIos = d.platform === "iOS" || d.platform === "iPadOS";
+    if (!isMac && !isIos) continue;
+    const map = isMac ? tables.macOS : tables.ios;
+    const supported = isMac ? tables.supportedMacMajors : tables.supportedIosMajors;
+    const major = parseVersion(d.osVersion)[0];
+    if (!supported.includes(major)) continue;
+    const info = map.get(major);
+    if (!info) continue;
+    for (const r of info.releases) {
+      if (compareVersions(r.ver, d.osVersion) > 0) {
+        for (const cve of r.cveList) {
+          rows.push({
+            name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
+            cve_id: cve.id, fixed_in_version: r.ver, actively_exploited: cve.exploited,
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
 export function summarize(evaluatedDevices, cveDetail = []) {
   const macs = evaluatedDevices.filter((d) => d.platform === "macOS");
   return {
