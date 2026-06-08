@@ -4,7 +4,7 @@ import { loadSofa } from "./lib/sofa.mjs";
 import { fetchAllDevices } from "./lib/simplemdm.mjs";
 import { buildMajorTables, evaluateDevice, aggregateCveDetail, summarize } from "./lib/evaluate.mjs";
 import {
-  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown,
+  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows,
 } from "./lib/render.mjs";
 import { mdToDocx } from "./lib/docx.mjs";
 
@@ -32,21 +32,23 @@ async function main() {
   const noCache = process.argv.includes("--no-network-cache");
 
   const apiKey = loadEnvKey();
+  if (!apiKey) { console.error("AUDIT FAILED: Missing SIMPLEMDM_API_KEY (set it in .env or the environment)"); process.exit(1); }
   const { macFeed, iosFeed } = await loadSofa(`${outDir}/.cache`, { noCache });
   const tables = buildMajorTables(macFeed, iosFeed);
   const devices = await fetchAllDevices(apiKey);
   const ev = devices.map((d) => evaluateDevice(d, tables));
   const cveDetail = aggregateCveDetail(ev, tables);
-  const summary = summarize(ev);
+  const summary = summarize(ev, cveDetail);
 
   mkdirSync(outDir, { recursive: true });
   const write = (name, content) => writeFileSync(`${outDir}/${name}`, content);
 
   if (["csv", "all", "md", "docx"].includes(format)) {
-    write("security-report.csv", toCsv([["name", "serial", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count"]], securityRows(ev)));
+    write("security-report.csv", toCsv([["name", "serial", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count", "last_seen"]], securityRows(ev)));
     write("need-updates.csv", toCsv([["name", "serial", "model", "current", "path", "target", "replace"]], needUpdateRows(ev)));
-    write("all-devices.csv", toCsv([["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect"]], allDeviceRows(ev)));
+    write("all-devices.csv", toCsv([["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect", "last_seen"]], allDeviceRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
+    write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest"]], vulnerabilityRows(tables, ev)));
   }
 
   const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr);

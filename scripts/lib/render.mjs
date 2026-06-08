@@ -1,3 +1,5 @@
+import { compareVersions } from "./evaluate.mjs";
+
 function esc(v) {
   const s = v === null || v === undefined ? "" : String(v);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -16,6 +18,7 @@ export function securityRows(ev) {
     name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
     findings: d.findings.join("; "), unfixed_cves: d.cvesBehind ?? "",
     exploited: d.exploitedBehind ?? "", fail_count: d.failCount,
+    last_seen: d.lastSeen ?? "",
   }));
 }
 
@@ -32,7 +35,32 @@ export function allDeviceRows(ev) {
     name: d.name, serial: d.serial, model: d.model, platform: d.platform, os: d.osVersion,
     filevault: d.filevaultOk ? "ok" : "off", sip: d.sipOk ? "ok" : "off",
     firewall: d.firewallOk ? "ok" : "off", xprotect: d.xprotect.status,
+    last_seen: d.lastSeen ?? "",
   }));
+}
+
+export function vulnerabilityRows(tables, ev) {
+  const rows = [];
+  for (const [track, map, platforms] of [
+    ["macOS", tables.macOS, ["macOS"]],
+    ["iOS/iPadOS", tables.ios, ["iOS", "iPadOS"]],
+  ]) {
+    for (const info of [...map.values()].sort((a, b) => b.major - a.major)) {
+      for (const r of info.releases) {
+        const devicesOnRelease = ev.filter((d) => platforms.includes(d.platform) && d.osVersion === r.ver).length;
+        let unfixedToLatest = 0;
+        for (const r2 of info.releases) {
+          if (compareVersions(r2.ver, r.ver) > 0) unfixedToLatest += r2.cves;
+        }
+        rows.push({
+          version: r.ver, track, date: r.date, cves_fixed: r.cves,
+          actively_exploited: r.exploited, devices_on_release: devicesOnRelease,
+          unfixed_to_latest: unfixedToLatest,
+        });
+      }
+    }
+  }
+  return rows;
 }
 
 export function cveRows(cveDetail) {
