@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-07
+
 ### Added
 - **Fleet Audit (`/audit`)** — a self-contained command (`scripts/sofa-audit.mjs` + the `/audit`
   Claude Code skill) that joins the live SimpleMDM device inventory with the
