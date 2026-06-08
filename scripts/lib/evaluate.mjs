@@ -27,6 +27,33 @@ export function detectPlatform(device) {
   return "unknown";
 }
 
+export function recommendTarget(version, model, tables) {
+  const ceiling = tables.modelMaxMajor.get(model) ?? null;
+  const supported = tables.supportedMacMajors; // macOS only
+  const currentMajor = parseVersion(version)[0];
+  if (ceiling === null) {
+    return { target: null, path: [version], replace: false };
+  }
+  // Supported majors the hardware can run, ascending, that are >= currentMajor
+  const reachable = supported
+    .filter((m) => m <= ceiling)
+    .sort((a, b) => a - b);
+  if (reachable.length === 0) {
+    return { target: null, path: [version], replace: true }; // capped below supported
+  }
+  const path = [version];
+  for (const m of reachable) {
+    if (m > currentMajor) path.push(tables.macOS.get(m).latest);
+  }
+  // same-major minor update
+  if (path.length === 1) {
+    const info = tables.macOS.get(currentMajor);
+    if (info && compareVersions(version, info.latest) < 0) path.push(info.latest);
+  }
+  const target = path.length > 1 ? path[path.length - 1] : null;
+  return { target, path, replace: false };
+}
+
 function buildMajorMap(feed) {
   const map = new Map();
   for (const osv of feed.OSVersions ?? []) {

@@ -64,3 +64,22 @@ test("assessOS computes behind counts and status", () => {
   const unknown = assessOS("", "macOS", t);
   assert.equal(unknown.status, "unknown");
 });
+
+import { recommendTarget } from "../scripts/lib/evaluate.mjs";
+
+test("recommendTarget builds supported upgrade path", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  // Mac14,3 ceiling 26, currently 14.6.1 -> 15.7.7 -> 26.5.1
+  const r1 = recommendTarget("14.6.1", "Mac14,3", t);
+  assert.equal(r1.replace, false);
+  assert.equal(r1.target, "26.5.1");
+  assert.deepEqual(r1.path, ["14.6.1", "15.7.7", "26.5.1"]);
+
+  // currently 26.0 -> only minor update to 26.5.1
+  const r2 = recommendTarget("26.0", "Mac14,3", t);
+  assert.deepEqual(r2.path, ["26.0", "26.5.1"]);
+
+  // unknown model -> replace=false but target null, path just current
+  const r3 = recommendTarget("13.0", "UnknownModel", t);
+  assert.equal(r3.target, null);
+});
