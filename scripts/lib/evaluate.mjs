@@ -44,7 +44,7 @@ export function evaluateDevice(device, tables) {
   // OS
   if (os.status === "outdated") {
     findings.push(`OS outdated (${os.cvesBehind} CVEs${os.exploitedBehind ? `, ${os.exploitedBehind} exploited` : ""})`);
-  } else if (os.status === "eol") {
+  } else if (os.status === "eol" || os.status === "untracked") {
     findings.push("OS end-of-life");
   }
 
@@ -66,10 +66,17 @@ export function evaluateDevice(device, tables) {
       ? { target: os.latest, path: [osVersion, os.latest].filter(Boolean), replace: false }
       : { target: null, path: [osVersion], replace: false };
 
+  // Latest available for this hardware: latestMinor = latest of the device's
+  // current major track; latestMajor = latest of the newest major it can run.
+  const map = isMac ? tables.macOS : tables.ios;
+  const maxMajor = isMac ? (tables.modelMaxMajor.get(device.model ?? "") ?? null) : parseVersion(osVersion)[0];
+  const latestMajor = maxMajor != null ? (map.get(maxMajor)?.latest ?? null) : null;
+
   return {
-    id: device.id, name: device.name ?? "", serial: device.serial ?? device.serial_number ?? "",
+    id: device.id, name: device.name ?? "", deviceName: device.device_name ?? "",
+    serial: device.serial ?? device.serial_number ?? "",
     model: device.model ?? "", osVersion, platform,
-    osStatus: os.status, latest: os.latest,
+    osStatus: os.status, latest: os.latest, latestMinor: os.latest, latestMajor, maxMajor,
     recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
     filevaultOk, sipOk, firewallOk, xprotect,
     findings, failCount: findings.length,
@@ -141,8 +148,9 @@ export function assessOS(version, platform, tables) {
   const supported = platform === "macOS" ? tables.supportedMacMajors : tables.supportedIosMajors;
   const major = parseVersion(version)[0];
   const info = map.get(major);
-  if (!info || !supported.includes(major)) {
-    return { status: "eol", latest: info?.latest ?? null, releasesBehind: null, cvesBehind: null, exploitedBehind: null, isLatest: false };
+  if (!info) {
+    // Major not present in the SOFA feed at all (e.g. macOS 10/11) -> not measurable.
+    return { status: "untracked", latest: null, releasesBehind: null, cvesBehind: null, exploitedBehind: null, isLatest: false, supportedMajor: false };
   }
   let releasesBehind = 0, cvesBehind = 0, exploitedBehind = 0;
   for (const r of info.releases) {
@@ -151,19 +159,29 @@ export function assessOS(version, platform, tables) {
     }
   }
   const isLatest = compareVersions(version, info.latest) >= 0;
-  return { status: isLatest ? "current" : "outdated", latest: info.latest, releasesBehind, cvesBehind, exploitedBehind, isLatest };
+  // CVE counts are computed for any major present in the feed (including EOL
+  // ones, up to that major's final release). `status` still flags EOL majors.
+  const supportedMajor = supported.includes(major);
+  const status = !supportedMajor ? "eol" : (isLatest ? "current" : "outdated");
+  return { status, latest: info.latest, releasesBehind, cvesBehind, exploitedBehind, isLatest, supportedMajor };
+}
+
+// Map model identifier (e.g. "MacBookPro15,2", "Mac16,5") -> highest macOS major
+// it supports, from SOFA's top-level Models map (Latest.SupportedDevices uses
+// board IDs and does NOT match SimpleMDM model identifiers).
+function buildModelMaxMajor(macFeed) {
+  const m = new Map();
+  for (const [id, info] of Object.entries(macFeed.Models ?? {})) {
+    const oss = info.OSVersions ?? [];
+    if (oss.length) m.set(id, Math.max(...oss));
+  }
+  return m;
 }
 
 export function buildMajorTables(macFeed, iosFeed) {
   const macOS = buildMajorMap(macFeed);
   const ios = buildMajorMap(iosFeed);
-  const modelMaxMajor = new Map();
-  for (const info of macOS.values()) {
-    for (const model of info.supportedDevices) {
-      const prev = modelMaxMajor.get(model) ?? 0;
-      if (info.major > prev) modelMaxMajor.set(model, info.major);
-    }
-  }
+  const modelMaxMajor = buildModelMaxMajor(macFeed);
   return {
     macOS,
     ios,
@@ -202,7 +220,8 @@ export function aggregateCveDetail(evaluatedDevices, tables) {
 
 // One row PER DEVICE, with that device's unfixed CVEs collapsed into a single
 // multi-line `cves` cell (e.g. "🔴 CVE-2025-0001 (→15.7.7)\nCVE-2025-0002 (→15.7.7)").
-// Only enumerable for devices on a supported major (EOL majors have no newer release to diff).
+// Enumerable for any major present in the feed, INCLUDING EOL majors (up to that
+// major's final release). Only majors absent from the feed entirely are skipped.
 export function deviceCveRows(evaluatedDevices, tables) {
   const rows = [];
   for (const d of evaluatedDevices) {
@@ -210,9 +229,7 @@ export function deviceCveRows(evaluatedDevices, tables) {
     const isIos = d.platform === "iOS" || d.platform === "iPadOS";
     if (!isMac && !isIos) continue;
     const map = isMac ? tables.macOS : tables.ios;
-    const supported = isMac ? tables.supportedMacMajors : tables.supportedIosMajors;
     const major = parseVersion(d.osVersion)[0];
-    if (!supported.includes(major)) continue;
     const info = map.get(major);
     if (!info) continue;
     const cves = [];
@@ -238,7 +255,7 @@ export function summarize(evaluatedDevices, cveDetail = []) {
   return {
     total: evaluatedDevices.length,
     withIssues: evaluatedDevices.filter((d) => d.failCount > 0).length,
-    osOutdated: evaluatedDevices.filter((d) => d.osStatus === "outdated" || d.osStatus === "eol").length,
+    osOutdated: evaluatedDevices.filter((d) => d.osStatus === "outdated" || d.osStatus === "eol" || d.osStatus === "untracked").length,
     noFileVault: macs.filter((d) => !d.filevaultOk).length,
     noSip: macs.filter((d) => !d.sipOk).length,
     noFirewall: macs.filter((d) => !d.firewallOk).length,

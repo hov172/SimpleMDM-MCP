@@ -179,6 +179,23 @@ test("vulnerabilityRows lists releases with unfixed-to-latest", () => {
   assert.equal(r260.unfixed_to_latest, 2); // 26.5.1 fixes 2 CVEs newer than 26.0
 });
 
+test("modelMaxMajor comes from SOFA Models; evaluateDevice exposes latestMinor/latestMajor", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  assert.equal(t.modelMaxMajor.get("Mac14,3"), 26);
+  // Mac on 26.0, model max major 26 -> latestMinor & latestMajor both 26.5.1
+  const e = evaluateDevice({ id: 1, model: "Mac14,3", osVersion: "26.0" }, t);
+  assert.equal(e.latestMinor, "26.5.1");
+  assert.equal(e.latestMajor, "26.5.1");
+});
+
+test("EOL-major device still gets an unfixed-CVE count (not null)", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  // Ventura 13 is in the feed but not actively supported -> status eol, count computed.
+  const e = evaluateDevice({ id: 3, model: "iMac21,1", osVersion: "13.7.8" }, t);
+  assert.equal(e.osStatus, "eol");
+  assert.equal(typeof e.cvesBehind, "number"); // computed, not null
+});
+
 import { deviceCveRows } from "../scripts/lib/evaluate.mjs";
 
 test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", () => {

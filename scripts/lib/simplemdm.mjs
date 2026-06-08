@@ -31,6 +31,7 @@ function flatten(d) {
   return {
     id: d.id,
     name: a.name,
+    device_name: a.device_name,
     serial: a.serial_number,
     model: a.product_name || a.model,
     osVersion: a.os_version,

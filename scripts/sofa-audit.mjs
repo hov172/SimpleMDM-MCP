@@ -46,7 +46,7 @@ async function main() {
   if (["csv", "all", "md", "docx"].includes(format)) {
     write("security-report.csv", toCsv([["name", "serial", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count", "last_seen"]], securityRows(ev)));
     write("need-updates.csv", toCsv([["name", "serial", "model", "current", "path", "target", "replace"]], needUpdateRows(ev)));
-    write("all-devices.csv", toCsv([["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect", "last_seen"]], allDeviceRows(ev)));
+    write("all-devices.csv", toCsv([["name", "device_name", "serial", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
     write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest", "cves"]], vulnerabilityRows(tables, ev)));
     write("device-cves.csv", toCsv([["name", "serial", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(ev, tables)));
