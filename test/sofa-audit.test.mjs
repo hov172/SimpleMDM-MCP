@@ -181,17 +181,20 @@ test("vulnerabilityRows lists releases with unfixed-to-latest", () => {
 
 import { deviceCveRows } from "../scripts/lib/evaluate.mjs";
 
-test("deviceCveRows lists each device's specific missing CVEs", () => {
+test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   const ev = devices.map(d => evaluateDevice(d, t));
   const rows = deviceCveRows(ev, t);
-  // device id 1 (serial AAA1) on 26.0 is missing the 2 CVEs fixed in 26.5.1
-  const behind = rows.filter(r => r.serial === "AAA1");
-  assert.equal(behind.length, 2);
-  assert.equal(behind.every(r => r.fixed_in_version === "26.5.1"), true);
-  assert.ok(behind.some(r => r.cve_id === "CVE-2025-0001" && r.actively_exploited === true));
-  // current device id 2 (serial BBB2) on 26.5.1 has no missing CVEs
+  // device id 1 (serial AAA1) on 26.0 -> a single row, not one per CVE
+  const aaa1 = rows.filter(r => r.serial === "AAA1");
+  assert.equal(aaa1.length, 1);
+  assert.equal(aaa1[0].unfixed_count, 2);
+  assert.equal(aaa1[0].exploited_count, 1);
+  assert.match(aaa1[0].cves, /CVE-2025-0001/);
+  assert.match(aaa1[0].cves, /🔴/);   // exploited CVE marked
+  assert.match(aaa1[0].cves, /\n/);    // multiple CVEs on separate lines in one cell
+  // current device id 2 (serial BBB2) on 26.5.1 -> no row
   assert.equal(rows.filter(r => r.serial === "BBB2").length, 0);
-  // EOL device id 3 (serial CCC3, macOS 13) is not enumerable -> no rows
+  // EOL device id 3 (serial CCC3, macOS 13) not enumerable -> no row
   assert.equal(rows.filter(r => r.serial === "CCC3").length, 0);
 });
