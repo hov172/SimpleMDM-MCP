@@ -44,3 +44,23 @@ test("buildMajorTables builds majors, xprotect, supported, model map", () => {
   const r260 = t.macOS.get(26).releases.find(r => r.ver === "26.0");
   assert.deepEqual(r260.cveList.find(c => c.id === "CVE-2025-0001"), { id: "CVE-2025-0001", exploited: true });
 });
+
+import { assessOS } from "../scripts/lib/evaluate.mjs";
+
+test("assessOS computes behind counts and status", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const a = assessOS("26.0", "macOS", t);
+  assert.equal(a.status, "outdated");
+  assert.equal(a.latest, "26.5.1");
+  assert.equal(a.cvesBehind, 2);
+  assert.equal(a.exploitedBehind, 1);
+
+  const cur = assessOS("26.5.1", "macOS", t);
+  assert.equal(cur.status, "current");
+
+  const eol = assessOS("13.7.8", "macOS", t);
+  assert.equal(eol.status, "eol"); // major 13 not in supportedMacMajors
+
+  const unknown = assessOS("", "macOS", t);
+  assert.equal(unknown.status, "unknown");
+});
