@@ -26,6 +26,7 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 - `cve-detail.csv` — per-CVE catalog with devices-exposed counts.
 - `device-cves.csv` — per device, every CVE it is still missing (one multi-line cell).
 - `full-audit.md` / `full-audit.docx` — combined report (docx needs pandoc).
+- For a print-ready PDF, after the audit run `scripts/make-audit-pdf.sh [audit-dir]` (pandoc + headless Chrome; A3 landscape, full-width tables).
 
 ## Notes
 - Read-only: the engine performs no SimpleMDM writes; a read-only `SIMPLEMDM_API_KEY` in `.env` is enough.

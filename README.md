@@ -925,6 +925,19 @@ OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Out
 - **XProtect Outdated** — Macs whose XProtect version is below SOFA's latest. Requires the custom attribute below; when it isn't collected this reads **`N/A (not set up)`** rather than `0`.
 - **Unfixed CVEs** — number of **devices** missing at least one CVE fix.
 
+### PDF export (optional)
+
+The audit emits Markdown and Word directly. For a print-ready **PDF** (A3 landscape,
+full-width, content-sized columns), run the generator after an audit:
+
+```bash
+scripts/make-audit-pdf.sh                       # newest reports/audit-*/
+scripts/make-audit-pdf.sh reports/audit-2026-06-08
+```
+
+It renders `full-audit.md → full-audit.pdf` via `pandoc` + a headless Chromium-based
+browser (Chrome / Edge / Chromium). Requires `pandoc` and one of those browsers installed.
+
 ### XProtect checks (optional)
 
 XProtect version isn't exposed by the SimpleMDM device API, so the two XProtect checks only populate
