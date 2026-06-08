@@ -13,3 +13,6 @@ dist/
 .verify.out
 .DS_Store
 .prd-current.md
+
+# Generated audit output — local only, never committed (contains live tenant data + secrets)
+reports/
