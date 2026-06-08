@@ -1,0 +1,11 @@
+{
+  "OSVersions": [
+    { "OSVersion": "26",
+      "Latest": { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "SupportedDevices": [] },
+      "SecurityReleases": [
+        { "ProductVersion": "26.5.1", "ReleaseDate": "2026-05-31T00:00:00Z", "UniqueCVEsCount": 0, "CVEs": {}, "ActivelyExploitedCVEs": [] },
+        { "ProductVersion": "26.4.2", "ReleaseDate": "2026-04-01T00:00:00Z", "UniqueCVEsCount": 2,
+          "CVEs": { "CVE-2026-3001": false, "CVE-2026-3002": false }, "ActivelyExploitedCVEs": [] }
+      ] }
+  ]
+}
