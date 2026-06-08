@@ -18,7 +18,8 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 
 ## Outputs (in `reports/audit-<today>/`)
 - `summary.txt` — headline breakdown.
-- `all-devices.csv` — full inventory: name, device_name, serial, os_version, latest_minor, latest_major, unfixed_cves, product, FV/SIP/FW/XP, last_seen.
+- `all-devices.csv` — full inventory: name, device_name, serial, device_group, os_version, latest_minor, latest_major, unfixed_cves, product, FV/SIP/FW/XP, last_seen.
+- `by-group.csv` — per device-group rollup (devices, os_outdated, no_filevault, no_sip, no_firewall, unfixed_cve_devices).
 - `security-report.csv` — devices with issues + findings.
 - `need-updates.csv` — per-device upgrade paths.
 - `vulnerability-check.csv` — per-release CVEs (with a multi-line CVE cell).
