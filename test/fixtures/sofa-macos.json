@@ -1,8 +1,8 @@
 {
   "XProtectPlistConfigData": { "com.apple.XProtect": "5347" },
   "Models": {
-    "Mac14,3": { "MarketingName": "Mac mini" },
-    "iMac21,1": { "MarketingName": "iMac" }
+    "Mac14,3": { "MarketingName": "Mac mini", "OSVersions": [26, 15, 14] },
+    "iMac21,1": { "MarketingName": "iMac", "OSVersions": [26, 15, 14] }
   },
   "OSVersions": [
     { "OSVersion": "Tahoe 26",
