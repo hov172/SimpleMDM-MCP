@@ -41,3 +41,45 @@ export function cveRows(cveDetail) {
     actively_exploited: c.actively_exploited, devices_still_exposed: c.devices_still_exposed,
   }));
 }
+
+function mdTable(cols, rows) {
+  const head = `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |`;
+  const body = rows.map((r) => `| ${cols.map((c) => String(r[c] ?? "")).join(" | ")} |`).join("\n");
+  return rows.length ? `${head}\n${body}` : "_none_";
+}
+
+export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
+  const out = [];
+  out.push(`# SOFA Fleet Audit — ${dateStr}\n`);
+
+  out.push("## Security Report\n");
+  out.push(`Devices with issues: **${summary.withIssues}** / ${summary.total}. ` +
+    `OS Outdated ${summary.osOutdated} · No FileVault ${summary.noFileVault} · ` +
+    `No SIP ${summary.noSip} · No Firewall ${summary.noFirewall} · ` +
+    `XProtect Outdated ${summary.xprotectOutdated} · Unfixed CVEs ${summary.unfixedCves}\n`);
+  out.push(mdTable(["name", "serial", "os", "findings", "unfixed_cves", "fail_count"], securityRows(ev)) + "\n");
+
+  out.push("## Vulnerability Check\n");
+  for (const [track, map] of [["macOS", tables.macOS], ["iOS/iPadOS", tables.ios]]) {
+    out.push(`### ${track}\n`);
+    for (const info of [...map.values()].sort((a, b) => b.major - a.major)) {
+      for (const r of info.releases) {
+        const devs = ev.filter((d) => d.osVersion === r.ver).length;
+        out.push(`- **${r.ver}** (${r.date}) — ${r.cves} CVEs, ${r.exploited} exploited, ${devs} device(s)`);
+        if (r.cveList.length) {
+          const list = r.cveList.map((c) => (c.exploited ? `🔴 ${c.id}` : c.id)).join(", ");
+          out.push(`  - ${list}`);
+        }
+      }
+    }
+  }
+  out.push("");
+
+  out.push("## Need Updates\n");
+  out.push(mdTable(["name", "serial", "current", "path", "target", "replace"], needUpdateRows(ev)) + "\n");
+
+  out.push("## All Devices\n");
+  out.push(mdTable(["name", "serial", "model", "platform", "os", "filevault", "sip", "firewall", "xprotect"], allDeviceRows(ev)) + "\n");
+
+  return out.join("\n");
+}
