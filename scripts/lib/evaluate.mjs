@@ -240,7 +240,7 @@ export function deviceCveRows(evaluatedDevices, tables) {
       }
     }
     if (cves.length === 0) continue;
-    const lines = cves.map((c) => `${c.exploited ? "🔴 " : ""}${c.id} (→${c.fixed})`);
+    const lines = cves.map((c) => `${c.id} (->${c.fixed})${c.exploited ? " [exploited]" : ""}`);
     rows.push({
       name: d.name, serial: d.serial, model: d.model, os: d.osVersion,
       unfixed_count: cves.length,
