@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-06-08
+
+### Added
+- Reproducible PDF export for the audit report: `scripts/make-audit-pdf.sh`
+  (+ `scripts/audit-pdf.head.html`) renders `full-audit.md → full-audit.pdf`
+  via pandoc + a headless Chromium browser, in A3 landscape with full page
+  width and dynamic, content-sized columns (so the `findings` and other wide
+  columns expand instead of being cramped into equal widths).
+
 ## [0.11.1] - 2026-06-08
 
 ### Fixed
