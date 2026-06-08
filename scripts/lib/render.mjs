@@ -32,7 +32,7 @@ export function needUpdateRows(ev) {
 
 // Mark per the screenshot: ✓ ok, ✗ off/fail, — not-applicable/not-collected.
 function mark(ok) { return ok ? "✓" : "✗"; }
-function xpMark(status) { return status === "ok" ? "✓" : status === "absent" ? "—" : "✗"; }
+function xpMark(status) { return status === "ok" ? "✓" : status === "absent" ? "N/A" : "✗"; }
 
 export function allDeviceRows(ev) {
   return ev.map((d) => ({
@@ -90,7 +90,8 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
   out.push(`Devices with issues: **${summary.withIssues}** / ${summary.total}. ` +
     `OS Outdated ${summary.osOutdated} · No FileVault ${summary.noFileVault} · ` +
     `No SIP ${summary.noSip} · No Firewall ${summary.noFirewall} · ` +
-    `XProtect Outdated ${summary.xprotectOutdated} · Unfixed CVEs ${summary.unfixedCves}\n`);
+    `XProtect Outdated ${summary.xprotectCollected ? summary.xprotectOutdated : "N/A (not set up)"} · ` +
+    `Unfixed CVEs ${summary.unfixedCves}\n`);
   out.push(mdTable(["name", "serial", "os", "findings", "unfixed_cves", "fail_count"], securityRows(ev)) + "\n");
 
   out.push("## Vulnerability Check\n");

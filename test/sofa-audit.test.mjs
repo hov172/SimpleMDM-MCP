@@ -143,6 +143,20 @@ test("summarize produces headline counts", () => {
   assert.equal(typeof s.noFirewall, "number");
   // devices with >=1 unfixed CVE: only id1 (26.0 behind 26.5.1)
   assert.equal(s.unfixedCves, 1);
+  // fixtures include devices with xprotect_version -> collected
+  assert.equal(s.xprotectCollected, true);
+});
+
+test("xprotectCollected is false when no device reports xprotect_version", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = [
+    evaluateDevice({ id: 1, model: "Mac14,3", osVersion: "26.0" }, t),       // no xprotect_version
+    evaluateDevice({ id: 2, model: "Mac14,3", osVersion: "26.5.1" }, t),
+  ];
+  const s = summarize(ev);
+  assert.equal(s.xprotectCollected, false); // -> headline renders "N/A (not set up)"
+  // all-devices xp cell reads N/A when not collected
+  assert.equal(allDeviceRows(ev)[0].xp, "N/A");
 });
 
 import { toCsv, securityRows, allDeviceRows, cveRows } from "../scripts/lib/render.mjs";
