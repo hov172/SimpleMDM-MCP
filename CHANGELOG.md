@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-06-08
+
 ### Changed
 - Audit report **Vulnerability Check** is now a clean per-release **table**
   (`version, date, cves_fixed, actively_exploited, devices_on_release,
