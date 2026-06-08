@@ -59,7 +59,7 @@ async function main() {
   write("summary.txt",
     `SOFA Audit ${dateStr}\nDevices: ${summary.total} (issues: ${summary.withIssues})\n` +
     `OS Outdated ${summary.osOutdated} | No FileVault ${summary.noFileVault} | No SIP ${summary.noSip} | ` +
-    `No Firewall ${summary.noFirewall} | XProtect Outdated ${summary.xprotectOutdated} | Unfixed CVEs ${summary.unfixedCves}\n`);
+    `No Firewall ${summary.noFirewall} | XProtect Outdated ${summary.xprotectCollected ? summary.xprotectOutdated : "N/A (not set up)"} | Unfixed CVEs ${summary.unfixedCves}\n`);
 
   console.log(`Audit written to ${outDir}/`);
   console.log(readFileSync(`${outDir}/summary.txt`, "utf8"));
