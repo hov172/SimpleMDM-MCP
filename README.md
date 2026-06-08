@@ -912,7 +912,7 @@ tenant data and are never committed):
 ### The four sections
 
 1. **Security Report** — devices with any issue (outdated OS, FileVault/SIP/Firewall off, XProtect outdated), with per-device findings.
-2. **Vulnerability Check** — per macOS/iOS release: CVEs fixed, actively-exploited, and the CVE IDs.
+2. **Vulnerability Check** — a per-release table (CVEs fixed, actively-exploited, devices on the release, unfixed-to-latest); the actual CVE IDs per release are in `cve-detail.csv` / `vulnerability-check.csv`.
 3. **Need Updates** — devices needing updates with supported upgrade paths (e.g. `14.6.1 → 15.7.7 → 26.5.1`); hardware that can't reach a supported macOS is flagged **REPLACE**.
 4. **All Devices** — the complete inventory table (see `all-devices.csv` above), plus a **By Device Group** rollup so you can batch remediation by group.
 

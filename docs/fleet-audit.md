@@ -170,7 +170,7 @@ contain live tenant data and are never committed.
 ### Report sections (`full-audit.md`)
 
 1. **Security Report** — every device with an issue, with its findings, CVE count, and group.
-2. **Vulnerability Check** — per macOS/iOS release: CVEs fixed, actively-exploited, devices on it, and the CVE IDs (capped per release, with a pointer to `cve-detail.csv`).
+2. **Vulnerability Check** — a per-release table: CVEs fixed, actively-exploited, devices on the release, and unfixed-to-latest. The actual CVE IDs per release live in `cve-detail.csv` / `vulnerability-check.csv`.
 3. **Need Updates** — devices needing updates with their supported upgrade paths.
 4. **By Device Group** — the `by-group.csv` rollup, for batching remediation by group.
 5. **All Devices** — the complete inventory table.
