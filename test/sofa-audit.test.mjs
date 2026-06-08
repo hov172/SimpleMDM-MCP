@@ -110,6 +110,12 @@ test("evaluateDevice composes findings", () => {
   assert.equal(ipad.filevaultOk, true); // N/A treated as not-a-failure off-platform
 });
 
+test("evaluateDevice: current non-Mac has no upgrade target", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ipadCurrent = evaluateDevice({ id: 9, model: "iPad13,1", osVersion: "26.5.1" }, t);
+  assert.equal(ipadCurrent.recommended.target, null);
+});
+
 import { aggregateCveDetail, summarize } from "../scripts/lib/evaluate.mjs";
 const devices = JSON.parse(readFileSync(new URL("./fixtures/devices.json", import.meta.url)));
 
@@ -127,12 +133,13 @@ test("aggregateCveDetail lists CVEs with exposure counts", () => {
 test("summarize produces headline counts", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   const ev = devices.map(d => evaluateDevice(d, t));
-  const s = summarize(ev);
+  const s = summarize(ev, aggregateCveDetail(ev, t));
   assert.equal(s.total, 4);
   assert.equal(typeof s.osOutdated, "number");
   assert.equal(typeof s.noFileVault, "number");
   assert.equal(typeof s.noSip, "number");
   assert.equal(typeof s.noFirewall, "number");
+  assert.equal(s.unfixedCves, 2);
 });
 
 import { toCsv, securityRows, allDeviceRows, cveRows } from "../scripts/lib/render.mjs";
@@ -150,16 +157,24 @@ test("section row builders return arrays of objects", () => {
   assert.ok(cveRows(aggregateCveDetail(ev, t)).length >= 1);
 });
 
-import { renderMarkdown } from "../scripts/lib/render.mjs";
+import { renderMarkdown, vulnerabilityRows } from "../scripts/lib/render.mjs";
 
 test("renderMarkdown produces all four sections + CVE detail", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   const ev = devices.map(d => evaluateDevice(d, t));
-  const md = renderMarkdown(ev, aggregateCveDetail(ev, t), summarize(ev), t, "2026-06-07");
+  const md = renderMarkdown(ev, aggregateCveDetail(ev, t), summarize(ev, aggregateCveDetail(ev, t)), t, "2026-06-07");
   assert.match(md, /## Security Report/);
   assert.match(md, /## Vulnerability Check/);
   assert.match(md, /## Need Updates/);
   assert.match(md, /## All Devices/);
   assert.match(md, /CVE-2025-0001/);          // CVE detail present
   assert.match(md, /🔴/);                      // exploited marker present
+});
+
+test("vulnerabilityRows lists releases with unfixed-to-latest", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = devices.map(d => evaluateDevice(d, t));
+  const rows = vulnerabilityRows(t, ev);
+  const r260 = rows.find(r => r.version === "26.0" && r.track === "macOS");
+  assert.equal(r260.unfixed_to_latest, 2); // 26.5.1 fixes 2 CVEs newer than 26.0
 });

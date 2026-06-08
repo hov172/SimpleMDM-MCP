@@ -60,7 +60,11 @@ export function evaluateDevice(device, tables) {
   if (xprotect.status === "outdated") findings.push(`XProtect outdated (${xprotect.value} -> ${tables.xprotectLatest})`);
   if (xprotect.status === "invalid") findings.push("XProtect invalid");
 
-  const recommended = isMac ? recommendTarget(osVersion, device.model ?? "", tables) : { target: os.latest, path: [osVersion, os.latest].filter(Boolean), replace: false };
+  const recommended = isMac
+    ? recommendTarget(osVersion, device.model ?? "", tables)
+    : os.status === "outdated"
+      ? { target: os.latest, path: [osVersion, os.latest].filter(Boolean), replace: false }
+      : { target: null, path: [osVersion], replace: false };
 
   return {
     id: device.id, name: device.name ?? "", serial: device.serial ?? device.serial_number ?? "",
@@ -69,6 +73,7 @@ export function evaluateDevice(device, tables) {
     recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
     filevaultOk, sipOk, firewallOk, xprotect,
     findings, failCount: findings.length,
+    lastSeen: device.last_seen_at ?? null,
   };
 }
 
@@ -195,7 +200,7 @@ export function aggregateCveDetail(evaluatedDevices, tables) {
   return rows;
 }
 
-export function summarize(evaluatedDevices) {
+export function summarize(evaluatedDevices, cveDetail = []) {
   const macs = evaluatedDevices.filter((d) => d.platform === "macOS");
   return {
     total: evaluatedDevices.length,
@@ -205,6 +210,6 @@ export function summarize(evaluatedDevices) {
     noSip: macs.filter((d) => !d.sipOk).length,
     noFirewall: macs.filter((d) => !d.firewallOk).length,
     xprotectOutdated: macs.filter((d) => d.xprotect.status === "outdated").length,
-    unfixedCves: evaluatedDevices.reduce((sum, d) => sum + (d.cvesBehind || 0), 0),
+    unfixedCves: new Set(cveDetail.filter((c) => c.devices_still_exposed > 0).map((c) => c.cve_id)).size,
   };
 }
