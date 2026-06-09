@@ -123,3 +123,32 @@ export function logRows(bundles) {
   rows.sort((x, y) => (x.at_iso === "" ? 1 : 0) - (y.at_iso === "" ? 1 : 0) || x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
   return rows;
 }
+
+export const STATUS_COLUMNS = ["at_iso", "at", "device_id", "serial_number", "device_name", "log_id",
+  "sc_channel", "sc_filevault_enabled", "sc_sw_install_state", "sc_pending_os", "sc_pending_build",
+  "sc_failure_count", "sc_failure_reason", "status_pretty"];
+
+export function statusSnapshotRows(bundles) {
+  const rows = [];
+  for (const b of bundles) {
+    const da = b.device.attributes ?? {};
+    for (const lg of b.logs ?? []) {
+      const a = lg.attributes ?? {};
+      if (a.event_type !== "status.changed") continue;
+      const md = a.metadata ?? {};
+      rows.push({
+        at_iso: toIso(a.at), at: s(a.at), device_id: s(b.device.id), serial_number: s(da.serial_number),
+        device_name: s(da.name), log_id: s(lg.id), sc_channel: s(md.channel),
+        sc_filevault_enabled: s(dig(md, "status", "diskmanagement", "filevault", "enabled")),
+        sc_sw_install_state: s(dig(md, "status", "softwareupdate", "install_state")),
+        sc_pending_os: s(dig(md, "status", "softwareupdate", "pending_version", "os_version")),
+        sc_pending_build: s(dig(md, "status", "softwareupdate", "pending_version", "build_version")),
+        sc_failure_count: s(dig(md, "status", "softwareupdate", "failure_reason", "count")),
+        sc_failure_reason: s(dig(md, "status", "softwareupdate", "failure_reason", "reason")),
+        status_pretty: JSON.stringify(md.status ?? {}, null, 2),
+      });
+    }
+  }
+  rows.sort((x, y) => x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
+  return rows;
+}

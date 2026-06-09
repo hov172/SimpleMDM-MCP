@@ -87,3 +87,15 @@ test("logRows are chronologically sorted, typed, and exclude the status blob", (
   assert.ok(!("status_pretty" in status), "main rows must not carry the full status blob");
   assert.ok(LOG_COLUMNS.includes("at_iso") && !LOG_COLUMNS.includes("status_pretty"));
 });
+
+import { statusSnapshotRows, STATUS_COLUMNS } from "../scripts/lib/logs.mjs";
+
+test("statusSnapshotRows isolate status.changed and carry a multi-line status_pretty cell", () => {
+  const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
+  const rows = statusSnapshotRows([bundle]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].sc_pending_build, "25D2128");
+  assert.ok(rows[0].status_pretty.includes("\n"), "status_pretty must be multi-line (pretty JSON)");
+  assert.match(rows[0].status_pretty, /softwareupdate/);
+  assert.ok(STATUS_COLUMNS.includes("status_pretty"));
+});
