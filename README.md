@@ -17,6 +17,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Enable write actions](#enable-write-actions)
 - [Examples](#examples)
 - [Fleet Audit (/audit)](#fleet-audit-audit)
+- [Device Logs Audit (/logs-audit)](#device-logs-audit-logs-audit)
 - [Tools](#tools)
 - [Resources](#resources)
 - [Prompts](#prompts)
@@ -52,7 +53,9 @@ Claude decides which tools to call and in what combination. You just ask the que
 
 For a one-shot, exportable fleet security report (OS currency, CVEs, FileVault/SIP/Firewall/XProtect),
 see the [`/audit` command](#fleet-audit-audit) — it joins your live fleet against the
-[SOFA](https://sofa.macadmins.io) feed and writes CSV / Markdown / Word files.
+[SOFA](https://sofa.macadmins.io) feed and writes CSV / Markdown / Word files. For a
+targeted, legal/forensic export of a device's **activity logs** (optionally combined with
+its security posture and software inventory), see [`/logs-audit`](#device-logs-audit-logs-audit).
 
 ---
 
@@ -461,6 +464,103 @@ XProtect version isn't exposed by the SimpleMDM device API, so the two XProtect 
 if you collect it into a custom attribute named `xprotect_version`. A ready-to-run collector and the
 exact setup steps are staged in `reports/xprotect/STAGING.md`. Until then, XProtect reports
 `N/A (not set up)` (and `N/A` per device) rather than `0` / false failures.
+
+---
+
+## Device Logs Audit (/logs-audit)
+
+A **targeted, legal/forensic** export of device **activity logs** from the SimpleMDM
+`/logs` feed for a selected set of devices — optionally combined with each device's
+security posture and software inventory. Where [`/audit`](#fleet-audit-audit) is
+fleet-wide and posture-oriented, `/logs-audit` is targeted and activity-oriented: it
+answers *what happened on these specific machines, when, and in what order*, and exports
+the result to CSV, raw JSON, a SHA-256 integrity manifest, and a detailed combined
+report (Markdown / HTML / Word / PDF).
+
+Like `/audit`, it talks **directly to the SimpleMDM API** (read-only) — no external app
+or service — and is a host-side script (`scripts/logs-audit.mjs`) plus a `/logs-audit`
+skill, not an MCP tool.
+
+> 📖 **Deep dive:** see [`docs/logs-audit.md`](docs/logs-audit.md) for the full output
+> reference, fidelity/disclosure notes, code map, and more examples.
+
+### Running it
+
+In Claude Code, ask for it (the **`/logs-audit`** skill maps your words to flags):
+
+> *"export the logs for serial ABC123"* &nbsp;·&nbsp; *"forensic log report for the last 10 devices seen, with security"* &nbsp;·&nbsp; *"audit the Faculty group's device logs"*
+
+Or run the engine directly — **exactly one selector** is required:
+
+```bash
+node scripts/logs-audit.mjs <selector> [flags]
+```
+
+| Selector | Meaning |
+|------|---------|
+| `--serial A,B,C` | specific devices by serial number (comma-separated) |
+| `--last-seen N` | the **N** most recently seen devices |
+| `--group "Name"` | every device in a device/assignment group of that name |
+| `--all` | the whole fleet — **requires `--confirm-all`** (heavy: one log fetch per device) |
+
+| Flag | Meaning |
+|------|---------|
+| `--with-inventory` | also export per-device inventory + installed apps + profiles |
+| `--with-security` | also run the SOFA evaluation on the selected devices (posture + CVEs) |
+| `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
+| `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
+
+**Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).
+`pandoc` is needed for `.docx`/`.html`/`.pdf`; the PDF prefers
+[WeasyPrint](https://weasyprint.org) (`brew install weasyprint`) for footer page numbers
+and falls back to headless Chrome.
+
+### Examples
+
+```bash
+# One device, every artifact (CSV + JSON + manifest + md/html/docx/pdf report)
+node scripts/logs-audit.mjs --serial C02ABC123XYZ --format all
+
+# The 10 most recently active devices, with security posture, full report
+node scripts/logs-audit.mjs --last-seen 10 --with-security --format all
+
+# A whole group, with inventory + security, data files only
+node scripts/logs-audit.mjs --group "Faculty" --with-inventory --with-security --format csv
+
+# Two specific devices into a named directory
+node scripts/logs-audit.mjs --serial ABC123,DEF456 --out reports/case-2026-06 --format all
+
+# Whole fleet (heavy — explicit acknowledgement required)
+node scripts/logs-audit.mjs --all --confirm-all --format csv
+```
+
+### Output
+
+Written to `reports/logs-audit-YYYY-MM-DD/` (which is **gitignored** — exports contain
+live tenant data and event history, and are never committed):
+
+| File | Contents |
+|------|----------|
+| `logs.csv` | one row per `/logs` event — chronologically sorted, verbatim `at` + sortable `at_iso`, device name/owner, typed metadata columns |
+| `logs-status-snapshots.csv` | one row per `status.changed` event; full snapshot externalized to a sidecar via the `status_json_file` column |
+| `status-snapshots/` | one `<serial>__<logid>.json` per `status.changed` event with the **full** device-status snapshot (kept out of the CSV so no cell is oversized) |
+| `logs-summary.csv` | per-device pivot + **coverage window** (event counts, first/last event, `span_days`) |
+| `raw-logs.json` | complete, unaltered per-device log records + export metadata |
+| `manifest.csv` | SHA-256 of every output (incl. each sidecar) + timezone/retention/completeness disclosures + any collection errors |
+| `summary.txt` | headline counts (devices, total events, per-type totals, failed devices) |
+| `inventory.csv`, `apps.csv`, `profiles.csv` | *(with `--with-inventory`)* per-device inventory / apps / profiles |
+| `security-posture.csv`, `device-cves.csv` | *(with `--with-security`)* SOFA posture + per-device outstanding CVEs |
+| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (fleet roll-up + per-device identity, security, activity, notable software-update events, inventory) |
+
+### Fidelity & disclosures
+
+Timestamps are reproduced **verbatim** (`at`) plus a sortable `at_iso` — the `/logs` API
+returns times in the account display timezone (`America/New_York`) with **no UTC offset**,
+so `at_iso` is the same wall-clock with **no shift and no UTC claim**. The feed is
+**retention-bounded** (the earliest event per device is the API's retention horizon, not
+device-lifetime history). Every file and snapshot sidecar is SHA-256-hashed in the
+manifest, which also records any devices that failed collection — all disclosed for legal
+defensibility.
 
 ---
 
