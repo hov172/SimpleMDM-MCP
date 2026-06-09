@@ -216,7 +216,11 @@ test("statusSnapshotRows returns empty array when logs contain only app.installi
   assert.deepEqual(statusSnapshotRows([bundle]), []);
 });
 
-import { flatten } from "../scripts/lib/simplemdm.mjs";
+import { flatten, fetchDeviceLogs } from "../scripts/lib/simplemdm.mjs";
+
+test("per-device fetchers reject a missing apiKey before any network call", async () => {
+  await assert.rejects(() => fetchDeviceLogs(null, "C02AAA111"), /Missing SIMPLEMDM_API_KEY/);
+});
 
 test("flatten exposes the evaluateDevice-compatible shape", () => {
   const d = flatten(RAW[1]); // Bob iMac, FileVault off, firewall off
