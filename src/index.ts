@@ -17,6 +17,25 @@ import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
 import { buildSafariBookmarksPayload, SAFARI_BOOKMARKS_DECLARATION_TYPE } from "./safariBookmarks.js";
+import {
+  APPLE_SCHEMA_SOURCE,
+  buildCertificateProfilePayload,
+  buildContentFilterProfilePayload,
+  buildCustomDeclarationPayload,
+  buildFileVaultEscrowProfilePayload,
+  buildFirewallProfilePayload,
+  buildMobileconfig,
+  buildPasscodeProfilePayload,
+  buildRestrictionsProfilePayload,
+  buildScepProfilePayload,
+  buildSoftwareUpdateSettingsDeclaration,
+  buildVpnProfilePayload,
+  buildWebClipProfilePayload,
+  buildWifiProfilePayload,
+  getAppleSchema,
+  listAppleSchemas,
+  validateApplePayload,
+} from "./appleSchemas.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -1185,6 +1204,170 @@ const TOOLS: Tool[] = [
     }}},
 
   // ══════════════════════════════════════════════════════════════════════════
+  // APPLE DEVICE-MANAGEMENT SCHEMAS (local curated seed)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "search_apple_device_management_schemas",
+    description: "Read — Search the local curated Apple device-management schema seed for profile payloads and DDM declarations. Use before building custom profiles/declarations so keys are schema-backed instead of guessed.",
+    inputSchema: { type: "object", properties: {
+      kind: { type: "string", enum: ["profile", "declaration"], description: "Restrict to profile payload schemas or DDM declaration schemas." },
+      query: { type: "string", description: "Search display name, identifier, and description." },
+      platform: { type: "string", description: "Restrict to a platform such as macOS, iOS, iPadOS, tvOS, or visionOS." },
+      limit: { type: "number", description: "Maximum results. Default 25, max 100." },
+    }}},
+
+  { name: "get_apple_device_management_schema",
+    description: "Read — Get one Apple profile payload or DDM declaration schema from the local curated seed, including required keys, enum values, platform support, and source path.",
+    inputSchema: { type: "object", required: ["identifier"], properties: {
+      identifier: { type: "string", description: "Apple payload/declaration identifier, e.g. com.apple.wifi.managed." },
+      kind: { type: "string", enum: ["profile", "declaration"], description: "Optional disambiguation." },
+    }}},
+
+  { name: "validate_apple_payload",
+    description: "Read — Validate a profile payload or DDM declaration payload object against the local curated Apple schema seed. Returns errors and warnings; does not call SimpleMDM.",
+    inputSchema: { type: "object", required: ["identifier", "payload"], properties: {
+      identifier: { type: "string", description: "Apple payload/declaration identifier." },
+      kind: { type: "string", enum: ["profile", "declaration"], description: "Schema kind. Default searches both, but explicit is safer." },
+      payload: { description: "Payload object, or a JSON object string." },
+    }}},
+
+  { name: "build_mobileconfig",
+    description: "Read — Build a .mobileconfig XML string from one or more Apple profile payload objects after schema-seed validation. Preview this output, then pass it to create_custom_configuration_profile if acceptable.",
+    inputSchema: { type: "object", required: ["display_name", "identifier", "payloads"], properties: {
+      display_name: { type: "string", description: "Top-level profile display name." },
+      identifier: { type: "string", description: "Top-level reverse-DNS profile identifier." },
+      organization: { type: "string" },
+      description: { type: "string" },
+      scope: { type: "string", enum: ["System", "User"], description: "Profile scope. Default System." },
+      payloads: { type: "array", minItems: 1, description: "Array of payload objects. Each requires PayloadType." },
+    }}},
+
+  { name: "build_custom_declaration_payload",
+    description: "Read — Build DDM declaration JSON after validating the Payload against the local curated Apple declaration schema seed. Returns declaration_type and simplemdm_payload for create_custom_declaration.",
+    inputSchema: { type: "object", required: ["declaration_type", "identifier", "payload"], properties: {
+      declaration_type: { type: "string", description: "Apple DDM declaration type, e.g. com.apple.configuration.safari.bookmarks." },
+      identifier: { type: "string", description: "Declaration Identifier value." },
+      server_token: { type: "string", description: "Optional ServerToken." },
+      payload: { description: "Declaration Payload object, or a JSON object string." },
+    }}},
+
+  { name: "build_wifi_profile_payload",
+    description: "Read — Build and validate a com.apple.wifi.managed payload object. Pass the returned payload to build_mobileconfig, then create_custom_configuration_profile.",
+    inputSchema: { type: "object", required: ["ssid"], properties: {
+      ssid: { type: "string", description: "Wi-Fi SSID." },
+      encryption_type: { type: "string", enum: ["WEP", "WPA", "WPA2", "WPA3", "Any", "None"], description: "Default WPA2." },
+      password: { type: "string", description: "Pre-shared key for personal networks." },
+      auto_join: { type: "boolean", description: "Default true." },
+      hidden_network: { type: "boolean" },
+      eap_client_configuration: { type: "object", description: "Enterprise EAP settings." },
+      proxy_type: { type: "string", enum: ["None", "Manual", "Auto"] },
+    }}},
+
+  { name: "build_firewall_profile_payload",
+    description: "Read — Build and validate a com.apple.security.firewall payload object for macOS.",
+    inputSchema: { type: "object", properties: {
+      enable_firewall: { type: "boolean", description: "Default true." },
+      block_all_incoming: { type: "boolean" },
+      enable_stealth_mode: { type: "boolean", description: "Default true." },
+      applications: { type: "array", description: "Optional app rules with BundleID and Allowed." },
+    }}},
+
+  { name: "build_passcode_profile_payload",
+    description: "Read — Build and validate a com.apple.mobiledevice.passwordpolicy payload object.",
+    inputSchema: { type: "object", properties: {
+      force_pin: { type: "boolean", description: "Require a passcode. Default true." },
+      min_length: { type: "number" },
+      min_complex_chars: { type: "number" },
+      max_failed_attempts: { type: "number" },
+      max_inactivity: { type: "number" },
+      allow_simple: { type: "boolean" },
+    }}},
+
+  { name: "build_software_update_settings_declaration",
+    description: "Read — Build and validate a com.apple.configuration.softwareupdate.settings DDM declaration. Use declaration_type + simplemdm_payload with create_custom_declaration.",
+    inputSchema: { type: "object", required: ["identifier"], properties: {
+      identifier: { type: "string", description: "Declaration Identifier value." },
+      server_token: { type: "string" },
+      automatic_actions: { type: "object", description: "AutomaticActions dictionary." },
+      deferrals: { type: "object", description: "Deferrals dictionary." },
+      rapid_security_response: { type: "object", description: "RapidSecurityResponse dictionary." },
+      beta: { type: "object", description: "Beta dictionary." },
+    }}},
+
+  { name: "build_restrictions_profile_payload",
+    description: "Read — Build and validate a com.apple.applicationaccess restrictions payload.",
+    inputSchema: { type: "object", properties: {
+      allow_app_installation: { type: "boolean" },
+      allow_camera: { type: "boolean" },
+      allow_cloud_backup: { type: "boolean" },
+      allow_diagnostic_submission: { type: "boolean" },
+      allow_safari: { type: "boolean" },
+    }}},
+
+  { name: "build_scep_profile_payload",
+    description: "Read — Build and validate a com.apple.security.scep certificate enrollment payload.",
+    inputSchema: { type: "object", required: ["url", "name"], properties: {
+      url: { type: "string", description: "SCEP server URL. HTTPS is recommended." },
+      name: { type: "string", description: "SCEP instance name." },
+      challenge: { type: "string" },
+      key_type: { type: "string", enum: ["RSA", "ECSECPrimeRandom"], description: "Default RSA." },
+      key_size: { type: "number" },
+      key_usage: { type: "number" },
+      retries: { type: "number" },
+      retry_delay: { type: "number" },
+      subject: { type: "array" },
+    }}},
+
+  { name: "build_certificate_profile_payload",
+    description: "Read — Build and validate a root certificate payload using base64/DER PayloadContent.",
+    inputSchema: { type: "object", required: ["payload_content"], properties: {
+      payload_content: { type: "string", description: "Certificate payload content." },
+      certificate_file_name: { type: "string" },
+    }}},
+
+  { name: "build_vpn_profile_payload",
+    description: "Read — Build and validate a com.apple.vpn.managed payload. Provider-specific VPN/IKEv2/IPSec dictionaries are passed through for schema validation.",
+    inputSchema: { type: "object", required: ["user_defined_name", "vpn_type"], properties: {
+      user_defined_name: { type: "string" },
+      vpn_type: { type: "string", enum: ["VPN", "IPSec", "IKEv2", "AlwaysOn"] },
+      vpn_sub_type: { type: "string" },
+      vpn: { type: "object" },
+      ikev2: { type: "object" },
+      ipsec: { type: "object" },
+      on_demand_enabled: { type: "boolean" },
+      on_demand_rules: { type: "array" },
+    }}},
+
+  { name: "build_webclip_profile_payload",
+    description: "Read — Build and validate a com.apple.webClip.managed payload.",
+    inputSchema: { type: "object", required: ["label", "url"], properties: {
+      label: { type: "string" },
+      url: { type: "string" },
+      is_removable: { type: "boolean" },
+      full_screen: { type: "boolean" },
+      icon: { type: "string", description: "Base64 icon data if used." },
+    }}},
+
+  { name: "build_content_filter_profile_payload",
+    description: "Read — Build and validate a com.apple.webcontent-filter payload.",
+    inputSchema: { type: "object", properties: {
+      filter_type: { type: "string", enum: ["BuiltIn", "Plugin"], description: "Default BuiltIn." },
+      auto_filter_enabled: { type: "boolean" },
+      permitted_urls: { type: "array" },
+      blacklisted_urls: { type: "array" },
+      whitelisted_bookmarks: { type: "array" },
+      plugin_bundle_id: { type: "string" },
+      server_address: { type: "string" },
+    }}},
+
+  { name: "build_filevault_escrow_profile_payload",
+    description: "Read — Build and validate a com.apple.security.FDERecoveryKeyEscrow payload.",
+    inputSchema: { type: "object", required: ["encrypt_cert_payload_uuid"], properties: {
+      encrypt_cert_payload_uuid: { type: "string", description: "UUID of the certificate payload used to encrypt recovery keys." },
+      location: { type: "string" },
+      device_key: { type: "string" },
+    }}},
+
+  // ══════════════════════════════════════════════════════════════════════════
   // CUSTOM CONFIGURATION PROFILES
   // ══════════════════════════════════════════════════════════════════════════
   { name: "list_custom_configuration_profiles",
@@ -1241,6 +1424,7 @@ const TOOLS: Tool[] = [
     description: "WRITE — Create a new custom declaration.",
     inputSchema: { type: "object", required: ["name", "payload"], properties: {
       name: { type: "string" },
+      declaration_type: { type: "string", description: "Apple DDM declaration type, e.g. com.apple.configuration.safari.bookmarks." },
       payload: { type: "string", description: "The declaration JSON payload as a string." },
       reinstall_after_os_update: { type: "boolean" },
       user_scope: { type: "boolean" },
@@ -1251,6 +1435,7 @@ const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["declaration_id"], properties: {
       declaration_id: { type: "string" },
       name: { type: "string" },
+      declaration_type: { type: "string" },
       payload: { type: "string" },
       reinstall_after_os_update: { type: "boolean" },
     }}},
@@ -2727,6 +2912,135 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
       requireWrites();
       return api(`/custom_attributes/${seg(args.attribute_name, "attribute_name")}/assignment_groups/${seg(args.group_id, "group_id")}`, { method: "PUT", body: j({ value: args.value }) });
 
+    // ── Apple device-management schema helpers ───────────────────────────────
+    case "search_apple_device_management_schemas":
+      return {
+        source: APPLE_SCHEMA_SOURCE,
+        schemas: listAppleSchemas(args),
+      };
+    case "get_apple_device_management_schema":
+      return {
+        source: APPLE_SCHEMA_SOURCE,
+        schema: getAppleSchema(args.identifier, args.kind),
+      };
+    case "validate_apple_payload":
+      return validateApplePayload({
+        identifier: args.identifier,
+        kind: args.kind,
+        payload: args.payload,
+      });
+    case "build_mobileconfig":
+      return buildMobileconfig({
+        display_name: args.display_name,
+        identifier: args.identifier,
+        organization: args.organization,
+        description: args.description,
+        scope: args.scope,
+        payloads: args.payloads,
+      });
+    case "build_custom_declaration_payload":
+      return buildCustomDeclarationPayload({
+        declaration_type: args.declaration_type,
+        identifier: args.identifier,
+        server_token: args.server_token,
+        payload: args.payload,
+      });
+    case "build_wifi_profile_payload":
+      return buildWifiProfilePayload({
+        ssid: args.ssid,
+        encryption_type: args.encryption_type,
+        password: args.password,
+        auto_join: args.auto_join,
+        hidden_network: args.hidden_network,
+        eap_client_configuration: args.eap_client_configuration,
+        proxy_type: args.proxy_type,
+      });
+    case "build_firewall_profile_payload":
+      return buildFirewallProfilePayload({
+        enable_firewall: args.enable_firewall,
+        block_all_incoming: args.block_all_incoming,
+        enable_stealth_mode: args.enable_stealth_mode,
+        applications: args.applications,
+      });
+    case "build_passcode_profile_payload":
+      return buildPasscodeProfilePayload({
+        force_pin: args.force_pin,
+        min_length: args.min_length,
+        min_complex_chars: args.min_complex_chars,
+        max_failed_attempts: args.max_failed_attempts,
+        max_inactivity: args.max_inactivity,
+        allow_simple: args.allow_simple,
+      });
+    case "build_software_update_settings_declaration":
+      return buildSoftwareUpdateSettingsDeclaration({
+        identifier: args.identifier,
+        server_token: args.server_token,
+        automatic_actions: args.automatic_actions,
+        deferrals: args.deferrals,
+        rapid_security_response: args.rapid_security_response,
+        beta: args.beta,
+      });
+    case "build_restrictions_profile_payload":
+      return buildRestrictionsProfilePayload({
+        allow_app_installation: args.allow_app_installation,
+        allow_camera: args.allow_camera,
+        allow_cloud_backup: args.allow_cloud_backup,
+        allow_diagnostic_submission: args.allow_diagnostic_submission,
+        allow_safari: args.allow_safari,
+      });
+    case "build_scep_profile_payload":
+      return buildScepProfilePayload({
+        url: args.url,
+        name: args.name,
+        challenge: args.challenge,
+        key_type: args.key_type,
+        key_size: args.key_size,
+        key_usage: args.key_usage,
+        retries: args.retries,
+        retry_delay: args.retry_delay,
+        subject: args.subject,
+      });
+    case "build_certificate_profile_payload":
+      return buildCertificateProfilePayload({
+        payload_content: args.payload_content,
+        certificate_file_name: args.certificate_file_name,
+      });
+    case "build_vpn_profile_payload":
+      return buildVpnProfilePayload({
+        user_defined_name: args.user_defined_name,
+        vpn_type: args.vpn_type,
+        vpn_sub_type: args.vpn_sub_type,
+        vpn: args.vpn,
+        ikev2: args.ikev2,
+        ipsec: args.ipsec,
+        on_demand_enabled: args.on_demand_enabled,
+        on_demand_rules: args.on_demand_rules,
+      });
+    case "build_webclip_profile_payload":
+      return buildWebClipProfilePayload({
+        label: args.label,
+        url: args.url,
+        is_removable: args.is_removable,
+        full_screen: args.full_screen,
+        icon: args.icon,
+      });
+    case "build_content_filter_profile_payload":
+      return buildContentFilterProfilePayload({
+        filter_type: args.filter_type,
+        auto_filter_enabled: args.auto_filter_enabled,
+        permitted_urls: args.permitted_urls,
+        blacklisted_urls: args.blacklisted_urls,
+        whitelisted_bookmarks: args.whitelisted_bookmarks,
+        plugin_bundle_id: args.plugin_bundle_id,
+        server_address: args.server_address,
+      });
+    case "build_filevault_escrow_profile_payload":
+      return buildFileVaultEscrowProfilePayload({
+        encrypt_cert_payload_uuid: args.encrypt_cert_payload_uuid,
+        location: args.location,
+        device_key: args.device_key,
+      });
+
     // ── Custom configuration profiles ─────────────────────────────────────────
     case "list_custom_configuration_profiles": {
       const r = await collectAllPages<AnyRecord>("/custom_configuration_profiles");
@@ -2756,7 +3070,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_custom_declaration": return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`);
     case "create_custom_declaration":
       requireWrites();
-      return api("/custom_declarations", { method: "POST", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update, user_scope: args.user_scope }) });
+      return api("/custom_declarations", { method: "POST", body: j({ name: args.name, declaration_type: args.declaration_type, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update, user_scope: args.user_scope }) });
     case "create_safari_bookmarks_declaration": {
       requireWrites();
       const bookmarksPayload = buildSafariBookmarksPayload({
@@ -2776,7 +3090,7 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     }
     case "update_custom_declaration":
       requireWrites();
-      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "PATCH", body: j({ name: args.name, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update }) });
+      return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "PATCH", body: j({ name: args.name, declaration_type: args.declaration_type, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update }) });
     case "delete_custom_declaration":
       requireWrites();
       return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`, { method: "DELETE" });

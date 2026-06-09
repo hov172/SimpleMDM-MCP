@@ -6,6 +6,30 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- Apple device-management schema helpers: search/detail tools over a local
+  runtime schema cache generated from Apple's public YAML schemas, curated
+  fallback data for high-value payloads, payload validation, generic
+  `.mobileconfig` generation, DDM declaration JSON generation, recursive
+  nested-key validation, and convenience builders for Wi-Fi, restrictions,
+  SCEP/certificates, VPN, web clips, content filter, FileVault escrow,
+  firewall, passcode, and software update settings. These helpers make custom
+  SimpleMDM profiles/declarations schema-backed without depending on the
+  third-party Apple Profile Builder app at runtime.
+- `scripts/sync-apple-device-schemas.mjs` now enumerates supported Apple repo
+  schema paths, parses fixture or upstream YAML with `yaml`, normalizes nested
+  dictionaries, arrays, enums, required keys, platform metadata, deprecations,
+  and defaults, and writes `data/apple-device-management/schema-cache.json`.
+- User-facing Apple schema helper workflow docs, fixture-backed schema sync
+  tests, a true MCP stdio smoke test for `initialize` plus `tools/list`, and a
+  static documented tool count guard.
+
+### Security
+- Generated Apple profiles and declarations should still be reviewed and tested
+  on a small device group before broad deployment; local schema validation can
+  catch structure and common semantic mistakes, but it is not a replacement for
+  Apple/SimpleMDM deployment testing.
+
 ## [0.12.1] - 2026-06-08
 
 ### Changed
