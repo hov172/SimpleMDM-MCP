@@ -132,7 +132,15 @@ async function main() {
 
   // summary.txt + stdout headline.
   const totalEvents = bundles.reduce((n, b) => n + b.logs.length, 0);
+  const byType = mr.reduce((acc, r) => {
+    acc.app_installing += r.app_installing; acc.profile_installed += r.profile_installed;
+    acc.status_changed += r.status_changed; acc.bootstrap_token_get += r.bootstrap_token_get;
+    return acc;
+  }, { app_installing: 0, profile_installed: 0, status_changed: 0, bootstrap_token_get: 0 });
+  const unparseableTimestamps = lr.filter((r) => r.at_iso === "").length;
   const head = [`Logs Audit ${dateStr}`, `Devices: ${bundles.length}`, `Total events: ${totalEvents}`,
+    `By type: app.installing ${byType.app_installing} | profile.installed ${byType.profile_installed} | status.changed ${byType.status_changed} | bootstrap_token.get ${byType.bootstrap_token_get}`,
+    `Unparseable timestamps: ${unparseableTimestamps}`,
     errors.length ? `Failed devices: ${errors.length} (export is PARTIAL)` : `Failed devices: 0`,
     `Output: ${outDir}`].join("\n");
   writeFileSync(`${outDir}/summary.txt`, head + "\n");
