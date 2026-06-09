@@ -254,4 +254,5 @@ test("renderDetailedReport includes per-device CVE findings when securityEval is
   const md = renderDetailedReport([bundle], [{ serial: "C02AAA111", osVersion: "15.6.1", cvesBehind: 12, exploitedBehind: 2, findings: ["OS outdated", "FileVault disabled"] }], "2026-06-09");
   assert.match(md, /Unfixed CVEs: \*\*12\*\* \(2 actively exploited\)/);
   assert.match(md, /Findings: OS outdated; FileVault disabled/);
+  assert.match(md, /\n\n> Findings:/, "findings must be a real blockquote (blank line before >), not inline text");
 });

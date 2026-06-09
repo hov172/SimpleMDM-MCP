@@ -233,7 +233,11 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
 
   P(`# SimpleMDM Device Activity & Security Dossier — ${dateStr}`); P("");
   P(`Devices: **${bundles.length}** • Total log events: **${totalEvents}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
-  P(`This report combines, per device, the SimpleMDM /logs activity record${securityEval ? ", the SOFA-evaluated security posture" : ""}${hasInventory ? ", and software inventory" : ""}. The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis.`); P("");
+  const parts = ["the SimpleMDM /logs activity record"];
+  if (securityEval) parts.push("the SOFA-evaluated security posture");
+  if (hasInventory) parts.push("software inventory");
+  const partsList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  P(`This report combines, per device, ${partsList}. The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis.`); P("");
 
   P(`## 1. Fleet Roll-up`); P("");
   P(`| # | Device | Serial | OS | Unfixed CVEs | FileVault | SIP | Firewall | Events | Last seen |`);
@@ -271,7 +275,8 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
     if (users.length) { P(`**Local accounts:** ${users.slice(0, 8).map(cell).join(", ")}${users.length > 8 ? `, +${users.length - 8} more` : ""}`); P(""); }
     if (ev) {
       P(`**Security posture** — FileVault ${onoff(a.filevault_enabled)}; SIP ${onoff(a.system_integrity_protection_enabled)}; Firewall ${onoff(a.firewall?.enabled)}. Unfixed CVEs: **${ev.cvesBehind ?? 0}**${ev.exploitedBehind ? ` (${ev.exploitedBehind} actively exploited)` : ""}.`);
-      if ((ev.findings || []).length) P(`> Findings: ${cell(ev.findings.join("; "))}`);
+      // Blank line BEFORE the blockquote — Markdown needs it, else `>` renders literally as paragraph text.
+      if ((ev.findings || []).length) { P(""); P(`> Findings: ${cell(ev.findings.join("; "))}`); }
       P("");
     } else {
       P(`**Security posture** — FileVault ${onoff(a.filevault_enabled)}; SIP ${onoff(a.system_integrity_protection_enabled)}; Firewall ${onoff(a.firewall?.enabled)}. _(run with --with-security for CVE evaluation)_`); P("");
