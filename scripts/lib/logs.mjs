@@ -35,3 +35,29 @@ export function parseArgs(argv) {
   if (!["csv", "md", "docx", "all"].includes(opts.format)) { opts.error = `Invalid --format '${opts.format}' (use csv|md|docx|all)`; return opts; }
   return opts;
 }
+
+// raw: array of raw /devices records. selector: from parseArgs. matchGroupIds:
+// Set<number> of group ids the --group name resolved to (empty for other kinds).
+export function selectDevices(raw, selector, matchGroupIds) {
+  switch (selector.kind) {
+    case "all":
+      return raw.slice();
+    case "last-seen": {
+      const sorted = raw.slice().sort((a, b) =>
+        String(b.attributes?.last_seen_at ?? "").localeCompare(String(a.attributes?.last_seen_at ?? "")));
+      return sorted.slice(0, selector.value);
+    }
+    case "serial": {
+      const bySerial = new Map(raw.map((d) => [d.attributes?.serial_number, d]));
+      return selector.value.map((s) => bySerial.get(s)).filter(Boolean);
+    }
+    case "group":
+      return raw.filter((d) => {
+        const dg = d.relationships?.device_group?.data?.id;
+        if (dg != null && matchGroupIds.has(dg)) return true;
+        return (d.relationships?.groups?.data ?? []).some((g) => matchGroupIds.has(g.id));
+      });
+    default:
+      return [];
+  }
+}
