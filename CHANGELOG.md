@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Docker image now bundles the optional report toolchain — `pandoc`, **WeasyPrint**,
+  base fonts, and the `scripts/` directory — so `node scripts/logs-audit.mjs --format all`
+  can render md/html/docx/pdf reports in-container. The MCP server itself does not use
+  these; the trade-off is a larger image (~279 MB → ~744 MB).
+
 ## [0.14.1] - 2026-06-09
 
 ### Changed
