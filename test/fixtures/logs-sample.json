@@ -1,0 +1,26 @@
+{ "data": [
+  { "type": "log", "id": "L3", "attributes": { "namespace": "device", "event_type": "profile.installed",
+      "level": 0, "source": "device", "at": "06/02/26 09:00:00",
+      "metadata": { "profile_name": "WiFi Profile" },
+      "relationships": { "account": { "data": { "type": "account", "id": 25950 } },
+        "device": { "data": { "type": "device", "serial_number": "C02AAA111", "udid": "UDID-101" } } } } },
+  { "type": "log", "id": "L1", "attributes": { "namespace": "device", "event_type": "app.installing",
+      "level": 0, "source": "device", "at": "05/12/26 18:09:21",
+      "metadata": { "name": "Google Chrome", "bundle_identifier": "com.google.Chrome", "version": "149.0", "via_munki": true },
+      "relationships": { "account": { "data": { "type": "account", "id": 25950 } },
+        "device": { "data": { "type": "device", "serial_number": "C02AAA111", "udid": "UDID-101" } } } } },
+  { "type": "log", "id": "L2", "attributes": { "namespace": "device", "event_type": "status.changed",
+      "level": 0, "source": "device", "at": "05/20/26 10:30:00",
+      "metadata": { "channel": "device", "status": {
+        "diskmanagement": { "filevault": { "enabled": false } },
+        "softwareupdate": { "install_state": "prepared",
+          "pending_version": { "os_version": "26.3.1", "build_version": "25D2128" },
+          "failure_reason": { "count": 2, "reason": "BootPolicy failure" } } } },
+      "relationships": { "account": { "data": { "type": "account", "id": 25950 } },
+        "device": { "data": { "type": "device", "serial_number": "C02AAA111", "udid": "UDID-101" } } } } },
+  { "type": "log", "id": "L4", "attributes": { "namespace": "device", "event_type": "bootstrap_token.get",
+      "level": 0, "source": "device", "at": "06/01/26 08:00:00",
+      "metadata": { "udid": "UDID-102" },
+      "relationships": { "account": { "data": { "type": "account", "id": 25950 } },
+        "device": { "data": { "type": "device", "serial_number": "D25BBB222", "udid": "UDID-102" } } } } }
+], "has_more": false }
