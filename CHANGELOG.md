@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `/logs-audit` report is now a professional **US-Letter portrait** document
+  (`scripts/logs-report.head.html`) instead of reusing the SOFA audit's
+  A3-landscape sheet. PDF generation prefers **WeasyPrint** (real `@page` footer
+  with "Page X of Y") and falls back to headless Chrome when WeasyPrint is absent.
+
+### Fixed
+- `/logs-audit` report: per-device **Findings** now render as a styled blockquote
+  callout (a missing blank line had caused literal `> Findings:` text), and the
+  intro sentence uses a correct "and" conjunction when listing combined sections.
+
 ## [0.14.0] - 2026-06-09
 
 ### Added

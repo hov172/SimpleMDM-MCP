@@ -27,19 +27,32 @@ function renderHtmlAndPdf(outDir) {
   const style = join(HERE, "logs-report.head.html"); // dedicated portrait dossier stylesheet
   const mdPath = join(outDir, "report.md");
   if (!existsSync(mdPath)) return produced;
-  const pandoc = spawnSync("pandoc", [mdPath, "-s", ...(existsSync(style) ? ["-H", style] : []), "-o", join(outDir, "report.html")]);
+  const htmlPath = join(outDir, "report.html");
+  const pdfPath = join(outDir, "report.pdf");
+  const pandoc = spawnSync("pandoc", [mdPath, "-s", ...(existsSync(style) ? ["-H", style] : []), "-o", htmlPath]);
   if (pandoc.status === 0) produced.push("report.html");
   else { console.warn("logs-audit: html skipped (pandoc unavailable)"); return produced; }
-  const chromes = [
+
+  const found = (cands) => cands.find((c) => c.includes("/") ? existsSync(c) : spawnSync("which", [c]).status === 0);
+
+  // Prefer WeasyPrint — it honors CSS paged media (@page footer with real page numbers).
+  const weasy = found(["weasyprint", "/opt/homebrew/bin/weasyprint", "/usr/local/bin/weasyprint"]);
+  if (weasy) {
+    const wp = spawnSync(weasy, [htmlPath, pdfPath]);
+    if (wp.status === 0) { produced.push("report.pdf"); return produced; }
+    console.warn("logs-audit: weasyprint failed, falling back to Chrome (no page numbers)");
+  }
+
+  // Fallback: headless Chrome (renders correctly, but cannot emit page numbers).
+  const chrome = found([
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "google-chrome", "chromium", "chromium-browser",
-  ];
-  const chrome = chromes.find((c) => c.includes("/") ? existsSync(c) : spawnSync("which", [c]).status === 0);
-  if (!chrome) { console.warn("logs-audit: pdf skipped (no Chrome/Chromium/Edge)"); return produced; }
+  ]);
+  if (!chrome) { console.warn("logs-audit: pdf skipped (no WeasyPrint or Chrome/Chromium/Edge)"); return produced; }
   const pdf = spawnSync(chrome, ["--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-    `--print-to-pdf=${join(outDir, "report.pdf")}`, `file://${join(outDir, "report.html")}`]);
+    `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`]);
   if (pdf.status === 0) produced.push("report.pdf");
   else console.warn("logs-audit: pdf skipped (Chrome render failed)");
   return produced;

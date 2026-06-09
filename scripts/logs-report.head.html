@@ -1,7 +1,13 @@
 <style>
   /* Print-ready styling for the logs-audit device dossier.
      US Letter portrait, professional typography, readable per-device flow. */
-  @page { size: Letter portrait; margin: 16mm 15mm 16mm 15mm; }
+  @page {
+    size: Letter portrait;
+    margin: 16mm 15mm 18mm 15mm;
+    /* Page footer — honored by WeasyPrint (CSS paged media); ignored by Chrome. */
+    @bottom-left  { content: "SimpleMDM Device Activity & Security Dossier"; font-size: 7.5pt; color: #9aa4ad; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 7.5pt; color: #9aa4ad; }
+  }
 
   /* Override pandoc's default 36em centered container so we use the page width. */
   html, body { max-width: none !important; width: auto !important; margin: 0 !important; padding: 0 !important; }
