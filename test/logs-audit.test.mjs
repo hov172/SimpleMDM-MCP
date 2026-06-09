@@ -129,3 +129,21 @@ test("manifestRows pass files through and append disclosures", () => {
   assert.ok(rows.some((r) => /retention/i.test(r.file)));
   assert.ok(MANIFEST_COLUMNS.includes("sha256"));
 });
+
+import { renderLogsMarkdown } from "../scripts/lib/logs.mjs";
+
+test("renderLogsMarkdown includes a logs summary and omits security when not requested", () => {
+  const summary = logSummaryRows([{ device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") }]);
+  const md = renderLogsMarkdown(summary, null, "2026-06-09");
+  assert.match(md, /# SimpleMDM Logs Audit/);
+  assert.match(md, /Activity Summary/);
+  assert.match(md, /C02AAA111/);
+  assert.doesNotMatch(md, /Security Posture/);
+});
+
+test("renderLogsMarkdown includes a security section when eval is provided", () => {
+  const summary = logSummaryRows([{ device: RAW[0], logs: [] }]);
+  const md = renderLogsMarkdown(summary, [{ serial: "C02AAA111", osVersion: "15.6.1", findings: ["FileVault disabled"], cvesBehind: 3 }], "2026-06-09");
+  assert.match(md, /Security Posture/);
+  assert.match(md, /FileVault disabled/);
+});
