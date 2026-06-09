@@ -147,3 +147,71 @@ test("renderLogsMarkdown includes a security section when eval is provided", () 
   assert.match(md, /Security Posture/);
   assert.match(md, /FileVault disabled/);
 });
+
+// Fix 1: parseArgs invalid-value guards
+test("parseArgs --last-seen with non-integer value errors with positive integer message", () => {
+  assert.match(parseArgs(["--last-seen", "foo"]).error, /positive integer/);
+});
+
+test("parseArgs --last-seen with missing value errors with positive integer message", () => {
+  assert.match(parseArgs(["--last-seen"]).error, /positive integer/);
+});
+
+test("parseArgs --serial with empty string errors with at least one serial message", () => {
+  assert.match(parseArgs(["--serial", ""]).error, /at least one serial/);
+});
+
+test("parseArgs --group with missing value errors with group name message", () => {
+  assert.match(parseArgs(["--group"]).error, /group name/);
+});
+
+test("parseArgs --group with valid value succeeds", () => {
+  const o = parseArgs(["--group", "Faculty"]);
+  assert.deepEqual(o.selector, { kind: "group", value: "Faculty" });
+  assert.equal(o.error, null);
+});
+
+// Fix 4: Markdown pipe-escaping
+test("renderLogsMarkdown escapes pipe characters in device_name", () => {
+  const summary = logSummaryRows([{ device: { id: 999, attributes: { name: "Pipe|Device", serial_number: "X99XXX999" } }, logs: [] }]);
+  const md = renderLogsMarkdown(summary, null, "2026-06-09");
+  assert.match(md, /Pipe\\|Device/);
+});
+
+// Fix 7: Missing-coverage tests
+test("logRows, statusSnapshotRows, logSummaryRows tolerate logs: undefined", () => {
+  const bundle = { device: RAW[0], logs: undefined };
+  assert.deepEqual(logRows([bundle]), []);
+  assert.deepEqual(statusSnapshotRows([bundle]), []);
+  const sum = logSummaryRows([bundle]);
+  assert.equal(sum[0].total_log_records, 0);
+});
+
+test("logRows populates device_users from a bundle with a users array", () => {
+  const bundle = {
+    device: RAW[0],
+    users: [
+      { attributes: { full_name: "Full A", username: "a" } },
+      { attributes: { full_name: "Full B", username: "b" } },
+    ],
+    logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111"),
+  };
+  const rows = logRows([bundle]);
+  assert.ok(rows.length > 0);
+  assert.equal(rows[0].device_users, "Full A (a) | Full B (b)");
+});
+
+test("logSummaryRows second device D25BBB222 has correct counts and span_days", () => {
+  const b2 = { device: RAW[1], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "D25BBB222") };
+  const rows = logSummaryRows([b2]);
+  const d = rows[0];
+  assert.equal(d.serial_number, "D25BBB222");
+  assert.equal(d.bootstrap_token_get, 1);
+  assert.equal(d.total_log_records, 1);
+  assert.equal(d.span_days, 0);
+});
+
+test("statusSnapshotRows returns empty array when logs contain only app.installing", () => {
+  const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.event_type === "app.installing") };
+  assert.deepEqual(statusSnapshotRows([bundle]), []);
+});

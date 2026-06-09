@@ -32,6 +32,9 @@ export function parseArgs(argv) {
   };
   if (selectors.length !== 1) { opts.error = "Provide exactly one selector: --serial | --last-seen | --group | --all"; return opts; }
   if (opts.selector.kind === "all" && !has("--confirm-all")) { opts.error = "--all requires --confirm-all (whole-fleet export is heavy)"; return opts; }
+  if (opts.selector.kind === "last-seen" && (!Number.isInteger(opts.selector.value) || opts.selector.value < 1)) { opts.error = "--last-seen requires a positive integer"; return opts; }
+  if (opts.selector.kind === "serial" && opts.selector.value.length === 0) { opts.error = "--serial requires at least one serial number"; return opts; }
+  if (opts.selector.kind === "group" && !opts.selector.value) { opts.error = "--group requires a group name"; return opts; }
   if (!["csv", "md", "docx", "all"].includes(opts.format)) { opts.error = `Invalid --format '${opts.format}' (use csv|md|docx|all)`; return opts; }
   return opts;
 }
@@ -43,8 +46,8 @@ export function selectDevices(raw, selector, matchGroupIds) {
     case "all":
       return raw.slice();
     case "last-seen": {
-      const sorted = raw.slice().sort((a, b) =>
-        String(b.attributes?.last_seen_at ?? "").localeCompare(String(a.attributes?.last_seen_at ?? "")));
+      const t = (d) => Date.parse(d.attributes?.last_seen_at ?? "") || 0;
+      const sorted = raw.slice().sort((a, b) => t(b) - t(a));
       return sorted.slice(0, selector.value);
     }
     case "serial": {
@@ -70,6 +73,18 @@ export const LOG_COLUMNS = ["at_iso", "at", "device_id", "serial_number", "devic
 
 function dig(o, ...path) { for (const k of path) { if (o == null || typeof o !== "object") return undefined; o = o[k]; } return o; }
 function s(v) { return v === null || v === undefined ? "" : String(v); }
+function statusFields(md) {
+  return {
+    sc_channel: s(md.channel),
+    sc_filevault_enabled: s(dig(md, "status", "diskmanagement", "filevault", "enabled")),
+    sc_sw_install_state: s(dig(md, "status", "softwareupdate", "install_state")),
+    sc_pending_os: s(dig(md, "status", "softwareupdate", "pending_version", "os_version")),
+    sc_pending_build: s(dig(md, "status", "softwareupdate", "pending_version", "build_version")),
+    sc_failure_count: s(dig(md, "status", "softwareupdate", "failure_reason", "count")),
+    sc_failure_reason: s(dig(md, "status", "softwareupdate", "failure_reason", "reason")),
+  };
+}
+const EMPTY_STATUS_FIELDS = { sc_channel: "", sc_filevault_enabled: "", sc_sw_install_state: "", sc_pending_os: "", sc_pending_build: "", sc_failure_count: "", sc_failure_reason: "" };
 
 function ownerLabel(bundle) {
   const us = bundle.users?.data ?? bundle.users ?? [];
@@ -110,13 +125,7 @@ export function logRows(bundles) {
         app_name: et === "app.installing" ? s(md.name) : "", app_identifier: et === "app.installing" ? s(md.bundle_identifier) : "",
         app_version: et === "app.installing" ? s(md.version) : "", via_munki: et === "app.installing" ? s(md.via_munki) : "",
         profile_name: et === "profile.installed" ? s(md.profile_name) : "",
-        sc_channel: et === "status.changed" ? s(md.channel) : "",
-        sc_filevault_enabled: et === "status.changed" ? s(dig(md, "status", "diskmanagement", "filevault", "enabled")) : "",
-        sc_sw_install_state: et === "status.changed" ? s(dig(md, "status", "softwareupdate", "install_state")) : "",
-        sc_pending_os: et === "status.changed" ? s(dig(md, "status", "softwareupdate", "pending_version", "os_version")) : "",
-        sc_pending_build: et === "status.changed" ? s(dig(md, "status", "softwareupdate", "pending_version", "build_version")) : "",
-        sc_failure_count: et === "status.changed" ? s(dig(md, "status", "softwareupdate", "failure_reason", "count")) : "",
-        sc_failure_reason: et === "status.changed" ? s(dig(md, "status", "softwareupdate", "failure_reason", "reason")) : "",
+        ...(et === "status.changed" ? statusFields(md) : EMPTY_STATUS_FIELDS),
       });
     }
   }
@@ -138,18 +147,12 @@ export function statusSnapshotRows(bundles) {
       const md = a.metadata ?? {};
       rows.push({
         at_iso: toIso(a.at), at: s(a.at), device_id: s(b.device.id), serial_number: s(da.serial_number),
-        device_name: s(da.name), log_id: s(lg.id), sc_channel: s(md.channel),
-        sc_filevault_enabled: s(dig(md, "status", "diskmanagement", "filevault", "enabled")),
-        sc_sw_install_state: s(dig(md, "status", "softwareupdate", "install_state")),
-        sc_pending_os: s(dig(md, "status", "softwareupdate", "pending_version", "os_version")),
-        sc_pending_build: s(dig(md, "status", "softwareupdate", "pending_version", "build_version")),
-        sc_failure_count: s(dig(md, "status", "softwareupdate", "failure_reason", "count")),
-        sc_failure_reason: s(dig(md, "status", "softwareupdate", "failure_reason", "reason")),
+        device_name: s(da.name), log_id: s(lg.id), ...statusFields(md),
         status_pretty: JSON.stringify(md.status ?? {}, null, 2),
       });
     }
   }
-  rows.sort((x, y) => x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
+  rows.sort((x, y) => (x.at_iso === "" ? 1 : 0) - (y.at_iso === "" ? 1 : 0) || x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
   return rows;
 }
 
@@ -165,7 +168,7 @@ export function logSummaryRows(bundles) {
     const isos = (b.logs ?? []).map((l) => toIso(l.attributes?.at)).filter(Boolean).sort();
     const counts = Object.fromEntries(EVENT_TYPES.map((et) => [et, (b.logs ?? []).filter((l) => l.attributes?.event_type === et).length]));
     const first = isos[0] ?? "", last = isos[isos.length - 1] ?? "";
-    const span = first && last ? Math.round((Date.parse(last) - Date.parse(first)) / 86400000) : "";
+    const span = first && last ? Math.round((Date.parse(last + "Z") - Date.parse(first + "Z")) / 86400000) : "";
     return {
       device_id: s(b.device.id), serial_number: s(da.serial_number), device_name: s(da.name),
       total_log_records: (b.logs ?? []).length,
@@ -191,17 +194,18 @@ export function manifestRows(fileMetas, generatedAt) {
 }
 
 export function renderLogsMarkdown(summaryRows, securityEval, dateStr) {
+  const cell = (v) => String(v ?? "").replace(/\|/g, "\\|");
   const out = [`# SimpleMDM Logs Audit — ${dateStr}`, "",
     `Devices: ${summaryRows.length}. Total events: ${summaryRows.reduce((n, r) => n + r.total_log_records, 0)}.`, "",
     "## Activity Summary", "",
     "| Device | Serial | Events | app.installing | profile.installed | status.changed | First | Last |",
     "|---|---|---|---|---|---|---|---|"];
   for (const r of summaryRows) {
-    out.push(`| ${r.device_name} | ${r.serial_number} | ${r.total_log_records} | ${r.app_installing} | ${r.profile_installed} | ${r.status_changed} | ${r.first_event_at_iso} | ${r.last_event_at_iso} |`);
+    out.push(`| ${cell(r.device_name)} | ${cell(r.serial_number)} | ${r.total_log_records} | ${r.app_installing} | ${r.profile_installed} | ${r.status_changed} | ${r.first_event_at_iso} | ${r.last_event_at_iso} |`);
   }
   if (securityEval) {
     out.push("", "## Security Posture", "", "| Serial | OS | Unfixed CVEs | Findings |", "|---|---|---|---|");
-    for (const d of securityEval) out.push(`| ${d.serial} | ${d.osVersion} | ${d.cvesBehind ?? ""} | ${(d.findings ?? []).join("; ")} |`);
+    for (const d of securityEval) out.push(`| ${cell(d.serial)} | ${cell(d.osVersion)} | ${d.cvesBehind ?? ""} | ${cell((d.findings ?? []).join("; "))} |`);
   }
   out.push("", "_Times are in the account display timezone (America/New_York), not UTC. The /logs feed is retention-bounded._", "");
   return out.join("\n");
