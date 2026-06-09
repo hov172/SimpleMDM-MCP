@@ -53,6 +53,7 @@ async function main() {
   const errors = [];
   for (const device of selected) {
     const serial = device.attributes?.serial_number;
+    if (!serial) { errors.push({ serial: String(device.id), message: "device record is missing serial_number" }); continue; }
     try {
       const bundle = { device, logs: await fetchDeviceLogs(apiKey, serial) };
       if (opts.withInventory) {
@@ -66,12 +67,13 @@ async function main() {
 
   // Optional security evaluation on the selected devices.
   let securityEval = null;
+  let securityResult = null;
   if (opts.withSecurity) {
     const { macFeed, iosFeed } = await loadSofa(`reports/.logs-audit-cache`, { noCache: false });
     const tables = buildMajorTables(macFeed, iosFeed);
     const evald = bundles.map((b) => evaluateDevice(flatten(b.device), tables));
     securityEval = evald;
-    main._securityCsv = { tables, evald };
+    securityResult = { tables, evald };
   }
 
   const dateStr = todayStr();
@@ -100,8 +102,8 @@ async function main() {
     writeFile("profiles.csv", toCsv([["serial", "type", "id", "name"]], profRows), "Profiles per device", `${profRows.length} profile records`);
   }
 
-  if (opts.withSecurity && main._securityCsv) {
-    const { tables, evald } = main._securityCsv;
+  if (securityResult) {
+    const { tables, evald } = securityResult;
     writeFile("security-posture.csv", toCsv([["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(evald)), "SOFA posture for selected devices", `${evald.length} devices`);
     writeFile("device-cves.csv", toCsv([["name", "serial", "device_group", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(evald, tables)), "Per-device outstanding CVEs", `${evald.length} devices`);
   }
@@ -122,6 +124,10 @@ async function main() {
     const buf = readFileSync(w.path);
     return { file: w.name, description: w.description, record_scope: w.record_scope, data_row_count: "", bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") };
   });
+  // Record any devices that failed collection so the integrity manifest reflects a partial export (spec §8).
+  for (const err of errors) {
+    fileMetas.push({ file: `(error: ${err.serial})`, description: err.message, record_scope: "", data_row_count: "", bytes: "", sha256: "" });
+  }
   writeFileSync(`${outDir}/manifest.csv`, toCsv([MANIFEST_COLUMNS], manifestRows(fileMetas, nowIso())));
 
   // summary.txt + stdout headline.
