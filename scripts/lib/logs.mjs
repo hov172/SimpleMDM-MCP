@@ -175,3 +175,17 @@ export function logSummaryRows(bundles) {
     };
   });
 }
+
+export const MANIFEST_COLUMNS = ["file", "description", "record_scope", "data_row_count", "bytes", "sha256", "generated_at"];
+
+export const DISCLOSURES = [
+  { file: "(disclosure: timezone)", description: "Log 'at' timestamps are returned by SimpleMDM /logs in the account's display timezone (devices report America/New_York). The API does NOT stamp a UTC offset and the account endpoint does not expose the zone. 'at' is verbatim; 'at_iso' is the same wall-clock reformatted to ISO 8601 with NO shift. Values are NOT UTC." },
+  { file: "(disclosure: log retention)", description: "The /logs feed is retention-bounded. The earliest event per device (see logs-summary first_event_at_iso) reflects the API's retention horizon, NOT the device's full lifetime history." },
+  { file: "(disclosure: completeness)", description: "All collections returned has_more=false at export time. Records reproduced verbatim; derived columns are additive and clearly named." },
+];
+
+export function manifestRows(fileMetas, generatedAt) {
+  const rows = fileMetas.map((m) => ({ ...m, generated_at: generatedAt }));
+  for (const d of DISCLOSURES) rows.push({ file: d.file, description: d.description, record_scope: "", data_row_count: "", bytes: "", sha256: "", generated_at: generatedAt });
+  return rows;
+}

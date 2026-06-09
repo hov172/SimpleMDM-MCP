@@ -116,3 +116,16 @@ test("logSummaryRows pivot event types and compute the coverage window", () => {
   assert.equal(a.span_days, 21);
   assert.ok(SUMMARY_COLUMNS.includes("span_days"));
 });
+
+import { manifestRows, MANIFEST_COLUMNS, DISCLOSURES } from "../scripts/lib/logs.mjs";
+
+test("manifestRows pass files through and append disclosures", () => {
+  const files = [{ file: "logs.csv", description: "events", record_scope: "3 events", data_row_count: 3, bytes: 100, sha256: "abc" }];
+  const rows = manifestRows(files, "2026-06-09T12:00:00-04:00");
+  assert.equal(rows[0].file, "logs.csv");
+  assert.equal(rows[0].generated_at, "2026-06-09T12:00:00-04:00");
+  assert.equal(rows.length, files.length + DISCLOSURES.length);
+  assert.ok(rows.some((r) => /timezone/i.test(r.file) && /NOT UTC/i.test(r.description)));
+  assert.ok(rows.some((r) => /retention/i.test(r.file)));
+  assert.ok(MANIFEST_COLUMNS.includes("sha256"));
+});
