@@ -24,7 +24,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Both are best-effort: missing tooling logs a warning and skips, never throws.
 function renderHtmlAndPdf(outDir) {
   const produced = [];
-  const style = join(HERE, "audit-pdf.head.html");
+  const style = join(HERE, "logs-report.head.html"); // dedicated portrait dossier stylesheet
   const mdPath = join(outDir, "report.md");
   if (!existsSync(mdPath)) return produced;
   const pandoc = spawnSync("pandoc", [mdPath, "-s", ...(existsSync(style) ? ["-H", style] : []), "-o", join(outDir, "report.html")]);
