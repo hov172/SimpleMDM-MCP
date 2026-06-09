@@ -977,8 +977,11 @@ async function main() {
     const md = renderLogsMarkdown(mr, securityEval, dateStr);
     writeFile("report.md", md, "Human-readable report (logs summary + optional security)", "1 document");
     if (["docx", "all"].includes(opts.format)) {
-      try { await mdToDocx(md, `${outDir}/report.docx`); written.push({ name: "report.docx", path: `${outDir}/report.docx`, description: "Word report", record_scope: "1 document" }); }
-      catch (e) { console.warn(`logs-audit: docx skipped (${e.message})`); }
+      // mdToDocx(mdPath, docxPath) takes a FILE PATH (report.md is written just above)
+      // and returns a boolean (it does not throw) — matches scripts/sofa-audit.mjs.
+      const ok = mdToDocx(`${outDir}/report.md`, `${outDir}/report.docx`);
+      if (ok) written.push({ name: "report.docx", path: `${outDir}/report.docx`, description: "Word report", record_scope: "1 document" });
+      else console.warn("logs-audit: docx skipped (pandoc unavailable or failed)");
     }
   }
 
