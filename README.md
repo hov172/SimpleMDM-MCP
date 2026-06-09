@@ -546,6 +546,9 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `SIMPLEMDM_FLEET_CONCURRENCY` | No | `8` | Worker count for fleet-iteration analytics tools. Lower (`4`) if you see 429s; raise (`16`) only if your tenant tolerates it. |
 | `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
 | `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":26,"ios":26,"ipad":26}`. Update on each Apple major release. |
+| `LOCAL_APP_MODE` | No | `false` | Set `true` to route requests through the optional Report-SimpleMDM local app bridge instead of calling the SimpleMDM API directly. When enabled, `SIMPLEMDM_API_KEY` is not required. |
+| `LOCAL_APP_BASE_URL` | No | `http://127.0.0.1:49552` | Base URL of the local app bridge (used only when `LOCAL_APP_MODE=true`). |
+| `LOCAL_APP_TOKEN` | No | — | Bearer token for the local app bridge. **Required** when `LOCAL_APP_MODE=true`. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
 | `MUNKIREPORT_BASE_URL` | No | — | Base URL of your MunkiReport instance (e.g. `https://munkireport.example.com`). Required for `get_munkireport_*` tools when not using the local app bridge. |
 | `MUNKIREPORT_MODULE_PREFIX` | No | `/module/simplemdm` | Path prefix for the MunkiReport simplemdm module endpoints. |
