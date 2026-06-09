@@ -88,16 +88,29 @@ test("logRows are chronologically sorted, typed, and exclude the status blob", (
   assert.ok(LOG_COLUMNS.includes("at_iso") && !LOG_COLUMNS.includes("status_pretty"));
 });
 
-import { statusSnapshotRows, STATUS_COLUMNS } from "../scripts/lib/logs.mjs";
+import { statusSnapshotRows, STATUS_COLUMNS, statusSnapshotFile, statusSnapshotFiles } from "../scripts/lib/logs.mjs";
 
-test("statusSnapshotRows isolate status.changed and carry a multi-line status_pretty cell", () => {
+test("statusSnapshotRows isolate status.changed and reference an external snapshot file (no giant inline cell)", () => {
   const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
   const rows = statusSnapshotRows([bundle]);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].sc_pending_build, "25D2128");
-  assert.ok(rows[0].status_pretty.includes("\n"), "status_pretty must be multi-line (pretty JSON)");
-  assert.match(rows[0].status_pretty, /softwareupdate/);
-  assert.ok(STATUS_COLUMNS.includes("status_pretty"));
+  assert.equal(rows[0].status_json_file, "status-snapshots/C02AAA111__L2.json");
+  assert.ok(!("status_pretty" in rows[0]), "the full snapshot must NOT be inlined into the CSV cell");
+  assert.ok(STATUS_COLUMNS.includes("status_json_file") && !STATUS_COLUMNS.includes("status_pretty"));
+  assert.ok(rows.every((r) => Object.values(r).every((v) => String(v).length <= 1000)), "no status row cell should be huge");
+});
+
+test("statusSnapshotFile sanitizes serial/log id into a safe relative path", () => {
+  assert.equal(statusSnapshotFile("C02/AA 1", "a b/c"), "status-snapshots/C02_AA_1__a_b_c.json");
+});
+
+test("statusSnapshotFiles emits one sidecar per status.changed log with the full status object", () => {
+  const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
+  const files = statusSnapshotFiles([bundle]);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].file, "status-snapshots/C02AAA111__L2.json");
+  assert.ok(files[0].json.softwareupdate, "sidecar carries the full status object");
 });
 
 import { logSummaryRows, SUMMARY_COLUMNS } from "../scripts/lib/logs.mjs";
@@ -230,4 +243,34 @@ test("flatten exposes the evaluateDevice-compatible shape", () => {
   assert.equal(d.filevault_enabled, false);
   assert.equal(d.firewall_enabled, false);
   assert.equal(d.device_group_id, null);
+});
+
+import { renderDetailedReport } from "../scripts/lib/logs.mjs";
+
+test("renderDetailedReport builds a per-device dossier with roll-up, identity, activity and disclosures", () => {
+  const bundle = {
+    device: RAW[0],
+    logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111"),
+    users: [{ attributes: { full_name: "Alice", username: "alice" } }],
+    apps: [{ attributes: { name: "Falcon", managed: true } }, { attributes: { name: "Chrome", managed: false } }],
+    profiles: [{ attributes: { name: "WiFi" } }],
+  };
+  const md = renderDetailedReport([bundle], null, "2026-06-09", { "7001": "Falcon", "7002": "Faculty" });
+  assert.match(md, /# SimpleMDM Device Activity & Security Dossier/);
+  assert.match(md, /## 1\. Fleet Roll-up/);
+  assert.match(md, /## 2\. Per-Device Dossiers/);
+  assert.match(md, /\*\*Identity\*\* — Serial `C02AAA111`/);
+  assert.match(md, /Assignment groups \(2\):.*Falcon.*Faculty/);
+  assert.match(md, /Local accounts:\*\* alice/);
+  assert.match(md, /2 installed apps \(1 MDM-managed\); 1 configuration profiles/);
+  assert.match(md, /Notable software-update events/); // L2 has pending_version + prepared state
+  assert.match(md, /## 3\. Disclosures/);
+  assert.doesNotMatch(md, /actively exploited/); // no security eval passed
+});
+
+test("renderDetailedReport includes per-device CVE findings when securityEval is provided", () => {
+  const bundle = { device: RAW[0], logs: [] };
+  const md = renderDetailedReport([bundle], [{ serial: "C02AAA111", osVersion: "15.6.1", cvesBehind: 12, exploitedBehind: 2, findings: ["OS outdated", "FileVault disabled"] }], "2026-06-09");
+  assert.match(md, /Unfixed CVEs: \*\*12\*\* \(2 actively exploited\)/);
+  assert.match(md, /Findings: OS outdated; FileVault disabled/);
 });

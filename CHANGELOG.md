@@ -9,9 +9,14 @@ All notable changes to this project are documented here. Format follows
 ### Added
 - `/logs-audit` command (`scripts/logs-audit.mjs` + `logs-audit` skill): targeted device-activity
   log export for selected devices (`--serial`/`--last-seen`/`--group`/`--all`), with opt-in
-  `--with-inventory` and `--with-security` combine. Emits typed/ISO/sorted logs CSV, isolated
-  status-snapshot CSV, per-device summary/coverage CSV, raw JSON, a SHA-256 manifest with
-  timezone/retention disclosures, and an optional md/docx/pdf report (logs + security summary).
+  `--with-inventory` and `--with-security` combine. Emits typed/ISO/sorted logs CSV, per-device
+  summary/coverage CSV, raw JSON, and a SHA-256 manifest with timezone/retention disclosures.
+  - **Report:** `--format all` produces a detailed combined **dossier** (`report.md`/`.html`/
+    `.docx`/`.pdf`) — per-device identity, security posture, activity, notable software-update
+    events, and software inventory, plus a fleet roll-up.
+  - **status.changed snapshots** are externalized to `status-snapshots/<serial>__<logid>.json`
+    (referenced by the `status_json_file` column) so no CSV cell exceeds spreadsheet limits; each
+    sidecar is individually SHA-256-hashed in the manifest.
 
 ## [0.13.0] - 2026-06-09
 
