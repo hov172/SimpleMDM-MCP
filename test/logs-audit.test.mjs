@@ -215,3 +215,15 @@ test("statusSnapshotRows returns empty array when logs contain only app.installi
   const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.event_type === "app.installing") };
   assert.deepEqual(statusSnapshotRows([bundle]), []);
 });
+
+import { flatten } from "../scripts/lib/simplemdm.mjs";
+
+test("flatten exposes the evaluateDevice-compatible shape", () => {
+  const d = flatten(RAW[1]); // Bob iMac, FileVault off, firewall off
+  assert.equal(d.serial, "D25BBB222");
+  assert.equal(d.model, "iMac21,1");
+  assert.equal(d.osVersion, "14.7.1");
+  assert.equal(d.filevault_enabled, false);
+  assert.equal(d.firewall_enabled, false);
+  assert.equal(d.device_group_id, null);
+});
