@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.14.2] - 2026-06-09
 
 ### Changed
 - Docker image now bundles the optional report toolchain — `pandoc`, **WeasyPrint**,
