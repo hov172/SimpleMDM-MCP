@@ -36,6 +36,13 @@ COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 
+# Optional report toolchain. The MCP server (dist/index.js) does NOT need any of
+# this; it lets `node scripts/logs-audit.mjs --format all` render the dossier
+# in-container: pandoc (md→html/docx), WeasyPrint (html→pdf with footer page
+# numbers), plus base fonts. Bundling the host-side audit scripts too.
+RUN apk add --no-cache pandoc-cli weasyprint font-dejavu fontconfig
+COPY --chown=node:node scripts ./scripts
+
 USER node
 
 CMD ["node", "dist/index.js"]
