@@ -83,9 +83,15 @@ export async function fetchAllDevices(apiKey) {
 }
 
 async function getJson(apiKey, path) {
+  if (!apiKey) throw new Error("Missing SIMPLEMDM_API_KEY");
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`${BASE}${path}`, { headers: { Authorization: authHeader(apiKey) } });
-    if (res.status === 429 && attempt < 5) { await new Promise((r) => setTimeout(r, Math.min(2 ** attempt * 1000, 16000))); continue; }
+    if (res.status === 429 && attempt < 5) {
+      const wait = Math.min(2 ** attempt * 1000, 16000);
+      console.warn(`429 on ${path}, retrying in ${wait}ms (attempt ${attempt + 1}/5)`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
     if (res.status === 401) throw new Error("SimpleMDM auth failed (401) — check SIMPLEMDM_API_KEY");
     if (!res.ok) throw new Error(`SimpleMDM ${path} failed ${res.status}`);
     return res.json();
