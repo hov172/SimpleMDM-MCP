@@ -21,7 +21,7 @@ Targeted sibling to the SOFA `/audit`. Runs the engine and reports where files l
 6. List the generated files. Remind the user the output is local-only (gitignored) and not committed.
 
 ## Report (`--format all`)
-Produces a detailed combined **dossier** in four formats — `report.md`, `report.html`, `report.docx` (pandoc), `report.pdf` (headless Chrome). Each device gets identity, security posture (with `--with-security`), activity breakdown + coverage window, notable software-update events, and software inventory (with `--with-inventory`), plus a fleet roll-up. `report.docx`/`.html`/`.pdf` are best-effort: if pandoc/Chrome are missing the run logs a warning and skips them (md still written). `--format md` writes md only; `--format docx` writes md + docx.
+Produces a detailed combined **dossier** in four formats — `report.md`, `report.html`, `report.docx` (pandoc), `report.pdf`. The PDF is a US-Letter portrait document (`scripts/logs-report.head.html`); it prefers **WeasyPrint** (real footer page numbers, "Page X of Y") and falls back to headless Chrome if WeasyPrint isn't installed (`brew install weasyprint`). Each device gets identity, security posture (with `--with-security`), activity breakdown + coverage window, notable software-update events, and software inventory (with `--with-inventory`), plus a fleet roll-up. `report.docx`/`.html`/`.pdf` are best-effort: missing tooling logs a warning and skips (md still written). `--format md` writes md only; `--format docx` writes md + docx.
 
 ## Notes
 - Read-only: a read-only `SIMPLEMDM_API_KEY` in `.env` is sufficient.
