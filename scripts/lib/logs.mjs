@@ -216,24 +216,6 @@ export function manifestRows(fileMetas, generatedAt) {
   return rows;
 }
 
-export function renderLogsMarkdown(summaryRows, securityEval, dateStr) {
-  const cell = (v) => String(v ?? "").replace(/\|/g, "\\|");
-  const out = [`# SimpleMDM Logs Audit — ${dateStr}`, "",
-    `Devices: ${summaryRows.length}. Total events: ${summaryRows.reduce((n, r) => n + r.total_log_records, 0)}.`, "",
-    "## Activity Summary", "",
-    "| Device | Serial | Events | app.installing | profile.installed | status.changed | First | Last |",
-    "|---|---|---|---|---|---|---|---|"];
-  for (const r of summaryRows) {
-    out.push(`| ${cell(r.device_name)} | ${cell(r.serial_number)} | ${r.total_log_records} | ${r.app_installing} | ${r.profile_installed} | ${r.status_changed} | ${r.first_event_at_iso} | ${r.last_event_at_iso} |`);
-  }
-  if (securityEval) {
-    out.push("", "## Security Posture", "", "| Serial | OS | Unfixed CVEs | Findings |", "|---|---|---|---|");
-    for (const d of securityEval) out.push(`| ${cell(d.serial)} | ${cell(d.osVersion)} | ${d.cvesBehind ?? ""} | ${cell((d.findings ?? []).join("; "))} |`);
-  }
-  out.push("", "_Times are in the account display timezone (America/New_York), not UTC. The /logs feed is retention-bounded._", "");
-  return out.join("\n");
-}
-
 // Detailed COMBINED per-device dossier merging identity, security posture,
 // activity, notable software-update events, and software inventory into one
 // document. Sections degrade gracefully: security appears only when
@@ -278,7 +260,7 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
     const managed = apps.filter((ap) => ap.attributes?.managed).length;
     const profiles = b.profiles ?? [];
     const swEvents = logs.filter((l) => l.attributes?.event_type === "status.changed").map((l) => {
-      const m = l.attributes.metadata;
+      const m = l.attributes?.metadata ?? {};
       return { at: l.attributes.at, pend: dig(m, "status", "softwareupdate", "pending_version", "os_version"),
         state: dig(m, "status", "softwareupdate", "install_state"), fails: dig(m, "status", "softwareupdate", "failure_reason", "count") };
     }).filter((e) => e.fails || (e.pend && e.state && e.state !== "none"));
@@ -286,7 +268,7 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
     P(`### 2.${i + 1}  ${cell(a.name || a.serial_number)}`); P("");
     P(`**Identity** — Serial \`${a.serial_number}\` • Model ${a.product_name || a.model || "—"} • OS ${a.os_version || "—"} (${a.build_version || ""}) • UDID \`${a.unique_identifier || ""}\` • Enrolled ${(a.enrolled_at || "").slice(0, 10)} • Last seen ${(a.last_seen_at || "").slice(0, 19).replace("T", " ")}`); P("");
     if (groupIds.length) { P(`**Assignment groups (${groupIds.length}):** ${groupNames.slice(0, 8).map(cell).join(", ")}${groupNames.length > 8 ? `, +${groupNames.length - 8} more` : ""}`); P(""); }
-    if (users.length) { P(`**Local accounts:** ${users.map(cell).join(", ")}`); P(""); }
+    if (users.length) { P(`**Local accounts:** ${users.slice(0, 8).map(cell).join(", ")}${users.length > 8 ? `, +${users.length - 8} more` : ""}`); P(""); }
     if (ev) {
       P(`**Security posture** — FileVault ${onoff(a.filevault_enabled)}; SIP ${onoff(a.system_integrity_protection_enabled)}; Firewall ${onoff(a.firewall?.enabled)}. Unfixed CVEs: **${ev.cvesBehind ?? 0}**${ev.exploitedBehind ? ` (${ev.exploitedBehind} actively exploited)` : ""}.`);
       if ((ev.findings || []).length) P(`> Findings: ${cell(ev.findings.join("; "))}`);
