@@ -66,3 +66,24 @@ test("selectDevices --group matches device_group id or assignment-group ids", ()
   const r = selectDevices(RAW, { kind: "group", value: "AnyName" }, new Set([7002]));
   assert.deepEqual(r.map((d) => d.id).sort(), [101, 102]);
 });
+
+import { logRows, LOG_COLUMNS } from "../scripts/lib/logs.mjs";
+const LOGS = JSON.parse(readFileSync(new URL("./fixtures/logs-sample.json", import.meta.url))).data;
+
+test("logRows are chronologically sorted, typed, and exclude the status blob", () => {
+  const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
+  const rows = logRows([bundle]);
+  assert.deepEqual(rows.map((r) => r.at_iso), ["2026-05-12T18:09:21", "2026-05-20T10:30:00", "2026-06-02T09:00:00"]);
+  const app = rows[0];
+  assert.equal(app.event_type, "app.installing");
+  assert.equal(app.app_name, "Google Chrome");
+  assert.equal(app.app_identifier, "com.google.Chrome");
+  assert.equal(app.device_name, "Alice Mac - C02AAA111");
+  assert.match(app.summary, /Google Chrome/);
+  const status = rows[1];
+  assert.equal(status.sc_filevault_enabled, "false");
+  assert.equal(status.sc_pending_os, "26.3.1");
+  assert.equal(status.sc_failure_count, "2");
+  assert.ok(!("status_pretty" in status), "main rows must not carry the full status blob");
+  assert.ok(LOG_COLUMNS.includes("at_iso") && !LOG_COLUMNS.includes("status_pretty"));
+});
