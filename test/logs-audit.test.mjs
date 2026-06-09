@@ -99,3 +99,20 @@ test("statusSnapshotRows isolate status.changed and carry a multi-line status_pr
   assert.match(rows[0].status_pretty, /softwareupdate/);
   assert.ok(STATUS_COLUMNS.includes("status_pretty"));
 });
+
+import { logSummaryRows, SUMMARY_COLUMNS } from "../scripts/lib/logs.mjs";
+
+test("logSummaryRows pivot event types and compute the coverage window", () => {
+  const b1 = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
+  const b2 = { device: RAW[1], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "D25BBB222") };
+  const rows = logSummaryRows([b1, b2]);
+  const a = rows.find((r) => r.serial_number === "C02AAA111");
+  assert.equal(a.total_log_records, 3);
+  assert.equal(a.app_installing, 1);
+  assert.equal(a.status_changed, 1);
+  assert.equal(a.profile_installed, 1);
+  assert.equal(a.first_event_at_iso, "2026-05-12T18:09:21");
+  assert.equal(a.last_event_at_iso, "2026-06-02T09:00:00");
+  assert.equal(a.span_days, 21);
+  assert.ok(SUMMARY_COLUMNS.includes("span_days"));
+});
