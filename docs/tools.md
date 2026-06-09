@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **157 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **173 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -12,6 +12,29 @@ The server registers **157 tools** covering the full SimpleMDM API surface (28 d
 | `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
+
+**Apple schema helpers**
+
+See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow: search Apple's local schema cache, validate/build a payload, then create the SimpleMDM custom profile or declaration. See [Apple Device Management Schema Cache](../data/apple-device-management/README.md) for cache refresh and fixture-sync details.
+
+| Tool | Description |
+|------|-------------|
+| `search_apple_device_management_schemas` | Search the local Apple `device-management` schema cache for profile payloads and DDM declarations |
+| `get_apple_device_management_schema` | Get required keys, enum values, platforms, availability, and source path for one Apple payload/declaration identifier |
+| `validate_apple_payload` | Validate a profile payload or DDM declaration payload object before creating a SimpleMDM custom profile/declaration |
+| `build_mobileconfig` | Build `.mobileconfig` XML from one or more validated Apple profile payload objects |
+| `build_custom_declaration_payload` | Build declaration JSON from a validated DDM declaration payload |
+| `build_wifi_profile_payload` | Build a validated `com.apple.wifi.managed` payload |
+| `build_firewall_profile_payload` | Build a validated macOS firewall payload |
+| `build_passcode_profile_payload` | Build a validated passcode policy payload |
+| `build_software_update_settings_declaration` | Build a validated DDM software update settings declaration |
+| `build_restrictions_profile_payload` | Build a validated restrictions payload |
+| `build_scep_profile_payload` | Build a validated SCEP payload with nested `PayloadContent` |
+| `build_certificate_profile_payload` | Build a validated root certificate payload |
+| `build_vpn_profile_payload` | Build a validated VPN payload |
+| `build_webclip_profile_payload` | Build a validated web clip payload |
+| `build_content_filter_profile_payload` | Build a validated content filter payload |
+| `build_filevault_escrow_profile_payload` | Build a validated FileVault escrow payload |
 
 **Devices**
 | Tool | Description |
@@ -193,7 +216,7 @@ All tools below modify fleet state. The API permission column tells you what the
 | Tool | API Permission |
 |------|---------------|
 | `assign_declaration_to_device` / `unassign_declaration_from_device` | Profiles: write |
-| `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` | Profiles: write |
+| `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` | Profiles: write — `create`/`update` accept optional `declaration_type` plus JSON `payload` |
 | `create_safari_bookmarks_declaration` | Profiles: write — push managed Safari bookmarks (DDM; iOS/macOS/visionOS 26+) |
 
 **Assignment groups**

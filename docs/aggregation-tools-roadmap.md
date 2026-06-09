@@ -140,7 +140,7 @@ When adding a new tool, consider whether an empty/null result could be misinterp
 
 ## Testing strategy
 
-There is **no automated test suite** for the analytics tools — they hit a live SimpleMDM tenant, and recording fixtures for 157 tools is not yet justified by team size.
+There is **no automated fixture suite** for the live SimpleMDM analytics tools — they hit a tenant, and recording fixtures for the full 173-tool surface is not yet justified by team size. Static tool-count checks, Apple schema helper tests, and the MCP stdio smoke test cover the local/non-tenant behavior.
 
 Until that changes, the validation contract is:
 
@@ -159,14 +159,14 @@ Open work (not yet started):
 - **0.5.0**: 28 derived tools shipped. Minor bump (additive, no breaking changes).
 - **0.6.0**: Auto-pagination on all list tools, in-memory TTL cache with automatic write-invalidation, response slimming for heavy list endpoints, stable OS-lag baseline for `get_compliance_violators`.
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
-- **Tool-count drift**: the README quotes a count (`157`); update it in the same commit that adds/removes a tool. There is no script to enforce this — discipline only.
+- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`173`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
 
 ---
 
 ## MCP context budget
 
-The catalog is now **157 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **173 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.

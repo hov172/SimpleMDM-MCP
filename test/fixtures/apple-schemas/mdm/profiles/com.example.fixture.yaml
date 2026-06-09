@@ -1,0 +1,53 @@
+title: Fixture Payload
+description: Test fixture for parser coverage.
+payload:
+  payloadtype: com.example.fixture
+  supportedOS:
+    iOS:
+      introduced: '17.0'
+      supervised: true
+    macOS:
+      introduced: '14.0'
+      supervised: false
+    tvOS:
+      introduced: n/a
+payloadkeys:
+- key: Mode
+  title: Mode
+  type: <string>
+  presence: required
+  rangelist:
+  - Strict
+  - Relaxed
+  default: Strict
+  content: Fixture mode.
+- key: Enabled
+  type: <boolean>
+  presence: optional
+  default: true
+  content: Enables the fixture.
+- key: Count
+  type: <integer>
+  presence: optional
+  default: 3
+  content: Fixture count.
+- key: Nested
+  type: <dictionary>
+  presence: optional
+  content: Nested settings.
+  subkeys:
+  - key: ChildRequired
+    type: <string>
+    presence: required
+    content: Required child string.
+  - key: Items
+    type: <array>
+    presence: optional
+    content: Nested item list.
+    subkeys:
+    - key: ItemValue
+      type: <integer>
+      presence: required
+      rangelist:
+      - 1
+      - 2
