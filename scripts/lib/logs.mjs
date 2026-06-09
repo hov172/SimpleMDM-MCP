@@ -189,3 +189,20 @@ export function manifestRows(fileMetas, generatedAt) {
   for (const d of DISCLOSURES) rows.push({ file: d.file, description: d.description, record_scope: "", data_row_count: "", bytes: "", sha256: "", generated_at: generatedAt });
   return rows;
 }
+
+export function renderLogsMarkdown(summaryRows, securityEval, dateStr) {
+  const out = [`# SimpleMDM Logs Audit — ${dateStr}`, "",
+    `Devices: ${summaryRows.length}. Total events: ${summaryRows.reduce((n, r) => n + r.total_log_records, 0)}.`, "",
+    "## Activity Summary", "",
+    "| Device | Serial | Events | app.installing | profile.installed | status.changed | First | Last |",
+    "|---|---|---|---|---|---|---|---|"];
+  for (const r of summaryRows) {
+    out.push(`| ${r.device_name} | ${r.serial_number} | ${r.total_log_records} | ${r.app_installing} | ${r.profile_installed} | ${r.status_changed} | ${r.first_event_at_iso} | ${r.last_event_at_iso} |`);
+  }
+  if (securityEval) {
+    out.push("", "## Security Posture", "", "| Serial | OS | Unfixed CVEs | Findings |", "|---|---|---|---|");
+    for (const d of securityEval) out.push(`| ${d.serial} | ${d.osVersion} | ${d.cvesBehind ?? ""} | ${(d.findings ?? []).join("; ")} |`);
+  }
+  out.push("", "_Times are in the account display timezone (America/New_York), not UTC. The /logs feed is retention-bounded._", "");
+  return out.join("\n");
+}
