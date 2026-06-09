@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-09
+
 ### Added
 - Apple device-management schema helpers: search/detail tools over a local
   runtime schema cache generated from Apple's public YAML schemas, curated
