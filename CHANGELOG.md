@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.14.0] - 2026-06-09
 
 ### Added
 - `/logs-audit` command (`scripts/logs-audit.mjs` + `logs-audit` skill): targeted device-activity
