@@ -152,3 +152,26 @@ export function statusSnapshotRows(bundles) {
   rows.sort((x, y) => x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
   return rows;
 }
+
+export const SUMMARY_COLUMNS = ["device_id", "serial_number", "device_name", "total_log_records",
+  "app_installing", "profile_installed", "status_changed", "bootstrap_token_get",
+  "first_event_at_iso", "last_event_at_iso", "span_days"];
+
+const EVENT_TYPES = ["app.installing", "profile.installed", "status.changed", "bootstrap_token.get"];
+
+export function logSummaryRows(bundles) {
+  return bundles.map((b) => {
+    const da = b.device.attributes ?? {};
+    const isos = (b.logs ?? []).map((l) => toIso(l.attributes?.at)).filter(Boolean).sort();
+    const counts = Object.fromEntries(EVENT_TYPES.map((et) => [et, (b.logs ?? []).filter((l) => l.attributes?.event_type === et).length]));
+    const first = isos[0] ?? "", last = isos[isos.length - 1] ?? "";
+    const span = first && last ? Math.round((Date.parse(last) - Date.parse(first)) / 86400000) : "";
+    return {
+      device_id: s(b.device.id), serial_number: s(da.serial_number), device_name: s(da.name),
+      total_log_records: (b.logs ?? []).length,
+      app_installing: counts["app.installing"], profile_installed: counts["profile.installed"],
+      status_changed: counts["status.changed"], bootstrap_token_get: counts["bootstrap_token.get"],
+      first_event_at_iso: first, last_event_at_iso: last, span_days: span,
+    };
+  });
+}
