@@ -133,9 +133,17 @@ export function logRows(bundles) {
   return rows;
 }
 
+// Relative path of the sidecar JSON file holding one status.changed snapshot.
+// Snapshots are externalized (not inlined) so no CSV cell exceeds spreadsheet
+// limits; the full snapshot lives in this file and in raw-logs.json.
+export function statusSnapshotFile(serial, logId) {
+  const safe = (v) => String(v ?? "").replace(/[^A-Za-z0-9._-]/g, "_");
+  return `status-snapshots/${safe(serial)}__${safe(logId)}.json`;
+}
+
 export const STATUS_COLUMNS = ["at_iso", "at", "device_id", "serial_number", "device_name", "log_id",
   "sc_channel", "sc_filevault_enabled", "sc_sw_install_state", "sc_pending_os", "sc_pending_build",
-  "sc_failure_count", "sc_failure_reason", "status_pretty"];
+  "sc_failure_count", "sc_failure_reason", "status_json_file"];
 
 export function statusSnapshotRows(bundles) {
   const rows = [];
@@ -148,12 +156,27 @@ export function statusSnapshotRows(bundles) {
       rows.push({
         at_iso: toIso(a.at), at: s(a.at), device_id: s(b.device.id), serial_number: s(da.serial_number),
         device_name: s(da.name), log_id: s(lg.id), ...statusFields(md),
-        status_pretty: JSON.stringify(md.status ?? {}, null, 2),
+        status_json_file: statusSnapshotFile(da.serial_number, lg.id),
       });
     }
   }
   rows.sort((x, y) => (x.at_iso === "" ? 1 : 0) - (y.at_iso === "" ? 1 : 0) || x.at_iso.localeCompare(y.at_iso) || x.serial_number.localeCompare(y.serial_number));
   return rows;
+}
+
+// Sidecar snapshot files to write: { file: relativePath, json: <status object> }.
+// The entry script writes these under the output directory.
+export function statusSnapshotFiles(bundles) {
+  const files = [];
+  for (const b of bundles) {
+    const serial = b.device.attributes?.serial_number;
+    for (const lg of b.logs ?? []) {
+      const a = lg.attributes ?? {};
+      if (a.event_type !== "status.changed") continue;
+      files.push({ file: statusSnapshotFile(serial, lg.id), json: a.metadata?.status ?? {} });
+    }
+  }
+  return files;
 }
 
 export const SUMMARY_COLUMNS = ["device_id", "serial_number", "device_name", "total_log_records",
@@ -208,5 +231,84 @@ export function renderLogsMarkdown(summaryRows, securityEval, dateStr) {
     for (const d of securityEval) out.push(`| ${cell(d.serial)} | ${cell(d.osVersion)} | ${d.cvesBehind ?? ""} | ${cell((d.findings ?? []).join("; "))} |`);
   }
   out.push("", "_Times are in the account display timezone (America/New_York), not UTC. The /logs feed is retention-bounded._", "");
+  return out.join("\n");
+}
+
+// Detailed COMBINED per-device dossier merging identity, security posture,
+// activity, notable software-update events, and software inventory into one
+// document. Sections degrade gracefully: security appears only when
+// `securityEval` is given; inventory only when bundles carry apps/profiles/users.
+// `groupNameMap` is an optional { [groupId]: name } lookup for assignment groups.
+export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMap = {}) {
+  const out = [];
+  const P = (x = "") => out.push(x);
+  const cell = (v) => String(v ?? "").replace(/\|/g, "\\|");
+  const onoff = (v) => (v === true ? "enabled" : v === false ? "disabled" : "unknown");
+  const evBySerial = new Map((securityEval || []).map((e) => [e.serial, e]));
+  const hasInventory = bundles.some((b) => b.apps || b.profiles || b.users);
+  const totalEvents = bundles.reduce((n, b) => n + (b.logs?.length ?? 0), 0);
+  const fvOff = bundles.filter((b) => b.device.attributes?.filevault_enabled !== true).length;
+
+  P(`# SimpleMDM Device Activity & Security Dossier — ${dateStr}`); P("");
+  P(`Devices: **${bundles.length}** • Total log events: **${totalEvents}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
+  P(`This report combines, per device, the SimpleMDM /logs activity record${securityEval ? ", the SOFA-evaluated security posture" : ""}${hasInventory ? ", and software inventory" : ""}. The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis.`); P("");
+
+  P(`## 1. Fleet Roll-up`); P("");
+  P(`| # | Device | Serial | OS | Unfixed CVEs | FileVault | SIP | Firewall | Events | Last seen |`);
+  P(`|---|---|---|---|---|---|---|---|---|---|`);
+  bundles.forEach((b, i) => {
+    const a = b.device.attributes ?? {};
+    const ev = evBySerial.get(a.serial_number);
+    const cve = ev ? `${ev.cvesBehind ?? 0}${ev.exploitedBehind ? ` (${ev.exploitedBehind} expl)` : ""}` : "—";
+    P(`| ${i + 1} | ${cell((a.name || "").slice(0, 38))} | ${cell(a.serial_number)} | ${cell(a.os_version)} | ${cve} | ${onoff(a.filevault_enabled)} | ${onoff(a.system_integrity_protection_enabled)} | ${onoff(a.firewall?.enabled)} | ${b.logs?.length ?? 0} | ${(a.last_seen_at || "").slice(0, 10)} |`);
+  });
+  P("");
+
+  P(`## 2. Per-Device Dossiers`); P("");
+  bundles.forEach((b, i) => {
+    const a = b.device.attributes ?? {};
+    const ev = evBySerial.get(a.serial_number);
+    const groupIds = (b.device.relationships?.groups?.data ?? []).map((g) => g.id);
+    const groupNames = groupIds.map((id) => groupNameMap[String(id)]).filter(Boolean);
+    const users = (b.users ?? []).map((u) => u.attributes?.username).filter(Boolean);
+    const logs = b.logs ?? [];
+    const counts = Object.fromEntries(EVENT_TYPES.map((et) => [et, logs.filter((l) => l.attributes?.event_type === et).length]));
+    const isos = logs.map((l) => l.attributes?.at).filter(Boolean);
+    const apps = b.apps ?? [];
+    const managed = apps.filter((ap) => ap.attributes?.managed).length;
+    const profiles = b.profiles ?? [];
+    const swEvents = logs.filter((l) => l.attributes?.event_type === "status.changed").map((l) => {
+      const m = l.attributes.metadata;
+      return { at: l.attributes.at, pend: dig(m, "status", "softwareupdate", "pending_version", "os_version"),
+        state: dig(m, "status", "softwareupdate", "install_state"), fails: dig(m, "status", "softwareupdate", "failure_reason", "count") };
+    }).filter((e) => e.fails || (e.pend && e.state && e.state !== "none"));
+
+    P(`### 2.${i + 1}  ${cell(a.name || a.serial_number)}`); P("");
+    P(`**Identity** — Serial \`${a.serial_number}\` • Model ${a.product_name || a.model || "—"} • OS ${a.os_version || "—"} (${a.build_version || ""}) • UDID \`${a.unique_identifier || ""}\` • Enrolled ${(a.enrolled_at || "").slice(0, 10)} • Last seen ${(a.last_seen_at || "").slice(0, 19).replace("T", " ")}`); P("");
+    if (groupIds.length) { P(`**Assignment groups (${groupIds.length}):** ${groupNames.slice(0, 8).map(cell).join(", ")}${groupNames.length > 8 ? `, +${groupNames.length - 8} more` : ""}`); P(""); }
+    if (users.length) { P(`**Local accounts:** ${users.map(cell).join(", ")}`); P(""); }
+    if (ev) {
+      P(`**Security posture** — FileVault ${onoff(a.filevault_enabled)}; SIP ${onoff(a.system_integrity_protection_enabled)}; Firewall ${onoff(a.firewall?.enabled)}. Unfixed CVEs: **${ev.cvesBehind ?? 0}**${ev.exploitedBehind ? ` (${ev.exploitedBehind} actively exploited)` : ""}.`);
+      if ((ev.findings || []).length) P(`> Findings: ${cell(ev.findings.join("; "))}`);
+      P("");
+    } else {
+      P(`**Security posture** — FileVault ${onoff(a.filevault_enabled)}; SIP ${onoff(a.system_integrity_protection_enabled)}; Firewall ${onoff(a.firewall?.enabled)}. _(run with --with-security for CVE evaluation)_`); P("");
+    }
+    P(`**Activity (${logs.length} events)** — app installs ${counts["app.installing"]}, profile installs ${counts["profile.installed"]}, status changes ${counts["status.changed"]}, bootstrap-token ${counts["bootstrap_token.get"]}. Window: ${isos[0] || "—"} → ${isos[isos.length - 1] || "—"}.`); P("");
+    if (apps.length || profiles.length) { P(`**Software inventory** — ${apps.length} installed apps (${managed} MDM-managed); ${profiles.length} configuration profiles.`); P(""); }
+    if (swEvents.length) {
+      P(`**Notable software-update events:**`); P("");
+      P(`| When (at) | Pending OS | Install state | Failures |`); P(`|---|---|---|---|`);
+      for (const e of swEvents.slice(0, 6)) P(`| ${cell(e.at)} | ${cell(e.pend || "—")} | ${cell(e.state || "—")} | ${e.fails || 0} |`);
+      if (swEvents.length > 6) P(`| …+${swEvents.length - 6} more | | | |`);
+      P("");
+    }
+    P(`---`); P("");
+  });
+
+  P(`## 3. Disclosures`); P("");
+  P(`- **Timestamps:** \`at\` is verbatim from /logs (account display timezone, America/New_York; no UTC offset stamped). ISO renderings apply no shift and are NOT UTC.`);
+  P(`- **Retention:** the /logs feed is retention-bounded; the earliest event per device is the API retention horizon, not device-lifetime history.`);
+  P(`- **Authoritative sources:** the CSV and raw-logs.json artifacts are the verbatim record; this document is a derived synthesis. Full status.changed snapshots are in status-snapshots/ and raw-logs.json.`); P("");
   return out.join("\n");
 }

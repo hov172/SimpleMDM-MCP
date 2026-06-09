@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   fetchAllDevicesRaw, fetchDeviceLogs, fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers,
   fetchDeviceGroups, fetchAssignmentGroups, flatten,
@@ -11,8 +14,36 @@ import { toCsv, allDeviceRows } from "./lib/render.mjs";
 import { mdToDocx } from "./lib/docx.mjs";
 import {
   parseArgs, selectDevices, logRows, LOG_COLUMNS, statusSnapshotRows, STATUS_COLUMNS,
-  logSummaryRows, SUMMARY_COLUMNS, manifestRows, MANIFEST_COLUMNS, renderLogsMarkdown,
+  statusSnapshotFiles, logSummaryRows, SUMMARY_COLUMNS, manifestRows, MANIFEST_COLUMNS,
+  renderDetailedReport,
 } from "./lib/logs.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Render report.md -> report.html (pandoc) and report.pdf (headless Chrome).
+// Both are best-effort: missing tooling logs a warning and skips, never throws.
+function renderHtmlAndPdf(outDir) {
+  const produced = [];
+  const style = join(HERE, "audit-pdf.head.html");
+  const mdPath = join(outDir, "report.md");
+  if (!existsSync(mdPath)) return produced;
+  const pandoc = spawnSync("pandoc", [mdPath, "-s", ...(existsSync(style) ? ["-H", style] : []), "-o", join(outDir, "report.html")]);
+  if (pandoc.status === 0) produced.push("report.html");
+  else { console.warn("logs-audit: html skipped (pandoc unavailable)"); return produced; }
+  const chromes = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "google-chrome", "chromium", "chromium-browser",
+  ];
+  const chrome = chromes.find((c) => c.includes("/") ? existsSync(c) : spawnSync("which", [c]).status === 0);
+  if (!chrome) { console.warn("logs-audit: pdf skipped (no Chrome/Chromium/Edge)"); return produced; }
+  const pdf = spawnSync(chrome, ["--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+    `--print-to-pdf=${join(outDir, "report.pdf")}`, `file://${join(outDir, "report.html")}`]);
+  if (pdf.status === 0) produced.push("report.pdf");
+  else console.warn("logs-audit: pdf skipped (Chrome render failed)");
+  return produced;
+}
 
 function loadEnvKey() {
   if (process.env.SIMPLEMDM_API_KEY) return process.env.SIMPLEMDM_API_KEY;
@@ -89,7 +120,13 @@ async function main() {
   // CSV + JSON core (always).
   const lr = logRows(bundles), sr = statusSnapshotRows(bundles), mr = logSummaryRows(bundles);
   writeFile("logs.csv", toCsv([LOG_COLUMNS], lr), "Activity events: one row per event, ISO+verbatim time, typed, sorted", `${lr.length} events`);
-  writeFile("logs-status-snapshots.csv", toCsv([STATUS_COLUMNS], sr), "status.changed snapshots; multi-line status_pretty", `${sr.length} snapshots`);
+  writeFile("logs-status-snapshots.csv", toCsv([STATUS_COLUMNS], sr), "status.changed snapshots; full status JSON externalized to status-snapshots/ (see status_json_file column)", `${sr.length} snapshots`);
+  // Externalize each full status snapshot to its own JSON file so no CSV cell is oversized.
+  const snapFiles = statusSnapshotFiles(bundles);
+  if (snapFiles.length) {
+    mkdirSync(`${outDir}/status-snapshots`, { recursive: true });
+    for (const sf of snapFiles) writeFileSync(`${outDir}/${sf.file}`, JSON.stringify(sf.json, null, 2));
+  }
   writeFile("logs-summary.csv", toCsv([SUMMARY_COLUMNS], mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
   writeFile("raw-logs.json", JSON.stringify({ generated_at: nowIso(), selector: opts.selector, devices: bundles.map((b) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
 
@@ -108,14 +145,25 @@ async function main() {
     writeFile("device-cves.csv", toCsv([["name", "serial", "device_group", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(evald, tables)), "Per-device outstanding CVEs", `${evald.length} devices`);
   }
 
-  // Document (md/docx/all).
+  // Document: detailed combined dossier. md (md/docx/all), docx (docx/all), html+pdf (all).
   if (["md", "docx", "all"].includes(opts.format)) {
-    const md = renderLogsMarkdown(mr, securityEval, dateStr);
-    writeFile("report.md", md, "Human-readable report (logs summary + optional security)", "1 document");
+    let groupNameMap = {};
+    try {
+      const dg = await fetchDeviceGroups(apiKey);
+      const ag = await fetchAssignmentGroups(apiKey);
+      groupNameMap = Object.fromEntries([...dg, ...ag].map(([id, name]) => [String(id), name]));
+    } catch (e) { console.warn(`logs-audit: group names unavailable for report (${e.message})`); }
+    const md = renderDetailedReport(bundles, securityEval, dateStr, groupNameMap);
+    writeFile("report.md", md, "Detailed combined dossier: identity + security + activity + inventory per device", "1 document");
     if (["docx", "all"].includes(opts.format)) {
       const ok = mdToDocx(`${outDir}/report.md`, `${outDir}/report.docx`);
       if (ok) written.push({ name: "report.docx", path: `${outDir}/report.docx`, description: "Word report", record_scope: "1 document" });
       else console.warn("logs-audit: docx skipped (pandoc unavailable or failed)");
+    }
+    if (opts.format === "all") {
+      for (const name of renderHtmlAndPdf(outDir)) {
+        written.push({ name, path: `${outDir}/${name}`, description: name.endsWith(".pdf") ? "PDF report" : "HTML report", record_scope: "1 document" });
+      }
     }
   }
 
@@ -124,6 +172,11 @@ async function main() {
     const buf = readFileSync(w.path);
     return { file: w.name, description: w.description, record_scope: w.record_scope, data_row_count: "", bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") };
   });
+  // Hash each externalized status snapshot individually for integrity.
+  for (const sf of snapFiles) {
+    const buf = readFileSync(`${outDir}/${sf.file}`);
+    fileMetas.push({ file: sf.file, description: "status.changed full snapshot", record_scope: "1 snapshot", data_row_count: "", bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") });
+  }
   // Record any devices that failed collection so the integrity manifest reflects a partial export (spec §8).
   for (const err of errors) {
     fileMetas.push({ file: `(error: ${err.serial})`, description: err.message, record_scope: "", data_row_count: "", bytes: "", sha256: "" });
@@ -146,9 +199,9 @@ async function main() {
   writeFileSync(`${outDir}/summary.txt`, head + "\n");
   console.log(head);
   for (const w of written) console.log(`  ${w.name}`);
+  if (snapFiles.length) console.log(`  status-snapshots/ (${snapFiles.length} files)`);
   console.log("  manifest.csv");
   console.log("Output is local-only (reports/ is gitignored) and NOT committed.");
-  if (opts.format === "all") console.log("For PDF: run scripts/make-audit-pdf.sh " + outDir);
 }
 
 main().catch((e) => { console.error("LOGS-AUDIT FAILED:", e.message ?? e); process.exit(1); });
