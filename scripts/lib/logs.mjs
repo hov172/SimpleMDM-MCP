@@ -216,6 +216,33 @@ export function manifestRows(fileMetas, generatedAt) {
   return rows;
 }
 
+// Devices contributing an outsized share of total log volume. A single noisy
+// device skews fleet aggregates and can evict other devices' events from the
+// retention-bounded /logs feed. Flagged when a device's share of total events
+// is >= `threshold` (default 25%) AND it dwarfs the rest (>= 2x the mean of the
+// other devices) — so an even distribution is never flagged. Empty for <2
+// devices or no events.
+export function noisyDevices(bundles, threshold = 0.25) {
+  const counts = bundles.map((b) => b.logs?.length ?? 0);
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (bundles.length < 2 || total === 0) return [];
+  return bundles
+    .map((b, i) => {
+      const events = counts[i];
+      const meanOthers = (total - events) / (bundles.length - 1);
+      return {
+        serial: b.device.attributes?.serial_number ?? "",
+        name: b.device.attributes?.name ?? "",
+        events,
+        share: events / total,
+        _dominant: events >= 2 * meanOthers,
+      };
+    })
+    .filter((d) => d.share >= threshold && d._dominant)
+    .sort((a, b) => b.events - a.events)
+    .map(({ _dominant, ...d }) => d);
+}
+
 // Detailed COMBINED per-device dossier merging identity, security posture,
 // activity, notable software-update events, and software inventory into one
 // document. Sections degrade gracefully: security appears only when
@@ -230,14 +257,24 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
   const hasInventory = bundles.some((b) => b.apps || b.profiles || b.users);
   const totalEvents = bundles.reduce((n, b) => n + (b.logs?.length ?? 0), 0);
   const fvOff = bundles.filter((b) => b.device.attributes?.filevault_enabled !== true).length;
+  const comma = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const noisy = noisyDevices(bundles);
+  const noisySerials = new Set(noisy.map((d) => d.serial));
 
   P(`# SimpleMDM Device Activity & Security Dossier — ${dateStr}`); P("");
-  P(`Devices: **${bundles.length}** • Total log events: **${totalEvents}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
+  P(`Devices: **${bundles.length}** • Total log events: **${comma(totalEvents)}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
   const parts = ["the SimpleMDM /logs activity record"];
   if (securityEval) parts.push("the SOFA-evaluated security posture");
   if (hasInventory) parts.push("software inventory");
   const partsList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
   P(`This report combines, per device, ${partsList}. The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis.`); P("");
+
+  if (noisy.length) {
+    P(`> ⚠ **Noisy device${noisy.length > 1 ? "s" : ""}:** ` +
+      noisy.map((d) => `${cell(d.name || d.serial)} (${d.serial}) — ${comma(d.events)} events, ${Math.round(d.share * 100)}% of all activity`).join("; ") +
+      `. A single device dominating log volume skews the fleet totals above and can evict other devices' events from the retention-bounded /logs feed — read the per-device pivot, not just the totals. Marked ⚠ in the roll-up below.`);
+    P("");
+  }
 
   P(`## 1. Fleet Roll-up`); P("");
   P(`| # | Device | Serial | OS | Unfixed CVEs | FileVault | SIP | Firewall | Events | Last seen |`);
@@ -246,7 +283,8 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
     const a = b.device.attributes ?? {};
     const ev = evBySerial.get(a.serial_number);
     const cve = ev ? `${ev.cvesBehind ?? 0}${ev.exploitedBehind ? ` (${ev.exploitedBehind} expl)` : ""}` : "—";
-    P(`| ${i + 1} | ${cell((a.name || "").slice(0, 38))} | ${cell(a.serial_number)} | ${cell(a.os_version)} | ${cve} | ${onoff(a.filevault_enabled)} | ${onoff(a.system_integrity_protection_enabled)} | ${onoff(a.firewall?.enabled)} | ${b.logs?.length ?? 0} | ${(a.last_seen_at || "").slice(0, 10)} |`);
+    const events = `${comma(b.logs?.length ?? 0)}${noisySerials.has(a.serial_number) ? " ⚠" : ""}`;
+    P(`| ${i + 1} | ${cell((a.name || "").slice(0, 38))} | ${cell(a.serial_number)} | ${cell(a.os_version)} | ${cve} | ${onoff(a.filevault_enabled)} | ${onoff(a.system_integrity_protection_enabled)} | ${onoff(a.firewall?.enabled)} | ${events} | ${(a.last_seen_at || "").slice(0, 10)} |`);
   });
   P("");
 

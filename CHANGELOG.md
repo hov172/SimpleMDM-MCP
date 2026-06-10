@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `/logs-audit` report now flags **noisy devices** — any device contributing an
+  outsized share (>=25%) of total log volume while dwarfing the rest is surfaced in a
+  report callout, marked ⚠ in the fleet roll-up, and listed in `summary.txt`. Such a
+  device skews fleet aggregates and can evict other devices' events from the
+  retention-bounded `/logs` feed, so it's called out automatically.
+
 ## [0.14.2] - 2026-06-09
 
 ### Changed

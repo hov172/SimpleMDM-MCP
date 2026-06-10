@@ -550,7 +550,7 @@ live tenant data and event history, and are never committed):
 | `summary.txt` | headline counts (devices, total events, per-type totals, failed devices) |
 | `inventory.csv`, `apps.csv`, `profiles.csv` | *(with `--with-inventory`)* per-device inventory / apps / profiles |
 | `security-posture.csv`, `device-cves.csv` | *(with `--with-security`)* SOFA posture + per-device outstanding CVEs |
-| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (fleet roll-up + per-device identity, security, activity, notable software-update events, inventory) |
+| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (fleet roll-up + per-device identity, security, activity, notable software-update events, inventory), with **noisy-device flagging** when one device dominates log volume |
 
 ### Fidelity & disclosures
 

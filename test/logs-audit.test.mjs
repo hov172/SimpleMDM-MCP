@@ -226,6 +226,42 @@ test("flatten exposes the evaluateDevice-compatible shape", () => {
   assert.equal(d.device_group_id, null);
 });
 
+import { noisyDevices } from "../scripts/lib/logs.mjs";
+
+const mkBundle = (id, serial, n, name) => ({
+  device: { id, attributes: { serial_number: serial, name: name ?? serial } },
+  logs: Array.from({ length: n }, () => ({ attributes: { event_type: "status.changed", at: "05/01/26 00:00:00" } })),
+});
+
+test("noisyDevices flags a single device dominating log volume", () => {
+  const out = noisyDevices([mkBundle(1, "A", 90), mkBundle(2, "B", 5), mkBundle(3, "C", 5)]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].serial, "A");
+  assert.equal(out[0].events, 90);
+  assert.ok(out[0].share >= 0.25 && out[0].share <= 1);
+});
+
+test("noisyDevices does NOT flag an even distribution (no dominant device)", () => {
+  // four devices at exactly 25% each — none dwarfs the rest
+  assert.deepEqual(noisyDevices([mkBundle(1, "A", 10), mkBundle(2, "B", 10), mkBundle(3, "C", 10), mkBundle(4, "D", 10)]), []);
+});
+
+test("noisyDevices returns [] for a single device or zero events", () => {
+  assert.deepEqual(noisyDevices([mkBundle(1, "A", 100)]), []);
+  assert.deepEqual(noisyDevices([mkBundle(1, "A", 0), mkBundle(2, "B", 0)]), []);
+});
+
+test("renderDetailedReport surfaces a noisy-device callout and ⚠ marker", () => {
+  const md = renderDetailedReport([mkBundle(1, "NOISY1", 900, "Loud Mac"), mkBundle(2, "B", 50), mkBundle(3, "C", 50)], null, "2026-06-09");
+  assert.match(md, /⚠ \*\*Noisy device:\*\* Loud Mac \(NOISY1\) — 900 events, 90% of all activity/);
+  assert.match(md, /\| 900 ⚠ \|/, "the noisy device's roll-up Events cell is marked");
+});
+
+test("renderDetailedReport omits the noisy callout when volume is balanced", () => {
+  const md = renderDetailedReport([mkBundle(1, "A", 10), mkBundle(2, "B", 10)], null, "2026-06-09");
+  assert.doesNotMatch(md, /Noisy device/);
+});
+
 import { renderDetailedReport } from "../scripts/lib/logs.mjs";
 
 test("renderDetailedReport builds a per-device dossier with roll-up, identity, activity and disclosures", () => {
