@@ -180,3 +180,37 @@ test("rollupRows and byModelRows aggregate with enrichment carried through", () 
   assert.equal(imac.release_year, "2021");
   assert.equal(imac.devices, 1);
 });
+
+import { inventoryFindings, FINDING_COLUMNS } from "../scripts/lib/inventory-render.mjs";
+
+const NOW2 = Date.parse("2026-06-10T12:00:00Z");
+
+test("inventoryFindings: low storage, stale device, recovery-key-missing, deployment gap", () => {
+  const f = inventoryFindings(buildRecords(), { now: NOW2 });
+  assert.ok(f.find((x) => x.type === "low-storage" && x.serial === "D25STA222" && x.status === "flag"));
+  assert.ok(f.find((x) => x.type === "stale-device" && x.serial === "E33LAB333"));
+  assert.ok(f.find((x) => x.type === "recovery-key-missing" && x.serial === "D25STA222"));
+  assert.ok(f.find((x) => x.type === "assigned-app-missing" && x.serial === "D25STA222" && /Zoom/.test(x.detail) && x.status === "flag"));
+  assert.ok(!f.find((x) => x.type === "assigned-app-missing" && x.serial === "C02FAC111" && /Zoom/.test(x.detail)), "zoom.us satisfies the Zoom assignment");
+  for (const c of FINDING_COLUMNS) assert.ok(c in f[0]);
+});
+
+test("inventoryFindings: failed app section degrades the gap finding to unknown, never pass/fail (Codex finding 3)", () => {
+  const recs = buildRecords();
+  const bob = recs.find((r) => r.serial === "D25STA222");
+  bob.sections.apps = "failed"; bob.apps = null;
+  const f = inventoryFindings(recs, { now: NOW2 });
+  const gap = f.filter((x) => x.type === "assigned-app-missing" && x.serial === "D25STA222");
+  assert.ok(gap.length > 0);
+  assert.ok(gap.every((x) => x.status === "unknown"));
+});
+
+test("inventoryFindings: duplicate names and OS outliers", () => {
+  const recs = buildRecords();
+  recs[2].name = "Alice MBP";                       // duplicate of recs[0]
+  recs[2].os_version = "13.6";                      // >1 major behind modal 15
+  const f = inventoryFindings(recs, { now: NOW2 });
+  assert.equal(f.filter((x) => x.type === "duplicate-name").length, 2);
+  assert.ok(f.find((x) => x.type === "os-outlier" && x.serial === "E33LAB333"));
+  assert.ok(!f.find((x) => x.type === "os-outlier" && x.serial === "F44PAD444"), "iPads are not judged against the mac modal");
+});
