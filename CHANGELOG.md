@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`/audit` can now be scoped to a subset** instead of always auditing the whole fleet:
+  `--serial A,B`, `--group "Name"`, or `--last-seen N` (at most one; omit for the whole fleet).
+  `--group` understands **both legacy device groups and assignment groups** (reusing the same
+  `selectDevices` resolution as `/logs-audit`), so you can run a fleet *security* audit for just
+  one group. `summary.txt` records the scope.
+
 ## [0.17.0] - 2026-06-09
 
 ### Changed

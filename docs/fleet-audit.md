@@ -84,8 +84,15 @@ node scripts/sofa-audit.mjs --format all     # csv | md | docx | all  (default: 
 | `--format md` | combined Markdown report + CSVs |
 | `--format docx` | adds a Word document (needs `pandoc`) |
 | `--format all` | everything (default) |
+| `--serial A,B` | scope the audit to these devices (whole fleet if omitted) |
+| `--group "Name"` | scope to a **device or assignment** group (at most one selector) |
+| `--last-seen N` | scope to the N most recently seen devices |
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
+
+By default the audit covers the **whole fleet**. The optional selectors above scope it to a
+subset; `--group` understands both legacy **device groups** and **assignment groups** (the same
+resolution `/logs-audit --group` uses), and the chosen scope is recorded in `summary.txt`.
 
 For a print-ready **PDF**, run `scripts/make-audit-pdf.sh [audit-dir]` after the audit
 (see [PDF export](#pdf-export)).

@@ -401,6 +401,9 @@ node scripts/sofa-audit.mjs --format all   # csv | md | docx | all  (default: al
 | `--format md` | combined Markdown report + CSVs |
 | `--format docx` | adds a Word doc (requires [`pandoc`](https://pandoc.org)) |
 | `--format all` | everything (default) |
+| `--serial A,B` | scope the audit to these devices (whole fleet if omitted) |
+| `--group "Name"` | scope to a **device or assignment** group (at most one selector) |
+| `--last-seen N` | scope to the N most recently seen devices |
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
 
