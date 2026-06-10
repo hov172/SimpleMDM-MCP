@@ -81,12 +81,12 @@ async function main() {
     write("all-devices.csv", toCsv([["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(ev)));
     write("by-group.csv", toCsv([["device_group", "devices", "os_outdated", "no_filevault", "no_sip", "no_firewall", "unfixed_cve_devices"]], groupBreakdownRows(ev)));
     write("cve-detail.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_still_exposed"]], cveRows(cveDetail)));
-    write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest", "cves"]], vulnerabilityRows(tables, ev)));
+    write("vulnerability-check.csv", toCsv([["version", "track", "date", "cves_fixed", "actively_exploited", "devices_on_release", "unfixed_to_latest", "cves"]], vulnerabilityRows(tables, ev, { scoped: !!selector })));
     write("device-cves.csv", toCsv([["name", "serial", "device_group", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(ev, tables)));
     write("cve-devices.csv", toCsv([["cve_id", "fixed_in_version", "os_track", "actively_exploited", "devices_exposed", "devices"]], cveDeviceRows(ev, tables)));
   }
 
-  const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr);
+  const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped: !!selector });
   if (["md", "docx", "all"].includes(format)) write("full-audit.md", md);
   if (["docx", "all"].includes(format)) mdToDocx(`${outDir}/full-audit.md`, `${outDir}/full-audit.docx`);
   // Auto-render full-audit.html + full-audit.pdf (A3 landscape; WeasyPrint preferred → footer page numbers).

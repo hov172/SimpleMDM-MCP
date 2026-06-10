@@ -92,7 +92,10 @@ node scripts/sofa-audit.mjs --format all     # csv | md | docx | all  (default: 
 
 By default the audit covers the **whole fleet**. The optional selectors above scope it to a
 subset; `--group` understands both legacy **device groups** and **assignment groups** (the same
-resolution `/logs-audit --group` uses), and the chosen scope is recorded in `summary.txt`.
+resolution `/logs-audit --group` uses), and the chosen scope is recorded in `summary.txt`. On a
+scoped run the **Vulnerability Check** is also trimmed to the OS major-version ladders the selected
+devices are on — empty tracks (e.g. iOS/iPadOS for a macs-only scope) and unrelated macOS majors
+are dropped, while the full upgrade ladder within a kept major is preserved.
 
 For a print-ready **PDF**, run `scripts/make-audit-pdf.sh [audit-dir]` after the audit
 (see [PDF export](#pdf-export)).
@@ -178,7 +181,7 @@ contain live tenant data and are never committed.
 ### Report sections (`full-audit.md`)
 
 1. **Security Report** — every device with an issue, with its findings, CVE count, and group.
-2. **Vulnerability Check** — a per-release table: CVEs fixed, actively-exploited, devices on the release, and unfixed-to-latest. The actual CVE IDs per release live in `cve-detail.csv` / `vulnerability-check.csv`.
+2. **Vulnerability Check** — a per-release table: CVEs fixed, actively-exploited, devices on the release, and unfixed-to-latest. The actual CVE IDs per release live in `cve-detail.csv` / `vulnerability-check.csv`. On a scoped run it is trimmed to the OS major-version ladders the selected devices are on (see the scoping note above).
 3. **Need Updates** — devices needing updates with their supported upgrade paths.
 4. **By Device Group** — the `by-group.csv` rollup, for batching remediation by group.
 5. **All Devices** — the complete inventory table.
