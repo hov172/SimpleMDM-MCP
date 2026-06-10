@@ -100,3 +100,52 @@ export function byModelRows(records) {
   }
   return [...m.values()].sort((a, b) => b.devices - a.devices);
 }
+
+export const FINDING_COLUMNS = ["type", "status", "serial", "name", "detail"];
+
+const MAC_TYPES = new Set(["imac", "laptop", "desktop", "mac"]);
+
+// status: "flag" = asserted finding; "unknown" = the section needed to decide
+// failed for this device, so the finding is reported but never asserted.
+export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, now = Date.now() } = {}) {
+  const out = [];
+  const add = (type, status, r, detail) => out.push({ type, status, serial: r.serial, name: r.name, detail });
+
+  const byName = new Map();
+  for (const r of records) {
+    if (!r.name) continue;
+    byName.set(r.name, [...(byName.get(r.name) ?? []), r]);
+  }
+  for (const [name, rs] of byName) {
+    if (rs.length > 1) for (const r of rs) add("duplicate-name", "flag", r, `${rs.length} devices share the name "${name}"`);
+  }
+
+  const macs = records.filter((r) => MAC_TYPES.has(r.type) && r.os_version);
+  const majors = new Map();
+  for (const r of macs) {
+    const mj = r.os_version.split(".")[0];
+    majors.set(mj, (majors.get(mj) ?? 0) + 1);
+  }
+  const modal = [...majors.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  for (const r of records) {
+    if (r.storage_free_gb != null && r.storage_free_gb < lowStorageGb) {
+      add("low-storage", "flag", r, `${Number(r.storage_free_gb).toFixed(1)} GB free of ${r.storage_total_gb ?? "?"} GB`);
+    }
+    const t = r.seen_at ? Date.parse(r.seen_at) : NaN;
+    if (Number.isFinite(t) && now - t > staleDays * 86400000) add("stale-device", "flag", r, `last seen ${r.seen_at}`);
+    if (r.filevault === true && r.recoverykey === false) add("recovery-key-missing", "flag", r, "FileVault is on but no recovery key is escrowed");
+    if (modal && MAC_TYPES.has(r.type) && r.os_version) {
+      const mj = parseInt(r.os_version.split(".")[0], 10);
+      if (Number.isFinite(mj) && parseInt(modal, 10) - mj > 1) add("os-outlier", "flag", r, `macOS ${r.os_version} vs fleet modal ${modal}.x`);
+    }
+    for (const appName of r.assigned_apps ?? []) {
+      if (r.sections?.apps === "ok") {
+        if (!installedHas(r, appName)) add("assigned-app-missing", "flag", r, `"${appName}" is assigned via an assignment group but not installed`);
+      } else if (r.sections?.apps === "failed" || r.sections?.apps === "pending") {
+        add("assigned-app-missing", "unknown", r, `"${appName}" is assigned; installed-app inventory unavailable (fetch ${r.sections.apps})`);
+      }
+    }
+  }
+  return out;
+}
