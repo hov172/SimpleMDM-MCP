@@ -385,9 +385,22 @@ SOFA's `Models` map, so it stays current with Apple's support matrix automatical
 
 ### Running it
 
-In Claude Code, just ask for it (the **`/audit`** skill runs the engine):
+In Claude Code, just ask for it (the **`/audit`** skill maps your words to the flags below):
 
-> `/audit` &nbsp;·&nbsp; *"run a fleet security audit"* &nbsp;·&nbsp; *"export the SOFA report as a Word doc"*
+**Example prompts**
+
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"run a fleet security audit"* | whole fleet, all formats (default) |
+| *"run a security audit, CSV only"* | `--format csv` |
+| *"export the SOFA audit as a Word doc"* / *"…as a PDF"* | `--format docx` / `all` |
+| *"run a security audit on the Faculty group"* | `--group "Faculty"` (device **or** assignment group) |
+| *"audit serials C02ABC123, C02DEF456"* | `--serial C02ABC123,C02DEF456` |
+| *"audit the 25 most recently seen devices"* | `--last-seen 25` |
+| *"re-run the audit with a fresh SOFA feed"* | `--no-network-cache` |
+
+Scoped prompts (a group, serials, or "most recent N") also trim the **Vulnerability Check** to the
+OS versions those devices are on.
 
 Or run the engine directly:
 
@@ -521,7 +534,16 @@ skill, not an MCP tool.
 
 In Claude Code, ask for it (the **`/logs-audit`** skill maps your words to flags):
 
-> *"export the logs for serial ABC123"* &nbsp;·&nbsp; *"forensic log report for the last 10 devices seen, with security"* &nbsp;·&nbsp; *"audit the Faculty group's device logs"*
+**Example prompts**
+
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"export the activity logs for serial C02ABC123XYZ"* | `--serial C02ABC123XYZ` |
+| *"audit the Faculty group's device logs, with inventory and security"* | `--group "Faculty" --with-inventory --with-security` |
+| *"forensic log report for the 10 most recently seen devices, with security"* | `--last-seen 10 --with-security` |
+| *"include the full per-device event tables in the Faculty log report"* | `--group "Faculty" --report-detail full` |
+| *"save the logs export to reports/case-2026-06"* | `--out reports/case-2026-06` |
+| *"export device logs for the whole fleet"* (heavy — it will confirm first) | `--all --confirm-all` |
 
 Or run the engine directly — **exactly one selector** is required:
 
