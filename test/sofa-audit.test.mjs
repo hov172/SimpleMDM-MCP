@@ -196,6 +196,34 @@ test("vulnerabilityRows lists releases with unfixed-to-latest", () => {
   assert.equal(r260.unfixed_to_latest, 2); // 26.5.1 fixes 2 CVEs newer than 26.0
 });
 
+test("vulnerabilityRows unscoped keeps the full catalog (both tracks)", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = [evaluateDevice({ id: 1, model: "iMac21,1", osVersion: "26.0" }, t)];
+  const rows = vulnerabilityRows(t, ev); // no opts -> unchanged behaviour
+  assert.ok(rows.some(r => r.track === "iOS/iPadOS"), "iOS/iPadOS catalog present when not scoped");
+  assert.ok(rows.some(r => r.track === "macOS" && parseVersion(r.version)[0] !== 26), "older macOS majors present when not scoped");
+});
+
+test("vulnerabilityRows scoped shows only tracks/majors in-scope devices are on", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  // One mac on 26.0 -> only the macOS 26.x ladder; no iOS, no older macOS majors.
+  const ev = [evaluateDevice({ id: 1, model: "iMac21,1", osVersion: "26.0" }, t)];
+  const rows = vulnerabilityRows(t, ev, { scoped: true });
+  assert.ok(rows.length > 1, "keeps the full 26.x upgrade ladder, not just the version in use");
+  assert.ok(rows.every(r => r.track === "macOS"), "drops the iOS/iPadOS table entirely");
+  assert.ok(rows.every(r => parseVersion(r.version)[0] === 26), "drops macOS majors no in-scope device is on");
+  assert.ok(rows.some(r => r.version === "26.0" && r.devices_on_release === 1), "the device's own release is present");
+});
+
+test("renderMarkdown scoped drops the empty iOS/iPadOS Vulnerability Check table", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = [evaluateDevice({ id: 1, model: "iMac21,1", osVersion: "26.0" }, t)];
+  const md = renderMarkdown(ev, aggregateCveDetail(ev, t), summarize(ev, aggregateCveDetail(ev, t)), t, "2026-06-07", { scoped: true });
+  const vulnSection = md.slice(md.indexOf("## Vulnerability Check"), md.indexOf("## Need Updates"));
+  assert.doesNotMatch(vulnSection, /### iOS\/iPadOS/, "no iOS/iPadOS subheading when scoped to macs");
+  assert.match(vulnSection, /### macOS/, "macOS subheading still present");
+});
+
 test("modelMaxMajor comes from SOFA Models; evaluateDevice exposes latestMinor/latestMajor", () => {
   const t = buildMajorTables(macFeed, iosFeed);
   assert.equal(t.modelMaxMajor.get("Mac14,3"), 26);

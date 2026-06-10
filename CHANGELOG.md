@@ -12,6 +12,12 @@ All notable changes to this project are documented here. Format follows
   `--group` understands **both legacy device groups and assignment groups** (reusing the same
   `selectDevices` resolution as `/logs-audit`), so you can run a fleet *security* audit for just
   one group. `summary.txt` records the scope.
+- **Scoped runs trim the Vulnerability Check to what's relevant.** When a selector is active, the
+  Vulnerability Check (Markdown section and `vulnerability-check.csv`) is limited to the OS
+  major-version ladders the in-scope devices are actually on — empty tracks (e.g. the iOS/iPadOS
+  table for a macs-only scope) and unrelated macOS majors are dropped, while the full upgrade
+  ladder within a kept major is preserved so you still see every release the devices are missing.
+  Whole-fleet runs are unchanged (full SOFA catalog).
 
 ## [0.17.0] - 2026-06-09
 

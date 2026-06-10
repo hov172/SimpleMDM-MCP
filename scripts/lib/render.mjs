@@ -1,4 +1,4 @@
-import { compareVersions } from "./evaluate.mjs";
+import { compareVersions, parseVersion } from "./evaluate.mjs";
 
 function esc(v) {
   const s = v === null || v === undefined ? "" : String(v);
@@ -67,13 +67,32 @@ export function allDeviceRows(ev) {
   }));
 }
 
-export function vulnerabilityRows(tables, ev) {
+// Set of OS major versions the in-scope devices sit on, per track.
+function relevantMajorsByTrack(ev) {
+  const byTrack = { "macOS": new Set(), "iOS/iPadOS": new Set() };
+  for (const d of ev) {
+    const major = parseVersion(d.osVersion ?? "")[0];
+    if (!major) continue;
+    if (d.platform === "macOS") byTrack["macOS"].add(major);
+    else if (d.platform === "iOS" || d.platform === "iPadOS") byTrack["iOS/iPadOS"].add(major);
+  }
+  return byTrack;
+}
+
+// When `scoped`, the Vulnerability Check is trimmed to the OS major-version
+// ladders the in-scope devices are actually on: empty tracks (e.g. iOS/iPadOS
+// for a macs-only scope) and unrelated majors are dropped, but the full upgrade
+// ladder within a kept major is preserved. Whole-fleet runs keep the full feed.
+export function vulnerabilityRows(tables, ev, { scoped = false } = {}) {
+  const keep = scoped ? relevantMajorsByTrack(ev) : null;
   const rows = [];
   for (const [track, map, platforms] of [
     ["macOS", tables.macOS, ["macOS"]],
     ["iOS/iPadOS", tables.ios, ["iOS", "iPadOS"]],
   ]) {
+    if (keep && keep[track].size === 0) continue;
     for (const info of [...map.values()].sort((a, b) => b.major - a.major)) {
+      if (keep && !keep[track].has(info.major)) continue;
       for (const r of info.releases) {
         const devicesOnRelease = ev.filter((d) => platforms.includes(d.platform) && d.osVersion === r.ver).length;
         let unfixedToLatest = 0;
@@ -105,7 +124,7 @@ function mdTable(cols, rows) {
   return rows.length ? `${head}\n${body}` : "_none_";
 }
 
-export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
+export function renderMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped = false } = {}) {
   const out = [];
   out.push(`# SOFA Fleet Audit — ${dateStr}\n`);
 
@@ -119,7 +138,8 @@ export function renderMarkdown(ev, cveDetail, summary, tables, dateStr) {
 
   out.push("## Vulnerability Check\n");
   out.push("_Per-release CVE counts. The full CVE IDs for each release are in `cve-detail.csv` and `vulnerability-check.csv`._\n");
-  const vrows = vulnerabilityRows(tables, ev);
+  if (scoped) out.push("_Scoped run: limited to the OS major-version ladders the selected devices are on._\n");
+  const vrows = vulnerabilityRows(tables, ev, { scoped });
   for (const track of ["macOS", "iOS/iPadOS"]) {
     const rows = vrows.filter((r) => r.track === track);
     if (!rows.length) continue;

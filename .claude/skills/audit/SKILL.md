@@ -11,7 +11,7 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 
 1. Determine the format from the user's request (default `all`). Map words to flags:
    - "csv" → `--format csv`, "word"/"docx" → `--format docx`, "markdown"/"md" → `--format md`, otherwise `--format all`.
-2. Optional scope (at most one; omit for the whole fleet): a serial (or several) → `--serial A,B`; a group name → `--group "Name"` (matches device **and** assignment groups); "last N seen" → `--last-seen N`.
+2. Optional scope (at most one; omit for the whole fleet): a serial (or several) → `--serial A,B`; a group name → `--group "Name"` (matches device **and** assignment groups); "last N seen" → `--last-seen N`. A scoped run also trims the Vulnerability Check to the OS major-version ladders the selected devices are on (drops the iOS/iPadOS table and unrelated macOS majors).
 3. Run: `node scripts/sofa-audit.mjs --format <format> [selector]`
 3. Read `reports/audit-<today>/summary.txt` and relay the headline counts to the user
    (OS Outdated, No FileVault, No SIP, No Firewall, XProtect Outdated, Unfixed CVEs, devices with issues).
