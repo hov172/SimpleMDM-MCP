@@ -126,3 +126,15 @@ export async function fetchAssignmentGroups(apiKey) {
   for (const g of await getAll(apiKey, `/assignment_groups`)) map.set(g.id, g.attributes?.name ?? String(g.id));
   return map;
 }
+
+// Raw assignment-group records (with relationships.apps) — fetchAssignmentGroups only maps names.
+export async function fetchAssignmentGroupsRaw(apiKey) {
+  return getAll(apiKey, `/assignment_groups`);
+}
+
+// id -> name map of the account app catalog (assignment-group app ids point here).
+export async function fetchAppCatalog(apiKey) {
+  const map = new Map();
+  for (const a of await getAll(apiKey, `/apps`)) map.set(a.id, a.attributes?.name ?? String(a.id));
+  return map;
+}
