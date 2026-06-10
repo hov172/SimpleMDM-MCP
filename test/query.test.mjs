@@ -208,3 +208,13 @@ test("evaluate: unknown terms surface an undetermined reason string", () => {
   assert.equal(r.matched, "unknown");
   assert.ok(r.reasons.some((reason) => reason.includes("(undetermined: data unavailable)")));
 });
+
+test("parseTerm: quoted phrase with commas stays ONE alternative (no silent OR explosion)", () => {
+  const t = parseTerm('model:"iMac (24-inch, M1, 2021)"');
+  assert.equal(t.alts.length, 1);
+  assert.equal(t.alts[0].text, "imac (24-inch, m1, 2021)");
+  const mixed = parseTerm('group:"Faculty, Staff",loaners');
+  assert.equal(mixed.alts.length, 2);
+  assert.equal(mixed.alts[0].text, "faculty, staff");
+  assert.equal(mixed.alts[1].text, "loaners");
+});

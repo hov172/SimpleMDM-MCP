@@ -18,7 +18,9 @@ const DG = { data: [
   { type: "device_group", id: 9003, attributes: { name: "Library" } } ], has_more: false };
 
 let failApps = false;
+const fetchLog = [];
 globalThis.fetch = async (url) => {
+  fetchLog.push(String(url));
   const u = new URL(url);
   const path = u.pathname;
   const body = (() => {
@@ -99,4 +101,29 @@ test("engine: mixed-scope OR matches the out-of-group branch (Codex finding 1 en
   const devices = readFileSync(join(dir, "devices.csv"), "utf8");
   assert.match(devices, /F44PAD444/);   // Library iPad via group branch
   assert.match(devices, /C02FAC111/);   // Alice via app:zoom branch — NOT in Library
+});
+
+test("engine: fleet-wide search with no device-level prefilter unit requires --confirm-all", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "g");
+  assert.equal(await run(["--search", "app:zoom", "--format", "csv", "--out", dir]), 2);
+  assert.ok(!existsSync(dir), "guard must fire before any output is written");
+});
+
+test("engine: prefiltered-out devices incur zero per-device fetches", async () => {
+  fetchLog.length = 0;
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "pf");
+  assert.equal(await run(["--search", "group:faculty,staff seen:>=2025-01-01", "--format", "csv", "--out", dir]), 0);
+  const sectionCalls = fetchLog.filter((u) => /\/devices\/\d+\/(installed_apps|profiles|users)/.test(u));
+  assert.ok(sectionCalls.length > 0, "matched devices are fetched");
+  assert.ok(!sectionCalls.some((u) => /\/devices\/20[34]\//.test(u)), "devices 203/204 were prefiltered out and must not be fetched");
+});
+
+test("engine: zero-match run still writes all outputs and exits 0", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "z");
+  assert.equal(await run(["--search", "group:doesnotexistanywhere", "--format", "csv", "--out", dir]), 0);
+  const summary = readFileSync(join(dir, "summary.txt"), "utf8");
+  assert.match(summary, /Devices: 0 matched/);
+  for (const f of ["devices.csv", "findings.csv", "by-group.csv", "manifest.sha256"]) {
+    assert.ok(existsSync(join(dir, f)), `${f} must exist on a zero-match run`);
+  }
 });
