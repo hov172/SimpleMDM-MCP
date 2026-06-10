@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `/logs-audit` **findings engine** — the report now auto-detects and flags per-device
+  patterns that a count-only summary hides: **app-reinstall loops** (the same app/version
+  installed many times — e.g. a broken Munki installs-check), **software-update failure
+  loops**, and **profile reinstall churn**. Findings appear as a fleet callout, a per-device
+  ⚠ Findings block, a `summary.txt` line, and a machine-readable `findings.csv`.
+- `/logs-audit` per-device **"top installed apps (by install count)"** table in the dossier,
+  so repeated installs (the content behind the counts) are visible.
+- `/logs-audit` `--report-detail summary|table|full` flag controlling how much per-device log
+  detail the report document includes: `summary` (aggregation + findings, default), `table`
+  (full per-device event table), `full` (both). `logs.csv`/`raw-logs.json` always retain 100%
+  of the logs regardless.
+
 ## [0.15.0] - 2026-06-09
 
 ### Added

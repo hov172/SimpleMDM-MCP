@@ -508,6 +508,7 @@ node scripts/logs-audit.mjs <selector> [flags]
 | `--with-inventory` | also export per-device inventory + installed apps + profiles |
 | `--with-security` | also run the SOFA evaluation on the selected devices (posture + CVEs) |
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
+| `--report-detail <lvl>` | per-device log detail in the report: `summary` (aggregation + findings, default) \| `table` (full event table) \| `full` (both). CSV/JSON always keep 100%. |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).
@@ -550,7 +551,8 @@ live tenant data and event history, and are never committed):
 | `summary.txt` | headline counts (devices, total events, per-type totals, failed devices) |
 | `inventory.csv`, `apps.csv`, `profiles.csv` | *(with `--with-inventory`)* per-device inventory / apps / profiles |
 | `security-posture.csv`, `device-cves.csv` | *(with `--with-security`)* SOFA posture + per-device outstanding CVEs |
-| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (fleet roll-up + per-device identity, security, activity, notable software-update events, inventory), with **noisy-device flagging** when one device dominates log volume |
+| `findings.csv` | auto-detected per-device **findings** (app-reinstall loops, software-update-failure loops, profile churn) — when any are detected |
+| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (fleet roll-up + per-device identity, security, activity, top installed apps, notable software-update events, inventory), with **noisy-device flagging** and an auto-detected **⚠ Findings** block per device |
 
 ### Fidelity & disclosures
 

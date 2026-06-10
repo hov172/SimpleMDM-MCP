@@ -15,7 +15,7 @@ import { mdToDocx } from "./lib/docx.mjs";
 import {
   parseArgs, selectDevices, logRows, LOG_COLUMNS, statusSnapshotRows, STATUS_COLUMNS,
   statusSnapshotFiles, logSummaryRows, SUMMARY_COLUMNS, manifestRows, MANIFEST_COLUMNS,
-  renderDetailedReport, noisyDevices,
+  renderDetailedReport, noisyDevices, findingRows, FINDINGS_COLUMNS,
 } from "./lib/logs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -141,6 +141,8 @@ async function main() {
     for (const sf of snapFiles) writeFileSync(`${outDir}/${sf.file}`, JSON.stringify(sf.json, null, 2));
   }
   writeFile("logs-summary.csv", toCsv([SUMMARY_COLUMNS], mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
+  const fr = findingRows(bundles);
+  if (fr.length) writeFile("findings.csv", toCsv([FINDINGS_COLUMNS], fr), "Auto-detected per-device findings (reinstall loops, update-failure loops, profile churn)", `${fr.length} findings`);
   writeFile("raw-logs.json", JSON.stringify({ generated_at: nowIso(), selector: opts.selector, devices: bundles.map((b) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
 
   if (opts.withInventory) {
@@ -166,7 +168,7 @@ async function main() {
       const ag = await fetchAssignmentGroups(apiKey);
       groupNameMap = Object.fromEntries([...dg, ...ag].map(([id, name]) => [String(id), name]));
     } catch (e) { console.warn(`logs-audit: group names unavailable for report (${e.message})`); }
-    const md = renderDetailedReport(bundles, securityEval, dateStr, groupNameMap);
+    const md = renderDetailedReport(bundles, securityEval, dateStr, groupNameMap, { detail: opts.reportDetail });
     writeFile("report.md", md, "Detailed combined dossier: identity + security + activity + inventory per device", "1 document");
     if (["docx", "all"].includes(opts.format)) {
       const ok = mdToDocx(`${outDir}/report.md`, `${outDir}/report.docx`);
@@ -209,6 +211,7 @@ async function main() {
     `By type: app.installing ${byType.app_installing} | profile.installed ${byType.profile_installed} | status.changed ${byType.status_changed} | bootstrap_token.get ${byType.bootstrap_token_get}`,
     `Unparseable timestamps: ${unparseableTimestamps}`,
     noisy.length ? `Noisy devices (>=25% of events): ${noisy.map((d) => `${d.serial} (${Math.round(d.share * 100)}%)`).join(", ")}` : null,
+    fr.length ? `Findings: ${fr.length} across ${new Set(fr.map((r) => r.serial_number)).size} device(s) — see findings.csv` : null,
     errors.length ? `Failed devices: ${errors.length} (export is PARTIAL)` : `Failed devices: 0`,
     `Output: ${outDir}`].filter(Boolean).join("\n");
   writeFileSync(`${outDir}/summary.txt`, head + "\n");

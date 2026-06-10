@@ -292,3 +292,83 @@ test("renderDetailedReport includes per-device CVE findings when securityEval is
   assert.match(md, /Findings: OS outdated; FileVault disabled/);
   assert.match(md, /\n\n> Findings:/, "findings must be a real blockquote (blank line before >), not inline text");
 });
+
+import { deviceFindings, topInstalledApps } from "../scripts/lib/logs.mjs";
+
+const appLog = (name, id, ver) => ({ attributes: { event_type: "app.installing", at: "05/01/26 00:00:00", metadata: { name, bundle_identifier: id, version: ver } } });
+const statusFail = () => ({ attributes: { event_type: "status.changed", at: "05/01/26 00:00:00", metadata: { status: { softwareupdate: { failure_reason: { count: 5, reason: "boom" } } } } } });
+const profLog = (n) => ({ attributes: { event_type: "profile.installed", at: "05/01/26 00:00:00", metadata: { profile_name: n } } });
+
+test("topInstalledApps ranks apps by install-event count", () => {
+  const b = { logs: [appLog("Photoshop", "com.adobe.ps", "0.0"), appLog("Photoshop", "com.adobe.ps", "0.0"), appLog("Chrome", "com.google.Chrome", "1")] };
+  const t = topInstalledApps(b);
+  assert.equal(t[0].name, "Photoshop");
+  assert.equal(t[0].count, 2);
+});
+
+test("deviceFindings flags an app reinstall loop (same app+version many times)", () => {
+  const logs = Array.from({ length: 12 }, () => appLog("Adobe Photoshop", "com.adobe.Photoshop", "0.0"));
+  const loop = deviceFindings({ logs }).find((x) => x.type === "app-reinstall-loop");
+  assert.ok(loop);
+  assert.match(loop.detail, /installed 12×/);
+  assert.match(loop.title, /Photoshop/);
+});
+
+test("deviceFindings does NOT flag normal app installs (distinct versions, low counts)", () => {
+  const logs = [appLog("Firefox", "org.mozilla.firefox", "150"), appLog("Firefox", "org.mozilla.firefox", "151"), appLog("Chrome", "com.google.Chrome", "1")];
+  assert.deepEqual(deviceFindings({ logs }).filter((x) => x.type === "app-reinstall-loop"), []);
+});
+
+test("deviceFindings flags a software-update failure loop", () => {
+  const upd = deviceFindings({ logs: Array.from({ length: 11 }, statusFail) }).find((x) => x.type === "update-failure-loop");
+  assert.ok(upd);
+  assert.match(upd.detail, /11 status.changed/);
+  assert.match(upd.detail, /boom/);
+});
+
+test("deviceFindings flags profile churn", () => {
+  const f = deviceFindings({ logs: Array.from({ length: 6 }, () => profLog("WiFi")) });
+  assert.ok(f.find((x) => x.type === "profile-churn" && /WiFi/.test(x.title)));
+});
+
+test("deviceFindings returns [] for a healthy device", () => {
+  assert.deepEqual(deviceFindings({ logs: [appLog("Firefox", "org.mozilla.firefox", "150"), profLog("WiFi"), statusFail()] }), []);
+});
+
+import { findingRows, FINDINGS_COLUMNS } from "../scripts/lib/logs.mjs";
+
+test("parseArgs accepts --report-detail summary|table|full and rejects others", () => {
+  assert.equal(parseArgs(["--last-seen", "5"]).reportDetail, "summary");
+  assert.equal(parseArgs(["--last-seen", "5", "--report-detail", "full"]).reportDetail, "full");
+  assert.equal(parseArgs(["--last-seen", "5", "--report-detail", "table"]).error, null);
+  assert.match(parseArgs(["--last-seen", "5", "--report-detail", "bogus"]).error, /Invalid --report-detail/);
+});
+
+test("findingRows flattens per-device findings into csv rows", () => {
+  const dev = { id: 7, attributes: { serial_number: "S7", name: "Loud" } };
+  const logs = Array.from({ length: 12 }, () => appLog("Photoshop", "com.adobe.ps", "0.0"));
+  const rows = findingRows([{ device: dev, logs }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].serial_number, "S7");
+  assert.equal(rows[0].type, "app-reinstall-loop");
+  assert.ok(FINDINGS_COLUMNS.includes("title") && FINDINGS_COLUMNS.includes("detail"));
+});
+
+test("renderDetailedReport surfaces a top-apps table and a per-device Findings block", () => {
+  const dev = { id: 1, attributes: { serial_number: "S1", name: "Loud Mac" } };
+  const logs = Array.from({ length: 12 }, () => appLog("Adobe Photoshop", "com.adobe.Photoshop", "0.0"));
+  const md = renderDetailedReport([{ device: dev, logs }, { device: { id: 2, attributes: { serial_number: "S2", name: "Quiet" } }, logs: [appLog("Chrome", "com.google.Chrome", "1")] }], null, "2026-06-09");
+  assert.match(md, /🔎 \*\*Findings:\*\*/, "fleet findings callout");
+  assert.match(md, /\*\*Top installed apps \(by install count\):\*\*/);
+  assert.match(md, /\| Adobe Photoshop \| 0\.0 \| 12 \|/, "top-apps table shows the looping app count");
+  assert.match(md, /> ⚠ \*\*Findings \(1\):\*\*/);
+  assert.match(md, /App reinstall loop/);
+});
+
+test("renderDetailedReport detail modes: summary omits the full table, full includes it", () => {
+  const b = { device: { id: 1, attributes: { serial_number: "S1", name: "M" } }, logs: [appLog("Chrome", "com.google.Chrome", "1")] };
+  const summary = renderDetailedReport([b, b], null, "2026-06-09", {}, { detail: "summary" });
+  const full = renderDetailedReport([b, b], null, "2026-06-09", {}, { detail: "full" });
+  assert.doesNotMatch(summary, /Full event log/);
+  assert.match(full, /\*\*Full event log \(1 events\):\*\*/);
+});

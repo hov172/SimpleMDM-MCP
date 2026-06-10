@@ -51,6 +51,7 @@ node scripts/logs-audit.mjs <selector> [flags]
 | `--with-inventory` | also export per-device inventory + installed apps + profiles |
 | `--with-security` | also run the SOFA evaluation on the selected devices (posture + CVEs) |
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
+| `--report-detail <lvl>` | per-device log detail in the report document: `summary` (aggregation + findings, default) \| `table` (full per-device event table) \| `full` (both). `logs.csv`/`raw-logs.json` always keep 100% regardless |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
 | `--confirm-all` | required acknowledgement for `--all` |
 
@@ -84,6 +85,7 @@ exports contain live tenant data, serials, and event history, and are never comm
 | `summary.txt` | headline counts (devices, total events, per-event-type totals, unparseable timestamps, failed devices) |
 | `inventory.csv`, `apps.csv`, `profiles.csv` | *(with `--with-inventory`)* per-device inventory, installed apps, configuration profiles |
 | `security-posture.csv`, `device-cves.csv` | *(with `--with-security`)* SOFA posture for the selected devices, and every CVE each is still missing |
+| `findings.csv` | auto-detected per-device findings (app-reinstall loops, software-update-failure loops, profile churn) — written when any are detected |
 | `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (see below) |
 
 ### The combined dossier (`report.*`)
@@ -93,6 +95,8 @@ per-device narrative:
 
 - **Fleet roll-up** — one row per device: OS, unfixed/exploited CVEs, FileVault/SIP/Firewall, event count, last seen.
 - **Noisy-device flag** — any device contributing an outsized share (>=25%) of total log volume while dwarfing the rest is called out in a callout and marked ⚠ in the roll-up (also listed in `summary.txt`). A single flooding device skews the fleet totals and can evict other devices' events from the retention-bounded `/logs` feed, so it's surfaced automatically.
+- **Findings engine** — auto-detected per-device patterns a count-only summary hides: **app-reinstall loops** (same app/version installed many times — a broken Munki installs-check), **software-update failure loops**, and **profile reinstall churn**. Surfaced as a fleet callout, a per-device ⚠ Findings block, a `summary.txt` line, and a machine-readable `findings.csv`.
+- **Top installed apps (by install count)** per device — makes the *content* behind the activity counts visible (e.g. one app reinstalling hundreds of times).
 - **Per-device dossier** — identity (model, OS+build, UDID, enrolment, last seen), assignment groups, local accounts, **security posture** (with `--with-security`: findings + CVE counts as a callout), **activity** (event-type breakdown + coverage window), **notable software-update events** (pending OS, install state, failure counts), and **software inventory** (with `--with-inventory`: app/profile counts).
 - **Disclosures** — timezone, retention, and authoritative-source notes.
 
