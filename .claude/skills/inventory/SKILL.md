@@ -17,7 +17,7 @@ Searchable sibling to `/audit` and `/logs-audit`. Runs the engine and reports wh
 3. Optional: "skip apps/profiles/users" → `--no-apps`/`--no-profiles`/`--no-users`; "with raw JSON" → `--raw`; "accept partial" → `--allow-partial`; format words → `--format csv|md|docx|all` (default all); "full detail" → `--report-detail full`.
 4. Run: `node scripts/inventory-report.mjs <flags>`
 5. Read `<outDir>/summary.txt`; relay the headline (matched/selected/fleet counts, findings, PARTIAL warning if any). Exit 2 with partial data is expected behavior — surface it, suggest `--allow-partial` only if the user accepts incomplete evidence.
-6. List the generated files. Remind the user output is local-only (gitignored), owner-only permissions, and not committed.
+6. List the generated files. Remind the user output is local-only (gitignored) and not committed.
 
 ## Notes
 - Read-only: a read-only `SIMPLEMDM_API_KEY` in `.env` suffices. No SimpleMDM writes.

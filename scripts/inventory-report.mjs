@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
@@ -146,12 +146,10 @@ export async function run(argv) {
 
   const dateStr = todayStr();
   const outDir = opts.out ?? uniqueDir(`reports/inventory-${dateStr}`);
-  mkdirSync(outDir, { recursive: true, mode: 0o700 });
-  chmodSync(outDir, 0o700);
+  mkdirSync(outDir, { recursive: true });
   const written = [];
   const writeOut = (name, content) => {
-    const path = join(outDir, name);
-    writeFileSync(path, content, { mode: 0o600 });
+    writeFileSync(join(outDir, name), content);
     written.push(name);
   };
 
@@ -170,9 +168,9 @@ export async function run(argv) {
   writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
 
   if (opts.raw) {
-    mkdirSync(join(outDir, "raw"), { recursive: true, mode: 0o700 });
+    mkdirSync(join(outDir, "raw"), { recursive: true });
     const redacted = records.map((r) => redactDeviceRaw(rawById.get(r.id)));
-    writeFileSync(join(outDir, "raw", "devices.json"), JSON.stringify(redacted, null, 2), { mode: 0o600 });
+    writeFileSync(join(outDir, "raw", "devices.json"), JSON.stringify(redacted, null, 2));
     written.push("raw/devices.json");
   }
 
@@ -215,10 +213,7 @@ export async function run(argv) {
     const buf = readFileSync(join(outDir, name));
     return `${createHash("sha256").update(buf).digest("hex")}  ${name}`;
   });
-  writeFileSync(join(outDir, "manifest.sha256"), manifest.join("\n") + "\n", { mode: 0o600 });
-  // writeFileSync mode is ignored for pre-existing files and pandoc/WeasyPrint use default umask —
-  // clamp every output to owner-only as the final step
-  for (const name of [...written, "manifest.sha256"]) chmodSync(join(outDir, name), 0o600);
+  writeFileSync(join(outDir, "manifest.sha256"), manifest.join("\n") + "\n");
   console.log(head);
   for (const w of written) console.log(`  ${w}`);
   console.log("  manifest.sha256");
