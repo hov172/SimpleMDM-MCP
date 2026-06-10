@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **`/audit` (SOFA security report) now renders via the shared PDF pipeline.** `--format all`
+  writes `full-audit.pdf` **automatically** (previously a separate `make-audit-pdf.sh` step), and
+  the report adopts the same visual language as the `/logs-audit` dossier — navy headings, dark
+  table headers, zebra rows, and **footer page numbers** — while keeping **A3 landscape** for its
+  wide tables. PDF rendering prefers **WeasyPrint** (page numbers) and falls back to headless
+  Chrome. `make-audit-pdf.sh` remains for standalone regeneration and is upgraded the same way.
+  New shared `scripts/lib/report-pdf.mjs` renderer + `scripts/audit-report.head.html` stylesheet;
+  `/logs-audit` now uses the same shared renderer.
+
 ## [0.16.0] - 2026-06-09
 
 ### Added

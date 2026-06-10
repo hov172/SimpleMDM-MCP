@@ -445,10 +445,13 @@ OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Out
 - **XProtect Outdated** — Macs whose XProtect version is below SOFA's latest. Requires the custom attribute below; when it isn't collected this reads **`N/A (not set up)`** rather than `0`.
 - **Unfixed CVEs** — number of **devices** missing at least one CVE fix.
 
-### PDF export (optional)
+### PDF export
 
-The audit emits Markdown and Word directly. For a print-ready **PDF** (A3 landscape,
-full-width, content-sized columns), run the generator after an audit:
+`--format all` now also writes a print-ready **`full-audit.pdf`** automatically (A3 landscape,
+full-width, content-sized columns, with the same navy/zebra styling and footer page numbers as the
+`/logs-audit` dossier). It prefers [WeasyPrint](https://weasyprint.org) (`brew install weasyprint`)
+for the "Page X of Y" footer and falls back to headless Chrome. To regenerate it standalone (e.g.
+after a `--format md` run):
 
 ```bash
 scripts/make-audit-pdf.sh                       # newest reports/audit-*/

@@ -166,7 +166,7 @@ contain live tenant data and are never committed.
 | `cve-devices.csv` | per CVE | the inverse: each CVE's affected device names/serials in one multi-line `devices` cell (`cve_id, fixed_in_version, os_track, actively_exploited, devices_exposed, devices`) |
 | `full-audit.md` | combined | the four sections + By Device Group, as Markdown |
 | `full-audit.docx` | combined | Word version (via pandoc) |
-| `full-audit.pdf` | combined | print-ready PDF (via `make-audit-pdf.sh`) |
+| `full-audit.pdf` | combined | print-ready PDF, written automatically by `--format all` (WeasyPrint/Chrome) |
 
 ### Report sections (`full-audit.md`)
 
@@ -191,18 +191,21 @@ release or CVE spans many groups.
 
 ## PDF export
 
-The audit emits Markdown and Word directly. For a print-ready PDF:
+`--format all` writes `full-audit.pdf` **automatically**. To regenerate it standalone
+(e.g. after a `--format md` run):
 
 ```bash
 scripts/make-audit-pdf.sh                       # newest reports/audit-*/
 scripts/make-audit-pdf.sh reports/audit-2026-06-08
 ```
 
-It renders `full-audit.md → full-audit.pdf` with `pandoc` + a headless Chromium-based
-browser, using `scripts/audit-pdf.head.html` for styling: **A3 landscape, full page
-width, dynamic content-sized columns** (so `findings` and other wide columns expand
-instead of being cramped into equal widths). Requires `pandoc` and Chrome / Edge /
-Chromium. Edit `scripts/audit-pdf.head.html` to tweak fonts, margins, or page size.
+It renders `full-audit.md → full-audit.html → full-audit.pdf` with `pandoc` + the shared
+renderer (`scripts/lib/report-pdf.mjs`), using `scripts/audit-report.head.html` for
+styling: **A3 landscape, full page width, dynamic content-sized columns**, with the same
+navy/zebra look and **footer page numbers** as the `/logs-audit` dossier. PDF rendering
+prefers **WeasyPrint** (`brew install weasyprint`) for the "Page X of Y" footer and falls
+back to headless Chrome / Edge / Chromium (which renders correctly but without page
+numbers). Edit `scripts/audit-report.head.html` to tweak fonts, margins, or page size.
 
 ---
 
@@ -228,7 +231,7 @@ device's value to SOFA's latest XProtect config: lower → *outdated*, non-numer
 | `scripts/lib/sofa.mjs` | fetch + cache the SOFA feeds |
 | `scripts/lib/simplemdm.mjs` | paginated device + device-group fetch (429 backoff) |
 | `scripts/lib/docx.mjs` | pandoc → docx |
-| `scripts/make-audit-pdf.sh` · `scripts/audit-pdf.head.html` | PDF export |
+| `scripts/lib/report-pdf.mjs` · `scripts/audit-report.head.html` · `scripts/make-audit-pdf.sh` | PDF export (shared WeasyPrint/Chrome renderer + A3 stylesheet + standalone regenerator) |
 | `test/sofa-audit.test.mjs` | unit tests for the pure logic (fixtures, no network) |
 
 The pure modules (`evaluate`, `render`) are fixture-tested with `node --test` and carry
