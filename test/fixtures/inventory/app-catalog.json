@@ -1,0 +1,5 @@
+{ "data": [
+  { "type": "app", "id": 9101, "attributes": { "name": "Zoom" } },
+  { "type": "app", "id": 9102, "attributes": { "name": "Google Chrome" } },
+  { "type": "app", "id": 9103, "attributes": { "name": "Pages" } }
+], "has_more": false }

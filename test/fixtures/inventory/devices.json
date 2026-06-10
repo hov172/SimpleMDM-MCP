@@ -1,0 +1,62 @@
+{ "data": [
+  { "type": "device", "id": 201, "attributes": {
+      "name": "Alice MBP", "device_name": "ALICE-MBP", "serial_number": "C02FAC111",
+      "unique_identifier": "UDID-201", "imei": null,
+      "product_name": "MacBookPro18,1", "model": "MacBookPro18,1", "model_name": "MacBook Pro",
+      "processor_architecture": "arm64", "os_version": "15.5", "build_version": "24F74",
+      "wifi_mac": "a4:83:e7:11:11:11", "ethernet_macs": ["a4:83:e7:11:11:12"], "last_seen_ip": "10.42.1.10",
+      "device_capacity": 994.66, "available_device_capacity": 512.5, "battery_level": "88%",
+      "status": "enrolled", "is_dep_enrollment": true, "is_supervised": true,
+      "enrolled_at": "2025-02-01T10:00:00.000-04:00", "last_seen_at": "2026-06-09T16:00:00.000-04:00",
+      "filevault_enabled": true, "filevault_recovery_key": "SECRETKEY-FVR-123",
+      "system_integrity_protection_enabled": true, "firewall": { "enabled": true } },
+    "relationships": {
+      "device_group": { "data": { "type": "device_group", "id": 9001 } },
+      "groups": { "data": [ { "type": "group", "id": 501 } ], "count": 1 },
+      "custom_attribute_values": { "data": [ { "type": "custom_attribute_value", "id": "xprotect_version", "attributes": { "value": "5305" } } ], "count": 1 } } },
+  { "type": "device", "id": 202, "attributes": {
+      "name": "Bob iMac", "device_name": "BOB-IMAC", "serial_number": "D25STA222",
+      "unique_identifier": "UDID-202", "imei": null,
+      "product_name": "iMac21,1", "model": "iMac21,1", "model_name": "iMac",
+      "processor_architecture": "arm64", "os_version": "14.7.1", "build_version": "23H222",
+      "wifi_mac": "a4:83:e7:22:22:22", "ethernet_macs": [], "last_seen_ip": "10.42.1.11",
+      "device_capacity": 465.63, "available_device_capacity": 8.2, "battery_level": null,
+      "status": "enrolled", "is_dep_enrollment": false, "is_supervised": true,
+      "enrolled_at": "2024-09-15T10:00:00.000-04:00", "last_seen_at": "2026-06-08T09:00:00.000-04:00",
+      "filevault_enabled": true, "filevault_recovery_key": null,
+      "system_integrity_protection_enabled": true, "firewall": { "enabled": false } },
+    "relationships": {
+      "device_group": { "data": { "type": "device_group", "id": 9002 } },
+      "groups": { "data": [ { "type": "group", "id": 501 } ], "count": 1 },
+      "custom_attribute_values": { "data": [], "count": 0 } } },
+  { "type": "device", "id": 203, "attributes": {
+      "name": "Carol Mini", "device_name": "CAROL-MINI", "serial_number": "E33LAB333",
+      "unique_identifier": "UDID-203", "imei": null,
+      "product_name": "Macmini9,1", "model": "Macmini9,1", "model_name": "Mac mini",
+      "processor_architecture": "arm64", "os_version": "15.5", "build_version": "24F74",
+      "wifi_mac": "a4:83:e7:33:33:33", "ethernet_macs": ["a4:83:e7:33:33:34"], "last_seen_ip": "10.42.2.20",
+      "device_capacity": 465.63, "available_device_capacity": 300.0, "battery_level": null,
+      "status": "enrolled", "is_dep_enrollment": false, "is_supervised": false,
+      "enrolled_at": "2021-08-26T14:40:31.000-04:00", "last_seen_at": "2024-11-01T09:00:00.000-04:00",
+      "filevault_enabled": false, "filevault_recovery_key": null,
+      "system_integrity_protection_enabled": true, "firewall": { "enabled": true } },
+    "relationships": {
+      "device_group": { "data": { "type": "device_group", "id": null } },
+      "groups": { "data": [], "count": 0 },
+      "custom_attribute_values": { "data": [], "count": 0 } } },
+  { "type": "device", "id": 204, "attributes": {
+      "name": "Library iPad", "device_name": "LIB-IPAD", "serial_number": "F44PAD444",
+      "unique_identifier": "UDID-204", "imei": "356303489916807",
+      "product_name": "iPad13,4", "model": "iPad13,4", "model_name": "iPad Pro",
+      "processor_architecture": null, "os_version": "18.5", "build_version": "22F76",
+      "wifi_mac": "a4:83:e7:44:44:44", "ethernet_macs": [], "last_seen_ip": "10.42.3.30",
+      "device_capacity": 128.0, "available_device_capacity": 64.0, "battery_level": "45%",
+      "status": "enrolled", "is_dep_enrollment": true, "is_supervised": true,
+      "enrolled_at": "2025-01-10T10:00:00.000-04:00", "last_seen_at": "2026-06-09T12:00:00.000-04:00",
+      "filevault_enabled": null, "filevault_recovery_key": null,
+      "system_integrity_protection_enabled": null, "firewall": null },
+    "relationships": {
+      "device_group": { "data": { "type": "device_group", "id": 9003 } },
+      "groups": { "data": [ { "type": "group", "id": 502 } ], "count": 1 },
+      "custom_attribute_values": { "data": [], "count": 0 } } }
+], "has_more": false }

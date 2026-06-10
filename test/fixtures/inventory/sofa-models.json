@@ -1,0 +1,8 @@
+{
+  "mac": { "Models": {
+    "MacBookPro18,1": { "MarketingName": "MacBook Pro (16-inch, M1 Pro, 2021)" },
+    "iMac21,1": { "MarketingName": "iMac (24-inch, M1, 2021, Four Ports)" },
+    "Macmini9,1": { "MarketingName": "Mac mini (M1, 2020)" } } },
+  "ios": { "Models": {
+    "iPad13,4": { "MarketingName": "iPad Pro (11-inch, 3rd generation, 2021)" } } }
+}

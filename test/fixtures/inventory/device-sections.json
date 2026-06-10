@@ -1,0 +1,17 @@
+{
+  "201": {
+    "apps": [
+      { "type": "installed_app", "id": 1, "attributes": { "name": "zoom.us", "identifier": "us.zoom.xos", "version": "5.9.0", "managed": true } },
+      { "type": "installed_app", "id": 2, "attributes": { "name": "Google Chrome", "identifier": "com.google.Chrome", "version": "137.0", "managed": true } },
+      { "type": "installed_app", "id": 3, "attributes": { "name": "Microsoft Word", "identifier": "com.microsoft.Word", "version": "16.95", "managed": false } } ],
+    "profiles": [ { "type": "profile", "id": 11, "attributes": { "name": "WiFi - Campus", "identifier": "edu.slc.wifi" } } ],
+    "users": [ { "type": "device_user", "id": 21, "attributes": { "username": "alice", "full_name": "Alice Anderson" } } ]
+  },
+  "202": {
+    "apps": [ { "type": "installed_app", "id": 4, "attributes": { "name": "Google Chrome", "identifier": "com.google.Chrome", "version": "120.0", "managed": true } } ],
+    "profiles": [ { "type": "profile", "id": 12, "attributes": { "name": "FileVault Escrow", "identifier": "edu.slc.fv" } } ],
+    "users": [ { "type": "device_user", "id": 22, "attributes": { "username": "bob", "full_name": "Bob Brown" } } ]
+  },
+  "203": { "apps": [], "profiles": [], "users": [ { "type": "device_user", "id": 23, "attributes": { "username": "lab", "full_name": "Lab Admin" } } ] },
+  "204": { "apps": [ { "type": "installed_app", "id": 5, "attributes": { "name": "Pages", "identifier": "com.apple.Pages", "version": "14.0", "managed": true } } ], "profiles": [], "users": [] }
+}

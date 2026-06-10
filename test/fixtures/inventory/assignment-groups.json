@@ -1,0 +1,8 @@
+{ "data": [
+  { "type": "assignment_group", "id": 501, "attributes": { "name": "Faculty Apps", "auto_deploy": true },
+    "relationships": { "apps": { "data": [ { "type": "app", "id": 9101 }, { "type": "app", "id": 9102 } ] },
+                       "device_groups": { "data": [ { "type": "device_group", "id": 9001 } ] } } },
+  { "type": "assignment_group", "id": 502, "attributes": { "name": "iPad Core", "auto_deploy": true },
+    "relationships": { "apps": { "data": [ { "type": "app", "id": 9103 } ] },
+                       "device_groups": { "data": [] } } }
+], "has_more": false }
