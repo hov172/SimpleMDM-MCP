@@ -214,3 +214,49 @@ test("inventoryFindings: duplicate names and OS outliers", () => {
   assert.ok(f.find((x) => x.type === "os-outlier" && x.serial === "E33LAB333"));
   assert.ok(!f.find((x) => x.type === "os-outlier" && x.serial === "F44PAD444"), "iPads are not judged against the mac modal");
 });
+
+import { renderInventoryReport } from "../scripts/lib/inventory-render.mjs";
+
+test("renderInventoryReport: header, banner, rollups, findings, per-device sections, methodology", () => {
+  const recs = buildRecords();
+  const findings = inventoryFindings(recs, { now: NOW2 });
+  const md = renderInventoryReport(recs, {
+    query: "group:faculty,staff seen:>=2025-01-01", scopeLabel: "search (whole fleet)",
+    dateStr: "2026-06-10", findings, detail: "summary", failures: [],
+  });
+  assert.match(md, /# SimpleMDM Fleet Inventory — 2026-06-10/);
+  assert.match(md, /Confidential/);
+  assert.match(md, /`group:faculty,staff seen:>=2025-01-01`/);
+  assert.match(md, /## 1\. Fleet Overview/);
+  assert.match(md, /### By Device Group/);
+  assert.match(md, /### By Model/);
+  assert.match(md, /iMac \(24-inch, M1, 2021, Four Ports\)/);
+  assert.match(md, /## 2\. ⚠ Findings/);
+  assert.match(md, /assigned-app-missing/);
+  assert.match(md, /## 3\. Per-Device Inventory/);
+  assert.match(md, /Serial `C02FAC111`/);
+  assert.match(md, /## 4\. Methodology & Disclosures/);
+  assert.match(md, /last MDM check-in/);
+});
+
+test("renderInventoryReport: detail=summary omits full app tables; detail=full includes them; pipes escaped", () => {
+  const recs = buildRecords();
+  recs[0].name = "Pipe|Name";
+  const summary = renderInventoryReport(recs, { query: null, scopeLabel: "--group Faculty", dateStr: "2026-06-10", findings: [], detail: "summary", failures: [] });
+  const full = renderInventoryReport(recs, { query: null, scopeLabel: "--group Faculty", dateStr: "2026-06-10", findings: [], detail: "full", failures: [] });
+  assert.doesNotMatch(summary, /\| zoom\.us \|/);
+  assert.match(full, /\| zoom\.us \|/);
+  assert.match(full, /Pipe\\\|Name/);
+});
+
+test("renderInventoryReport: failed devices and undetermined matches are called out", () => {
+  const recs = buildRecords();
+  recs[1].sections.apps = "failed"; recs[1].apps = null; recs[1].match_status = "unknown";
+  const md = renderInventoryReport(recs, {
+    query: "app:zoom", scopeLabel: "search (whole fleet)", dateStr: "2026-06-10",
+    findings: [], detail: "summary", failures: [{ serial: "D25STA222", section: "apps", message: "boom" }],
+  });
+  assert.match(md, /PARTIAL/);
+  assert.match(md, /D25STA222.*apps.*boom/);
+  assert.match(md, /undetermined/i);
+});

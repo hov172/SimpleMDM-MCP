@@ -149,3 +149,73 @@ export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, 
   }
   return out;
 }
+
+const mdEsc = (v) => String(v ?? "").replace(/\|/g, "\\|");
+
+function mdTable(cols, rows) {
+  if (!rows.length) return "_none_";
+  const head = `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |`;
+  const body = rows.map((r) => `| ${cols.map((c) => mdEsc(r[c])).join(" | ")} |`).join("\n");
+  return `${head}\n${body}`;
+}
+
+export function renderInventoryReport(records, { query, scopeLabel, dateStr, findings = [], detail = "summary", failures = [] } = {}) {
+  const out = [];
+  out.push(`# SimpleMDM Fleet Inventory — ${dateStr}\n`);
+  out.push(`> **Confidential** — contains device identifiers and user names. Local-only; delete when no longer needed.\n`);
+  out.push(`Scope: ${scopeLabel}${query ? ` · Query: \`${query}\`` : ""} · Devices: **${records.length}**` +
+    (failures.length ? ` · **PARTIAL** (${failures.length} failed section fetch(es))` : "") + "\n");
+  const undetermined = records.filter((r) => r.match_status === "unknown");
+  if (undetermined.length) {
+    out.push(`> ${undetermined.length} device(s) had an **undetermined** match (data unavailable) and are included, flagged: ${undetermined.map((r) => r.serial).join(", ")}\n`);
+  }
+
+  out.push("## 1. Fleet Overview\n");
+  out.push("### By Device Group\n");
+  out.push(mdTable(["device_group", "devices"], rollupRows(records, (r) => r.device_group, "device_group")) + "\n");
+  out.push("### By Type\n");
+  out.push(mdTable(["type", "devices"], rollupRows(records, (r) => r.type, "type")) + "\n");
+  out.push("### By Model\n");
+  out.push(mdTable(BY_MODEL_COLUMNS, byModelRows(records)) + "\n");
+  out.push("### By OS\n");
+  out.push(mdTable(["os", "devices"], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")) + "\n");
+
+  out.push("## 2. ⚠ Findings\n");
+  out.push(mdTable(FINDING_COLUMNS, findings) + "\n");
+
+  out.push("## 3. Per-Device Inventory\n");
+  for (const r of records) {
+    out.push(`### ${mdEsc(r.name)} (\`${r.serial}\`)\n`);
+    out.push(`**Identity** — Serial \`${r.serial}\` · UDID \`${r.udid}\` · WiFi MAC \`${r.wifi_mac}\` · Last IP \`${r.last_ip}\``);
+    out.push(`**Hardware** — ${mdEsc(r.model_name || r.model_id)} (\`${r.model_id}\`${r.model_year ? `, ${r.model_year}` : ""}) · ${r.type} · ${r.arch} · ` +
+      `${r.storage_free_gb ?? "?"}/${r.storage_total_gb ?? "?"} GB free${r.battery_pct != null ? ` · battery ${r.battery_pct}%` : ""}`);
+    out.push(`**OS** — ${r.os_version} (${r.build_version}) · **Posture** — FileVault ${onOff(r.filevault) || "n/a"}, recovery key ${onOff(r.recoverykey) || "n/a"}, ` +
+      `SIP ${onOff(r.sip) || "n/a"}, firewall ${onOff(r.firewall) || "n/a"}, supervised ${onOff(r.supervised) || "n/a"} · DEP ${onOff(r.dep) || "n/a"}`);
+    out.push(`**Groups** — device group: ${mdEsc(r.device_group || "(none)")} · assignment groups: ${mdEsc(join(r.assignment_groups) || "(none)")}`);
+    out.push(`**Dates** — enrolled ${r.enrolled_at ?? "?"} · last seen ${r.seen_at ?? "?"}`);
+    if (r.match_reasons) out.push(`**Match reasons** — ${mdEsc(r.match_reasons)}`);
+    const failed = Object.entries(r.sections ?? {}).filter(([, v]) => v === "failed").map(([k]) => k);
+    if (failed.length) out.push(`> ⚠ **Incomplete:** ${failed.join(", ")} fetch failed — counts below exclude those sections.`);
+    const nApps = r.apps?.length ?? "?", nProf = r.profiles?.length ?? "?", nUsers = r.users?.length ?? "?";
+    out.push(`**Inventory** — ${nApps} installed apps · ${nProf} profiles · ${nUsers} local users · ${r.assigned_apps?.length ?? 0} assigned apps\n`);
+    if (detail !== "summary") {
+      out.push(mdTable(["app_name", "identifier", "version", "managed", "matched"],
+        appRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
+      if (detail === "full") {
+        out.push(mdTable(["profile_name", "identifier", "matched"], profileRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
+        out.push(mdTable(["username", "full_name", "matched"], userRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
+      }
+    }
+  }
+
+  out.push("## 4. Methodology & Disclosures\n");
+  out.push("- Inventory data reflects the device's last MDM check-in (`last_seen_at`), not a live poll.");
+  out.push("- Assigned-vs-installed matching is a case-insensitive substring heuristic (catalog name vs installed name/bundle id).");
+  out.push("- Findings with status `unknown` could not be decided because a per-device fetch failed; they are never asserted.");
+  out.push("- FileVault recovery keys are never written to any output; only the escrowed yes/no fact is reported.");
+  if (failures.length) {
+    out.push("\n### Failed section fetches\n");
+    out.push(mdTable(["serial", "section", "message"], failures) + "\n");
+  }
+  return out.join("\n");
+}
