@@ -194,6 +194,9 @@ export async function run(argv) {
     }
   }
 
+  // pandoc/WeasyPrint create report files with default umask — clamp every output to owner-only
+  for (const name of written) chmodSync(join(outDir, name), 0o600);
+
   const undetermined = records.filter((r) => r.match_status === "unknown").length;
   const head = [
     `Inventory Report ${dateStr}`,
