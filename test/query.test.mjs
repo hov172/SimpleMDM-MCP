@@ -118,3 +118,86 @@ test("sectionsReferenced lists the per-device sections a query touches", () => {
   assert.deepEqual([...sectionsReferenced(parseQuery("app:zoom user:alice os:15"))].sort(), ["apps", "users"]);
   assert.deepEqual([...sectionsReferenced(parseQuery("os:15"))], []);
 });
+
+import { evaluate } from "../scripts/lib/query.mjs";
+
+const NOW = Date.parse("2026-06-10T12:00:00Z");
+const REC = {
+  name: "Alice MBP", device_name: "ALICE-MBP", serial: "C02FAC111", udid: "UDID-201", imei: "",
+  wifi_mac: "a4:83:e7:11:11:11", ethernet_macs: ["a4:83:e7:11:11:12"], last_ip: "10.42.1.10",
+  model_id: "MacBookPro18,1", model_name: "MacBook Pro (16-inch, M1 Pro, 2021)", model_year: "2021",
+  type: "laptop", arch: "arm64", os_version: "15.5", build_version: "24F74",
+  device_group: "Faculty", assignment_groups: ["Faculty Apps"], assigned_apps: ["Zoom", "Google Chrome"],
+  seen_at: "2026-06-09T16:00:00.000-04:00", enrolled_at: "2025-02-01T10:00:00.000-04:00",
+  storage_free_gb: 512.5, storage_total_gb: 994.66, battery_pct: 88,
+  filevault: true, sip: true, firewall: true, supervised: true, recoverykey: true, dep: true,
+  status: "enrolled", attrs: { xprotect_version: "5305" },
+  apps: [{ name: "zoom.us", identifier: "us.zoom.xos", version: "5.9.0", managed: true }],
+  profiles: [{ name: "WiFi - Campus", identifier: "edu.slc.wifi" }],
+  users: [{ username: "alice", full_name: "Alice Anderson" }],
+  sections: { apps: "ok", profiles: "ok", users: "ok" },
+};
+
+test("evaluate: keywords AND across fields; reasons carry the source tokens", () => {
+  const r = evaluate(parseQuery("macbook faculty"), REC, { now: NOW });
+  assert.equal(r.matched, true);
+  assert.deepEqual(r.reasons, ["macbook", "faculty"]);
+  assert.equal(evaluate(parseQuery("macbook windows"), REC, { now: NOW }).matched, false);
+});
+
+test("evaluate: version compare is numeric not lexicographic (15.10 > 15.9)", () => {
+  const rec = { ...REC, os_version: "15.10" };
+  assert.equal(evaluate(parseQuery("os:>15.9"), rec, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("os:<15.9"), rec, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("os:15"), rec, { now: NOW }).matched, true); // bare = major prefix
+});
+
+test("evaluate: dates — relative window, comparator, range, exact day", () => {
+  assert.equal(evaluate(parseQuery("seen:90d"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("seen:>=2025-01-01"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("enrolled:2025-01-01..2025-06-30"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("enrolled:2025-02-01"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("seen:1d"), { ...REC, seen_at: "2024-11-01T09:00:00.000-04:00" }, { now: NOW }).matched, false);
+});
+
+test("evaluate: booleans, null posture matches neither on nor off", () => {
+  assert.equal(evaluate(parseQuery("filevault:on"), REC, { now: NOW }).matched, true);
+  const ipad = { ...REC, filevault: null };
+  assert.equal(evaluate(parseQuery("filevault:on"), ipad, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("filevault:off"), ipad, { now: NOW }).matched, false);
+});
+
+test("evaluate: app term matches name or identifier, with version tail", () => {
+  assert.equal(evaluate(parseQuery("app:zoom"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("app:zoom<6.0.10"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("app:zoom>=6.0.10"), REC, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("app:photoshop"), REC, { now: NOW }).matched, false);
+});
+
+test("evaluate: OR units, negation, comma-lists, attr fields, groups", () => {
+  assert.equal(evaluate(parseQuery("group:faculty,staff"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("serial:ZZZ* OR serial:C02*"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("-group:loaners"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("-group:faculty"), REC, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("attr.xprotect_version:5305"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("assigned:zoom -app:photoshop"), REC, { now: NOW }).matched, true);
+});
+
+test("evaluate: failed section makes dependent terms unknown, not false (Codex finding 3)", () => {
+  const broken = { ...REC, apps: null, sections: { ...REC.sections, apps: "failed" } };
+  assert.equal(evaluate(parseQuery("app:zoom"), broken, { now: NOW }).matched, "unknown");
+  assert.equal(evaluate(parseQuery("-app:zoom"), broken, { now: NOW }).matched, "unknown");
+  // device-level term still decides on its own
+  assert.equal(evaluate(parseQuery("os:15 app:zoom"), { ...broken, os_version: "14.1" }, { now: NOW }).matched, false);
+  // keyword that matches an available field is still true
+  assert.equal(evaluate(parseQuery("macbook"), broken, { now: NOW }).matched, true);
+  // keyword with no hit and a failed section is unknown
+  assert.equal(evaluate(parseQuery("photoshop"), broken, { now: NOW }).matched, "unknown");
+});
+
+test("evaluate: row hits flag the matching app rows for matched=yes CSV columns", () => {
+  const r = evaluate(parseQuery("app:zoom user:alice"), REC, { now: NOW });
+  assert.ok(r.hits.apps.has("zoom.us"));
+  assert.ok(r.hits.users.has("alice"));
+  assert.equal(r.hits.profiles.size, 0);
+});

@@ -93,7 +93,7 @@ function parseAlt(kind, part, src) {
     const m = part.match(CMP_RE);
     if (m) return { match: "cmp", op: m[1], t: parseDateMs(m[2], src) };
     const r = splitRange(part);
-    if (r) return { match: "range", lo: parseDateMs(r[0], src), hi: parseDateMs(r[1], src) + 86399999 };
+    if (r) return { match: "range", lo: parseDateMs(r[0], src), hi: parseDateMs(r[1], src) + 86399999 }; // +23:59:59.999 — range end is inclusive of the whole day
     parseDateMs(part, src); // validates
     return { match: "day", day: part };
   }
@@ -196,4 +196,138 @@ export function sectionsReferenced(ast) {
     }
   }
   return s;
+}
+
+const cmpSign = (op, sign) =>
+  op === ">" ? sign > 0 : op === "<" ? sign < 0 : op === ">=" ? sign >= 0 : sign <= 0;
+
+function matchTextAlt(alt, values) {
+  const hays = (values ?? []).filter((v) => v !== null && v !== undefined && v !== "").map(String);
+  if (alt.match === "glob") return hays.some((h) => alt.re.test(h));
+  return hays.some((h) => h.toLowerCase().includes(alt.text));
+}
+
+function matchVersionAlt(alt, ver) {
+  if (!ver) return false;
+  const v = String(ver);
+  if (alt.match === "cmp") return cmpSign(alt.op, compareVersions(v, alt.value));
+  if (alt.match === "range") return compareVersions(v, alt.lo) >= 0 && compareVersions(v, alt.hi) <= 0;
+  return v === alt.value || v.startsWith(alt.value + ".");
+}
+
+function matchDateAlt(alt, iso, now) {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return false;
+  if (alt.match === "rel") return t >= now - alt.days * 86400000;
+  if (alt.match === "cmp") return cmpSign(alt.op, t - alt.t);
+  if (alt.match === "range") return t >= alt.lo && t <= alt.hi;
+  return String(iso).slice(0, 10) === alt.day;
+}
+
+function matchNumberAlt(alt, n) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return false;
+  if (alt.match === "cmp") return cmpSign(alt.op, n - alt.n);
+  if (alt.match === "range") return n >= alt.lo && n <= alt.hi;
+  return n === alt.n;
+}
+
+function matchAppAlt(alt, apps, hits) {
+  let hit = false;
+  for (const a of apps ?? []) {
+    const hay = `${a.name ?? ""} ${a.identifier ?? ""}`.toLowerCase();
+    if (!hay.includes(alt.name)) continue;
+    if (alt.op) {
+      if (!a.version) continue;
+      if (!cmpSign(alt.op, compareVersions(String(a.version), alt.ver))) continue;
+    }
+    hit = true;
+    if (hits) hits.apps.add(a.name ?? a.identifier ?? "");
+  }
+  return hit;
+}
+
+const triNot = (v) => (v === "unknown" ? "unknown" : !v);
+const triOr  = (vs) => (vs.includes(true) ? true : vs.includes("unknown") ? "unknown" : false);
+const triAnd = (vs) => (vs.includes(false) ? false : vs.includes("unknown") ? "unknown" : true);
+
+// Device-level string surface for bare keywords (always available).
+function keywordHaystack(r) {
+  return [
+    r.name, r.device_name, r.serial, r.udid, r.imei, r.wifi_mac, ...(r.ethernet_macs ?? []), r.last_ip,
+    r.model_id, r.model_name, r.model_year, r.type, r.arch, r.os_version, r.build_version,
+    r.device_group, ...(r.assignment_groups ?? []), ...(r.assigned_apps ?? []),
+    r.status, ...Object.values(r.attrs ?? {}),
+  ].filter((v) => v !== null && v !== undefined).map(String);
+}
+
+function evalKeyword(alt, r, hits) {
+  if (matchTextAlt(alt, keywordHaystack(r))) return true;
+  let unavailable = false;
+  for (const [section, items, names] of [
+    ["apps", r.apps, (a) => [a.name, a.identifier, a.version]],
+    ["profiles", r.profiles, (p) => [p.name, p.identifier]],
+    ["users", r.users, (u) => [u.username, u.full_name]],
+  ]) {
+    const st = r.sections?.[section];
+    if (st === "ok") {
+      for (const it of items ?? []) {
+        if (matchTextAlt(alt, names(it))) {
+          if (hits) hits[section].add(it.name ?? it.username ?? "");
+          return true;
+        }
+      }
+    } else if (st === "failed" || st === "pending") {
+      unavailable = true; // "skipped" was the user's choice: not unknown
+    }
+  }
+  return unavailable ? "unknown" : false;
+}
+
+function evalTerm(term, r, now, hits) {
+  let v;
+  if (term.field === null) {
+    v = triOr(term.alts.map((alt) => evalKeyword(alt, r, term.neg ? null : hits)));
+  } else if (term.field === "attr") {
+    v = triOr(term.alts.map((alt) => matchTextAlt(alt, [r.attrs?.[term.attrName]])));
+  } else {
+    const f = FIELDS[term.field];
+    if (f.scope === "per-device") {
+      const st = r.sections?.[f.section];
+      if (st === "failed" || st === "pending") v = "unknown";
+      else if (f.kind === "app") v = triOr(term.alts.map((alt) => matchAppAlt(alt, r.apps, term.neg ? null : hits)));
+      else {
+        v = triOr(term.alts.map((alt) => matchTextAlt(alt, f.get(r))));
+        if (v === true && hits && !term.neg) {
+          const items = f.section === "profiles" ? r.profiles ?? [] : r.users ?? [];
+          for (const it of items) {
+            const names = f.section === "profiles" ? [it.name, it.identifier] : [it.username, it.full_name];
+            if (term.alts.some((alt) => matchTextAlt(alt, names))) hits[f.section].add(it.name ?? it.username ?? "");
+          }
+        }
+      }
+    } else if (f.kind === "version") v = triOr(term.alts.map((alt) => matchVersionAlt(alt, f.get(r))));
+    else if (f.kind === "date") v = triOr(term.alts.map((alt) => matchDateAlt(alt, f.get(r), now)));
+    else if (f.kind === "number") v = triOr(term.alts.map((alt) => matchNumberAlt(alt, f.get(r))));
+    else if (f.kind === "bool") v = triOr(term.alts.map((alt) => f.get(r) === alt.value));
+    else v = triOr(term.alts.map((alt) => matchTextAlt(alt, f.get(r))));
+  }
+  return term.neg ? triNot(v) : v;
+}
+
+// → { matched: true|false|"unknown", reasons: [token...], hits: {apps,profiles,users: Set} }
+export function evaluate(ast, record, { now = Date.now() } = {}) {
+  const hits = { apps: new Set(), profiles: new Set(), users: new Set() };
+  const reasons = [];
+  const unitVals = [];
+  for (const u of ast.units) {
+    const termVals = u.terms.map((t) => {
+      const v = evalTerm(t, record, now, hits);
+      if (v === true) reasons.push(t.src);
+      if (v === "unknown") reasons.push(`${t.src} (undetermined: data unavailable)`);
+      return v;
+    });
+    unitVals.push(triOr(termVals));
+  }
+  return { matched: triAnd(unitVals), reasons, hits };
 }
