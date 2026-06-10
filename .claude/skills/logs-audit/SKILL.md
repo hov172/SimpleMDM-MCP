@@ -16,12 +16,13 @@ Targeted sibling to the SOFA `/audit`. Runs the engine and reports where files l
    - "whole fleet" / "all devices" → `--all --confirm-all`
 2. Map optional combines: "with security/posture/CVEs" → `--with-security`; "with apps/profiles/inventory" → `--with-inventory`.
 3. Map format words: "csv" → `--format csv`, "word"/"docx" → `--format docx`, "markdown"/"md" → `--format md`, else `--format all`.
+   - Detail level: "full logs"/"every log"/"full event table" → `--report-detail full` (or `table`); default is `summary`.
 4. Run: `node scripts/logs-audit.mjs <flags>`
 5. Read `<outDir>/summary.txt` and relay the headline (devices, total events, failed devices).
 6. List the generated files. Remind the user the output is local-only (gitignored) and not committed.
 
 ## Report (`--format all`)
-Produces a detailed combined **dossier** in four formats — `report.md`, `report.html`, `report.docx` (pandoc), `report.pdf`. The PDF is a US-Letter portrait document (`scripts/logs-report.head.html`); it prefers **WeasyPrint** (real footer page numbers, "Page X of Y") and falls back to headless Chrome if WeasyPrint isn't installed (`brew install weasyprint`). Each device gets identity, security posture (with `--with-security`), activity breakdown + coverage window, notable software-update events, and software inventory (with `--with-inventory`), plus a fleet roll-up. `report.docx`/`.html`/`.pdf` are best-effort: missing tooling logs a warning and skips (md still written). `--format md` writes md only; `--format docx` writes md + docx.
+Produces a detailed combined **dossier** in four formats — `report.md`, `report.html`, `report.docx` (pandoc), `report.pdf`. The PDF is a US-Letter portrait document (`scripts/logs-report.head.html`); it prefers **WeasyPrint** (real footer page numbers, "Page X of Y") and falls back to headless Chrome if WeasyPrint isn't installed (`brew install weasyprint`). Each device gets identity, security posture (with `--with-security`), activity breakdown + coverage window, a **top-installed-apps** table, notable software-update events, software inventory (with `--with-inventory`), and an auto-detected **⚠ Findings** block (app-reinstall loops, software-update-failure loops, profile churn — also in `findings.csv`), plus a fleet roll-up. `--report-detail` controls how much raw per-device log detail is printed (`summary`/`table`/`full`). `report.docx`/`.html`/`.pdf` are best-effort: missing tooling logs a warning and skips (md still written). `--format md` writes md only; `--format docx` writes md + docx.
 
 ## Notes
 - Read-only: a read-only `SIMPLEMDM_API_KEY` in `.env` is sufficient.

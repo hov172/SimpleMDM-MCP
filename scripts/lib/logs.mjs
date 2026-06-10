@@ -27,6 +27,7 @@ export function parseArgs(argv) {
     withInventory: has("--with-inventory"),
     withSecurity: has("--with-security"),
     format: val("--format") ?? "all",
+    reportDetail: val("--report-detail") ?? "summary",
     out: val("--out") ?? null,
     error: null,
   };
@@ -36,6 +37,7 @@ export function parseArgs(argv) {
   if (opts.selector.kind === "serial" && opts.selector.value.length === 0) { opts.error = "--serial requires at least one serial number"; return opts; }
   if (opts.selector.kind === "group" && !opts.selector.value) { opts.error = "--group requires a group name"; return opts; }
   if (!["csv", "md", "docx", "all"].includes(opts.format)) { opts.error = `Invalid --format '${opts.format}' (use csv|md|docx|all)`; return opts; }
+  if (!["summary", "table", "full"].includes(opts.reportDetail)) { opts.error = `Invalid --report-detail '${opts.reportDetail}' (use summary|table|full)`; return opts; }
   return opts;
 }
 
@@ -243,12 +245,90 @@ export function noisyDevices(bundles, threshold = 0.25) {
     .map(({ _dominant, ...d }) => d);
 }
 
+// Top installed apps for a device, by install-event count — surfaces a
+// reinstall loop (the same app appearing dozens/hundreds of times). Returns
+// [{ name, version, identifier, count }] sorted by count desc.
+export function topInstalledApps(bundle, limit = 8) {
+  const map = new Map();
+  for (const l of bundle.logs ?? []) {
+    if (l.attributes?.event_type !== "app.installing") continue;
+    const m = l.attributes.metadata ?? {};
+    const key = `${m.bundle_identifier || m.name || ""}@@${m.version ?? ""}`;
+    const e = map.get(key) || { name: m.name ?? "", version: m.version ?? "", identifier: m.bundle_identifier ?? "", count: 0 };
+    e.count++; map.set(key, e);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+// Per-device automated findings — patterns worth flagging that a count-only
+// summary hides. Pure; thresholds are tunable. Detects:
+//   - app-reinstall-loop:    same (app, version) installed >= appLoop times
+//   - update-failure-loop:   >= updateLoop status.changed events reporting a
+//                            software-update failure
+//   - profile-churn:         same profile (re)installed >= profileChurn times
+// Returns [{ type, severity, title, detail }].
+export function deviceFindings(bundle, { appLoop = 10, updateLoop = 10, profileChurn = 5 } = {}) {
+  const logs = bundle.logs ?? [];
+  const findings = [];
+
+  for (const a of topInstalledApps(bundle, Infinity)) {
+    if (a.count >= appLoop) {
+      findings.push({
+        type: "app-reinstall-loop", severity: "warning",
+        title: `App reinstall loop — ${a.name || a.identifier || "unknown app"}`,
+        detail: `${a.name || a.identifier} (${a.identifier || "?"}) v${a.version || "?"} installed ${a.count}× — the same version reinstalling repeatedly points to a broken Munki installs-check/version (perpetual reinstall).`,
+      });
+    }
+  }
+
+  const fails = logs.filter((l) => l.attributes?.event_type === "status.changed" &&
+    dig(l.attributes?.metadata, "status", "softwareupdate", "failure_reason", "count"));
+  if (fails.length >= updateLoop) {
+    const reason = s(dig(fails[fails.length - 1].attributes?.metadata, "status", "softwareupdate", "failure_reason", "reason"));
+    findings.push({
+      type: "update-failure-loop", severity: "warning",
+      title: "Software-update failure loop",
+      detail: `${fails.length} status.changed events report a software-update failure${reason ? ` — ${reason.slice(0, 140)}` : ""}.`,
+    });
+  }
+
+  const profCounts = new Map();
+  for (const l of logs) {
+    if (l.attributes?.event_type !== "profile.installed") continue;
+    const n = l.attributes.metadata?.profile_name ?? "(unnamed)";
+    profCounts.set(n, (profCounts.get(n) ?? 0) + 1);
+  }
+  for (const [name, count] of profCounts) {
+    if (count >= profileChurn) {
+      findings.push({
+        type: "profile-churn", severity: "warning",
+        title: `Profile reinstall churn — ${name}`,
+        detail: `Configuration profile "${name}" (re)installed ${count}× — a profile failing its install check or being re-pushed repeatedly.`,
+      });
+    }
+  }
+  return findings;
+}
+
+export const FINDINGS_COLUMNS = ["device_id", "serial_number", "device_name", "type", "severity", "title", "detail"];
+
+// Flatten per-device findings into rows for findings.csv.
+export function findingRows(bundles, thresholds) {
+  return bundles.flatMap((b) => deviceFindings(b, thresholds).map((f) => ({
+    device_id: String(b.device?.id ?? ""),
+    serial_number: b.device?.attributes?.serial_number ?? "",
+    device_name: b.device?.attributes?.name ?? "",
+    type: f.type, severity: f.severity, title: f.title, detail: f.detail,
+  })));
+}
+
 // Detailed COMBINED per-device dossier merging identity, security posture,
 // activity, notable software-update events, and software inventory into one
 // document. Sections degrade gracefully: security appears only when
 // `securityEval` is given; inventory only when bundles carry apps/profiles/users.
 // `groupNameMap` is an optional { [groupId]: name } lookup for assignment groups.
-export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMap = {}) {
+export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMap = {}, opts = {}) {
+  const detail = opts.detail ?? "summary";
   const out = [];
   const P = (x = "") => out.push(x);
   const cell = (v) => String(v ?? "").replace(/\|/g, "\\|");
@@ -260,6 +340,9 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
   const comma = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const noisy = noisyDevices(bundles);
   const noisySerials = new Set(noisy.map((d) => d.serial));
+  const deviceFinds = new Map(bundles.map((b) => [b, deviceFindings(b, opts.thresholds)]));
+  const flagged = bundles.filter((b) => deviceFinds.get(b).length);
+  const totalFindings = bundles.reduce((n, b) => n + deviceFinds.get(b).length, 0);
 
   P(`# SimpleMDM Device Activity & Security Dossier — ${dateStr}`); P("");
   P(`Devices: **${bundles.length}** • Total log events: **${comma(totalEvents)}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
@@ -287,6 +370,12 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
     P(`| ${i + 1} | ${cell((a.name || "").slice(0, 38))} | ${cell(a.serial_number)} | ${cell(a.os_version)} | ${cve} | ${onoff(a.filevault_enabled)} | ${onoff(a.system_integrity_protection_enabled)} | ${onoff(a.firewall?.enabled)} | ${events} | ${(a.last_seen_at || "").slice(0, 10)} |`);
   });
   P("");
+
+  if (totalFindings) {
+    P(`> 🔎 **Findings:** ${totalFindings} flagged across ${flagged.length} device${flagged.length > 1 ? "s" : ""} — see the ⚠ Findings blocks in the per-device sections. ` +
+      `Highlights: ${flagged.slice(0, 3).map((b) => `${cell(b.device.attributes?.name || b.device.attributes?.serial_number)} — ${cell(deviceFinds.get(b)[0].title)}`).join("; ")}.`);
+    P("");
+  }
 
   P(`## 2. Per-Device Dossiers`); P("");
   bundles.forEach((b, i) => {
@@ -326,6 +415,28 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
       P(`| When (at) | Pending OS | Install state | Failures |`); P(`|---|---|---|---|`);
       for (const e of swEvents.slice(0, 6)) P(`| ${cell(e.at)} | ${cell(e.pend || "—")} | ${cell(e.state || "—")} | ${e.fails || 0} |`);
       if (swEvents.length > 6) P(`| …+${swEvents.length - 6} more | | | |`);
+      P("");
+    }
+    // Top installed apps (by install count) — surfaces reinstall loops a count hides. Omitted in raw "table" mode.
+    const topApps = topInstalledApps(b);
+    if (detail !== "table" && topApps.length) {
+      P(`**Top installed apps (by install count):**`); P("");
+      P(`| App | Version | Installs |`); P(`|---|---|---|`);
+      for (const ap of topApps) P(`| ${cell(ap.name || ap.identifier || "—")} | ${cell(ap.version || "—")} | ${ap.count} |`);
+      P("");
+    }
+    // Auto-detected findings for this device.
+    const finds = deviceFinds.get(b);
+    if (finds.length) {
+      P(`> ⚠ **Findings (${finds.length}):**`);
+      for (const f of finds) P(`> - **${cell(f.title)}** — ${cell(f.detail)}`);
+      P("");
+    }
+    // Full per-device event table (table/full detail modes); logs.csv always holds the authoritative full set.
+    if (detail === "table" || detail === "full") {
+      P(`**Full event log (${logs.length} events):**`); P("");
+      P(`| at_iso | at | event | summary |`); P(`|---|---|---|---|`);
+      for (const r of logRows([b])) P(`| ${r.at_iso} | ${cell(r.at)} | ${r.event_type} | ${cell(r.summary)} |`);
       P("");
     }
     P(`---`); P("");
