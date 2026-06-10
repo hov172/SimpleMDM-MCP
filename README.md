@@ -624,6 +624,24 @@ defensibility.
 
 ---
 
+## Fleet Inventory Reports (/inventory)
+
+A **searchable, structured inventory** of your entire fleet — devices, installed apps, profiles, and assigned users — enriched with SimpleMDM metadata and deployment metrics. Like `/audit` and `/logs-audit`, it talks **directly to the SimpleMDM API** (read-only) — no external service — and is a host-side script (`scripts/inventory-report.mjs`) plus an `/inventory` skill, not an MCP tool.
+
+In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags):
+
+### Inventory reports (`/inventory`)
+
+> "Give me an inventory of all faculty and staff devices seen since 2025"
+
+> "Which MacBooks are still on macOS 14 or older, excluding loaners?"
+
+> "Which devices are assigned Zoom but don't have it installed?"
+
+> "Inventory the Library group with full app detail as a PDF"
+
+---
+
 ## Tools
 
 The server registers **179 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
