@@ -92,6 +92,7 @@ A professional, US-Letter portrait document combining everything captured into o
 per-device narrative:
 
 - **Fleet roll-up** — one row per device: OS, unfixed/exploited CVEs, FileVault/SIP/Firewall, event count, last seen.
+- **Noisy-device flag** — any device contributing an outsized share (>=25%) of total log volume while dwarfing the rest is called out in a callout and marked ⚠ in the roll-up (also listed in `summary.txt`). A single flooding device skews the fleet totals and can evict other devices' events from the retention-bounded `/logs` feed, so it's surfaced automatically.
 - **Per-device dossier** — identity (model, OS+build, UDID, enrolment, last seen), assignment groups, local accounts, **security posture** (with `--with-security`: findings + CVE counts as a callout), **activity** (event-type breakdown + coverage window), **notable software-update events** (pending OS, install state, failure counts), and **software inventory** (with `--with-inventory`: app/profile counts).
 - **Disclosures** — timezone, retention, and authoritative-source notes.
 

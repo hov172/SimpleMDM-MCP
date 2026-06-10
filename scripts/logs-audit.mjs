@@ -15,7 +15,7 @@ import { mdToDocx } from "./lib/docx.mjs";
 import {
   parseArgs, selectDevices, logRows, LOG_COLUMNS, statusSnapshotRows, STATUS_COLUMNS,
   statusSnapshotFiles, logSummaryRows, SUMMARY_COLUMNS, manifestRows, MANIFEST_COLUMNS,
-  renderDetailedReport,
+  renderDetailedReport, noisyDevices,
 } from "./lib/logs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -204,11 +204,13 @@ async function main() {
     return acc;
   }, { app_installing: 0, profile_installed: 0, status_changed: 0, bootstrap_token_get: 0 });
   const unparseableTimestamps = lr.filter((r) => r.at_iso === "").length;
+  const noisy = noisyDevices(bundles);
   const head = [`Logs Audit ${dateStr}`, `Devices: ${bundles.length}`, `Total events: ${totalEvents}`,
     `By type: app.installing ${byType.app_installing} | profile.installed ${byType.profile_installed} | status.changed ${byType.status_changed} | bootstrap_token.get ${byType.bootstrap_token_get}`,
     `Unparseable timestamps: ${unparseableTimestamps}`,
+    noisy.length ? `Noisy devices (>=25% of events): ${noisy.map((d) => `${d.serial} (${Math.round(d.share * 100)}%)`).join(", ")}` : null,
     errors.length ? `Failed devices: ${errors.length} (export is PARTIAL)` : `Failed devices: 0`,
-    `Output: ${outDir}`].join("\n");
+    `Output: ${outDir}`].filter(Boolean).join("\n");
   writeFileSync(`${outDir}/summary.txt`, head + "\n");
   console.log(head);
   for (const w of written) console.log(`  ${w.name}`);
