@@ -201,3 +201,10 @@ test("evaluate: row hits flag the matching app rows for matched=yes CSV columns"
   assert.ok(r.hits.users.has("alice"));
   assert.equal(r.hits.profiles.size, 0);
 });
+
+test("evaluate: unknown terms surface an undetermined reason string", () => {
+  const broken = { ...REC, apps: null, sections: { ...REC.sections, apps: "failed" } };
+  const r = evaluate(parseQuery("photoshop"), broken, { now: NOW });
+  assert.equal(r.matched, "unknown");
+  assert.ok(r.reasons.some((reason) => reason.includes("(undetermined: data unavailable)")));
+});
