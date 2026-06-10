@@ -113,3 +113,70 @@ test("parseInvArgs: errors — no input, multiple selectors, --all w/o confirm, 
   assert.match(parseInvArgs(["--search", "x", "--format", "xls"]).error, /Invalid --format/);
   assert.match(parseInvArgs(["--bogus"]).error, /Unknown flag/);
 });
+
+import {
+  DEVICE_COLUMNS, deviceRows, APP_COLUMNS, appRows, ASSIGNED_COLUMNS, assignedAppRows,
+  PROFILE_COLUMNS, profileRows, USER_COLUMNS, userRows, appCatalogRows,
+  rollupRows, byModelRows,
+} from "../scripts/lib/inventory-render.mjs";
+
+function buildRecords() {
+  const models = buildModelMap(SOFA.mac, SOFA.ios);
+  const agApps = assignmentAppMap(AG, APPCAT);
+  return DEVICES.map((d) => {
+    const r = normalizeDevice(d, { dgMap: DG, agNames: AGN, agAppsByDevice: agApps, models });
+    const sec = SECTIONS[String(d.id)];
+    r.apps = normalizeApps(sec.apps); r.profiles = normalizeProfiles(sec.profiles); r.users = normalizeUsers(sec.users);
+    r.sections = { apps: "ok", profiles: "ok", users: "ok" };
+    r.match_reasons = ""; r.match_status = "matched"; r.hits = { apps: new Set(), profiles: new Set(), users: new Set() };
+    return r;
+  });
+}
+
+test("deviceRows covers every DEVICE_COLUMNS key; booleans render on/off, null renders empty", () => {
+  const rows = deviceRows(buildRecords());
+  assert.equal(rows.length, 4);
+  for (const c of DEVICE_COLUMNS) assert.ok(c in rows[0], `missing column ${c}`);
+  const alice = rows.find((r) => r.serial === "C02FAC111");
+  assert.equal(alice.filevault, "on");
+  assert.equal(alice.recoverykey, "on");
+  assert.equal(alice.assignment_groups, "Faculty Apps");
+  assert.equal(alice.custom_attributes, "xprotect_version=5305");
+  const ipad = rows.find((r) => r.serial === "F44PAD444");
+  assert.equal(ipad.filevault, "");
+  assert.equal(ipad.type, "ipad");
+});
+
+test("appRows flag matched rows from hits; assignedAppRows compute installed yes/no", () => {
+  const recs = buildRecords();
+  recs[0].hits.apps.add("zoom.us");
+  const apps = appRows(recs);
+  assert.equal(apps.find((r) => r.serial === "C02FAC111" && r.app_name === "zoom.us").matched, "yes");
+  assert.equal(apps.find((r) => r.serial === "C02FAC111" && r.app_name === "Google Chrome").matched, "");
+  const assigned = assignedAppRows(recs);
+  assert.equal(assigned.find((r) => r.serial === "C02FAC111" && r.app_name === "Zoom").installed, "yes");     // zoom.us matches Zoom
+  assert.equal(assigned.find((r) => r.serial === "D25STA222" && r.app_name === "Zoom").installed, "no");      // the deployment gap
+  const unknownRecs = buildRecords();
+  unknownRecs[1].sections.apps = "failed"; unknownRecs[1].apps = null;
+  assert.equal(assignedAppRows(unknownRecs).find((r) => r.serial === "D25STA222" && r.app_name === "Zoom").installed, "unknown");
+});
+
+test("appCatalogRows aggregate fleet-wide app -> versions -> device count", () => {
+  const rows = appCatalogRows(buildRecords());
+  const chrome = rows.find((r) => r.app_name === "Google Chrome");
+  assert.equal(chrome.devices, 2);
+  assert.equal(chrome.versions, "120.0, 137.0");
+});
+
+test("rollupRows and byModelRows aggregate with enrichment carried through", () => {
+  const recs = buildRecords();
+  const byType = rollupRows(recs, (r) => r.type, "type");
+  assert.deepEqual(byType.find((r) => r.type === "laptop"), { type: "laptop", devices: 1 });
+  const byGroup = rollupRows(recs, (r) => r.device_group, "device_group");
+  assert.ok(byGroup.find((r) => r.device_group === "(none)"));   // Carol Mini has no group
+  const byModel = byModelRows(recs);
+  const imac = byModel.find((r) => r.model_id === "iMac21,1");
+  assert.equal(imac.model_name, "iMac (24-inch, M1, 2021, Four Ports)");
+  assert.equal(imac.release_year, "2021");
+  assert.equal(imac.devices, 1);
+});
