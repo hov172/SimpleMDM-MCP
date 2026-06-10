@@ -17,3 +17,6 @@ dist/
 # Generated audit output — local only, never committed (contains live tenant data + secrets)
 reports/
 audit_export/
+
+# Brainstorming/planning design docs — local only, not published to the repo
+docs/superpowers/
