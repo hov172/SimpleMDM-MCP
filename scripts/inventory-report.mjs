@@ -194,12 +194,6 @@ export async function run(argv) {
     }
   }
 
-  const manifest = written.map((name) => {
-    const buf = readFileSync(join(outDir, name));
-    return `${createHash("sha256").update(buf).digest("hex")}  ${name}`;
-  });
-  writeFileSync(join(outDir, "manifest.sha256"), manifest.join("\n") + "\n", { mode: 0o600 });
-
   const undetermined = records.filter((r) => r.match_status === "unknown").length;
   const head = [
     `Inventory Report ${dateStr}`,
@@ -211,7 +205,14 @@ export async function run(argv) {
     failures.length ? `Failed section fetches: ${failures.length} — export is PARTIAL` : "Failed section fetches: 0",
     `Output: ${outDir}`,
   ].filter(Boolean).join("\n");
-  writeFileSync(join(outDir, "summary.txt"), head + "\n", { mode: 0o600 });
+  writeOut("summary.txt", head + "\n");
+
+  // manifest last so it covers every output file, summary.txt included
+  const manifest = written.map((name) => {
+    const buf = readFileSync(join(outDir, name));
+    return `${createHash("sha256").update(buf).digest("hex")}  ${name}`;
+  });
+  writeFileSync(join(outDir, "manifest.sha256"), manifest.join("\n") + "\n", { mode: 0o600 });
   console.log(head);
   for (const w of written) console.log(`  ${w}`);
   console.log("  manifest.sha256");
