@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { fetchAssignmentGroupsRaw, fetchAppCatalog } from "../scripts/lib/simplemdm.mjs";
 import {
   buildModelMap, deriveType, normalizeDevice, assignmentAppMap,
-  normalizeApps, normalizeProfiles, normalizeUsers,
+  normalizeApps, normalizeProfiles, normalizeUsers, parseInvArgs,
 } from "../scripts/lib/inventory.mjs";
 
 const FIX = (n) => JSON.parse(readFileSync(new URL(`./fixtures/inventory/${n}`, import.meta.url)));
@@ -78,4 +78,38 @@ test("section normalizers map API shapes to flat record items", () => {
   assert.deepEqual(normalizeApps(SECTIONS["201"].apps)[0], { name: "zoom.us", identifier: "us.zoom.xos", version: "5.9.0", managed: true });
   assert.deepEqual(normalizeProfiles(SECTIONS["201"].profiles)[0], { name: "WiFi - Campus", identifier: "edu.slc.wifi" });
   assert.deepEqual(normalizeUsers(SECTIONS["201"].users)[0], { username: "alice", full_name: "Alice Anderson" });
+});
+
+test("parseInvArgs: search-only, selector-only, and combined are all valid", () => {
+  assert.equal(parseInvArgs(["--search", "os:<15"]).error, null);
+  assert.equal(parseInvArgs(["--group", "Faculty"]).error, null);
+  const o = parseInvArgs(["--group", "Faculty", "--search", "app:zoom"]);
+  assert.equal(o.error, null);
+  assert.deepEqual(o.selector, { kind: "group", value: "Faculty" });
+  assert.equal(o.search, "app:zoom");
+});
+
+test("parseInvArgs: defaults and flag parsing", () => {
+  const o = parseInvArgs(["--search", "x", "--format", "md", "--report-detail", "full", "--no-apps", "--raw", "--allow-partial", "--out", "/tmp/x"]);
+  assert.equal(o.format, "md");
+  assert.equal(o.reportDetail, "full");
+  assert.equal(o.noApps, true);
+  assert.equal(o.raw, true);
+  assert.equal(o.allowPartial, true);
+  assert.equal(o.out, "/tmp/x");
+  const d = parseInvArgs(["--search", "x"]);
+  assert.equal(d.format, "all");
+  assert.equal(d.raw, false);
+  assert.equal(d.allowPartial, false);
+});
+
+test("parseInvArgs: errors — no input, multiple selectors, --all w/o confirm, bad values, unknown flag", () => {
+  assert.match(parseInvArgs([]).error, /selector .*--search/i);
+  assert.match(parseInvArgs(["--serial", "A", "--group", "G"]).error, /exactly one selector/);
+  assert.match(parseInvArgs(["--all"]).error, /--confirm-all/);
+  assert.equal(parseInvArgs(["--all", "--confirm-all"]).error, null);
+  assert.match(parseInvArgs(["--last-seen", "zero"]).error, /positive integer/);
+  assert.match(parseInvArgs(["--serial", ""]).error, /at least one serial/);
+  assert.match(parseInvArgs(["--search", "x", "--format", "xls"]).error, /Invalid --format/);
+  assert.match(parseInvArgs(["--bogus"]).error, /Unknown flag/);
 });

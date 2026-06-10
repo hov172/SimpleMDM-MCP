@@ -87,3 +87,58 @@ export const normalizeProfiles = (raw) => (raw ?? []).map((x) => ({
 export const normalizeUsers = (raw) => (raw ?? []).map((x) => ({
   username: x.attributes?.username ?? "", full_name: x.attributes?.full_name ?? "",
 }));
+
+export function parseInvArgs(argv) {
+  const o = {
+    selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary",
+    noApps: false, noProfiles: false, noUsers: false, noFindings: false,
+    raw: false, allowPartial: false, out: null, error: null,
+  };
+  const selectors = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => argv[++i];
+    if (a === "--serial") {
+      const v = (next() ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (!v.length) { o.error = "--serial needs at least one serial"; return o; }
+      selectors.push({ kind: "serial", value: v });
+    } else if (a === "--group") {
+      const v = next();
+      if (!v) { o.error = "--group needs a group name"; return o; }
+      selectors.push({ kind: "group", value: v });
+    } else if (a === "--last-seen") {
+      const v = parseInt(next(), 10);
+      if (!Number.isInteger(v) || v <= 0) { o.error = "--last-seen needs a positive integer"; return o; }
+      selectors.push({ kind: "last-seen", value: v });
+    } else if (a === "--all") selectors.push({ kind: "all", value: true });
+    else if (a === "--confirm-all") o.confirmAll = true;
+    else if (a === "--search") {
+      const v = next();
+      if (!v) { o.error = "--search needs a query string"; return o; }
+      o.search = v;
+    } else if (a === "--format") {
+      const v = next();
+      if (!["csv", "md", "docx", "all"].includes(v)) { o.error = `Invalid --format "${v}" (csv|md|docx|all)`; return o; }
+      o.format = v;
+    } else if (a === "--report-detail") {
+      const v = next();
+      if (!["summary", "table", "full"].includes(v)) { o.error = `Invalid --report-detail "${v}" (summary|table|full)`; return o; }
+      o.reportDetail = v;
+    } else if (a === "--no-apps") o.noApps = true;
+    else if (a === "--no-profiles") o.noProfiles = true;
+    else if (a === "--no-users") o.noUsers = true;
+    else if (a === "--no-findings") o.noFindings = true;
+    else if (a === "--raw") o.raw = true;
+    else if (a === "--allow-partial") o.allowPartial = true;
+    else if (a === "--out") {
+      const v = next();
+      if (!v) { o.error = "--out needs a directory"; return o; }
+      o.out = v;
+    } else { o.error = `Unknown flag "${a}"`; return o; }
+  }
+  if (selectors.length > 1) { o.error = "use exactly one selector (--serial | --group | --last-seen | --all), optionally combined with --search"; return o; }
+  o.selector = selectors[0] ?? null;
+  if (!o.selector && !o.search) { o.error = "give a selector (--serial/--group/--last-seen/--all) and/or a --search query"; return o; }
+  if (o.selector?.kind === "all" && !o.confirmAll) { o.error = "--all fetches apps/profiles/users for every device in the fleet; add --confirm-all to proceed"; return o; }
+  return o;
+}
