@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.17.0] - 2026-06-09
 
 ### Changed
 - **`/audit` (SOFA security report) now renders via the shared PDF pipeline.** `--format all`
