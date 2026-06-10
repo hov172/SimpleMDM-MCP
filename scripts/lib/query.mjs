@@ -273,7 +273,7 @@ function evalKeyword(alt, r, hits) {
     if (st === "ok") {
       for (const it of items ?? []) {
         if (matchTextAlt(alt, names(it))) {
-          if (hits) hits[section].add(it.name ?? it.username ?? "");
+          if (hits) hits[section].add(it.name ?? it.username ?? ""); // apps/profiles key by name, users by username — matches the render layer's hit lookup
           return true;
         }
       }
