@@ -61,6 +61,20 @@ export const FIELDS = {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const stripQuotes = (s) => s.replace(/"/g, "");
 
+// Split a field value on commas, but not commas inside double quotes.
+function splitCommaQuoteAware(raw) {
+  const parts = [];
+  let buf = "";
+  let quoted = false;
+  for (const ch of raw) {
+    if (ch === '"') { quoted = !quoted; buf += ch; continue; }
+    if (ch === "," && !quoted) { parts.push(buf); buf = ""; continue; }
+    buf += ch;
+  }
+  parts.push(buf);
+  return parts;
+}
+
 function splitRange(raw) {
   const i = raw.indexOf("..");
   if (i > 0 && i + 2 < raw.length) return [raw.slice(0, i), raw.slice(i + 2)];
@@ -120,7 +134,7 @@ function parseAlt(kind, part, src) {
 }
 
 function parseValue(kind, raw, src) {
-  const alts = raw.split(",").map((s) => s.trim()).filter(Boolean).map((p) => parseAlt(kind, p, src));
+  const alts = splitCommaQuoteAware(raw).map((s) => stripQuotes(s).trim()).filter(Boolean).map((p) => parseAlt(kind, p, src));
   if (!alts.length) throw new QueryError(`Field needs a value in "${src}"`);
   return alts;
 }
@@ -134,15 +148,16 @@ export function parseTerm(token) {
   const quote = tok.indexOf('"');
   if (colon > 0 && (quote === -1 || colon < quote)) {
     const fieldRaw = tok.slice(0, colon).toLowerCase();
-    const valueRaw = stripQuotes(tok.slice(colon + 1));
+    const valueRaw = tok.slice(colon + 1);
+    const valueStripped = stripQuotes(valueRaw);
     if (fieldRaw.startsWith("attr.")) {
       const attrName = fieldRaw.slice(5);
       if (!attrName) throw new QueryError(`attr. filter needs a name, e.g. attr.xprotect_version:5305 (got "${src}")`);
-      if (valueRaw === "") throw new QueryError(`Field "${fieldRaw}:" needs a value`);
+      if (valueStripped === "") throw new QueryError(`Field "${fieldRaw}:" needs a value`);
       return { neg, field: "attr", attrName, src, alts: parseValue("text", valueRaw, src) };
     }
     if (fieldRaw in FIELDS) {
-      if (valueRaw === "") throw new QueryError(`Field "${fieldRaw}:" needs a value`);
+      if (valueStripped === "") throw new QueryError(`Field "${fieldRaw}:" needs a value`);
       return { neg, field: fieldRaw, src, alts: parseValue(FIELDS[fieldRaw].kind, valueRaw, src) };
     }
     throw new QueryError(`Unknown field "${fieldRaw}:" — valid fields: ${Object.keys(FIELDS).join(", ")}, attr.<name>`);

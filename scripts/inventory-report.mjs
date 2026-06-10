@@ -167,7 +167,7 @@ export async function run(argv) {
   writeOut("by-type.csv", toCsv([["type", "devices"]], rollupRows(records, (r) => r.type, "type")));
   writeOut("by-model.csv", toCsv([BY_MODEL_COLUMNS], byModelRows(records)));
   writeOut("by-os.csv", toCsv([["os", "devices"]], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")));
-  if (findings.length) writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
+  writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
 
   if (opts.raw) {
     mkdirSync(join(outDir, "raw"), { recursive: true, mode: 0o700 });
@@ -194,9 +194,6 @@ export async function run(argv) {
     }
   }
 
-  // pandoc/WeasyPrint create report files with default umask — clamp every output to owner-only
-  for (const name of written) chmodSync(join(outDir, name), 0o600);
-
   const undetermined = records.filter((r) => r.match_status === "unknown").length;
   const head = [
     `Inventory Report ${dateStr}`,
@@ -205,7 +202,10 @@ export async function run(argv) {
     `Devices: ${records.length} matched (of ${selectedRaw.length} selected, fleet ${rawDevices.length})`,
     undetermined ? `Undetermined matches (included, flagged): ${undetermined}` : null,
     `Findings: ${findings.length}${findings.some((f) => f.status === "unknown") ? ` (${findings.filter((f) => f.status === "unknown").length} unknown)` : ""}`,
+    findings.length ? `Findings by type: ${[...findings.reduce((m, f) => m.set(f.type, (m.get(f.type) ?? 0) + 1), new Map())].map(([t, n]) => `${t} ${n}`).join(" | ")}` : null,
+    records.some((r) => r.sections?.apps !== "ok") ? `App catalog/rollups exclude ${records.filter((r) => r.sections?.apps !== "ok").length} device(s) with unavailable app inventory` : null,
     failures.length ? `Failed section fetches: ${failures.length} — export is PARTIAL` : "Failed section fetches: 0",
+    ...failures.map((f) => `  failed: ${f.serial} ${f.section} — ${f.message}`),
     `Output: ${outDir}`,
   ].filter(Boolean).join("\n");
   writeOut("summary.txt", head + "\n");
@@ -216,6 +216,9 @@ export async function run(argv) {
     return `${createHash("sha256").update(buf).digest("hex")}  ${name}`;
   });
   writeFileSync(join(outDir, "manifest.sha256"), manifest.join("\n") + "\n", { mode: 0o600 });
+  // writeFileSync mode is ignored for pre-existing files and pandoc/WeasyPrint use default umask —
+  // clamp every output to owner-only as the final step
+  for (const name of [...written, "manifest.sha256"]) chmodSync(join(outDir, name), 0o600);
   console.log(head);
   for (const w of written) console.log(`  ${w}`);
   console.log("  manifest.sha256");

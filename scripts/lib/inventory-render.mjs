@@ -180,6 +180,9 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
   out.push("### By OS\n");
   out.push(mdTable(["os", "devices"], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")) + "\n");
 
+  const appExcluded = records.filter((r) => r.sections?.apps !== "ok").length;
+  if (appExcluded) out.push(`_App catalog and app-based rollups exclude ${appExcluded} device(s) whose installed-app inventory was unavailable._\n`);
+
   out.push("## 2. ⚠ Findings\n");
   out.push(mdTable(FINDING_COLUMNS, findings) + "\n");
 
