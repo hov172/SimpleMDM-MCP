@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { loadSofa } from "./lib/sofa.mjs";
-import { fetchAllDevices, fetchDeviceGroups } from "./lib/simplemdm.mjs";
+import { fetchAllDevices, fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroups, flatten } from "./lib/simplemdm.mjs";
+import { selectDevices } from "./lib/logs.mjs";
 import { buildMajorTables, evaluateDevice, aggregateCveDetail, deviceCveRows, cveDeviceRows, summarize } from "./lib/evaluate.mjs";
 import {
   toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows, groupBreakdownRows,
@@ -38,10 +39,34 @@ async function main() {
 
   const apiKey = loadEnvKey();
   if (!apiKey) { console.error("AUDIT FAILED: Missing SIMPLEMDM_API_KEY (set it in .env or the environment)"); process.exit(1); }
+  // Optional scope: audit a subset instead of the whole fleet. At most one selector.
+  const sels = [];
+  if (arg("serial", null)) sels.push({ kind: "serial", value: arg("serial", "").split(",").map((s) => s.trim()).filter(Boolean) });
+  if (arg("group", null)) sels.push({ kind: "group", value: arg("group", "") });
+  if (arg("last-seen", null)) sels.push({ kind: "last-seen", value: parseInt(arg("last-seen", ""), 10) });
+  if (sels.length > 1) { console.error("AUDIT FAILED: use at most one selector (--serial | --group | --last-seen); omit for the whole fleet"); process.exit(2); }
+  const selector = sels[0] ?? null;
+
   const { macFeed, iosFeed } = await loadSofa(`${outDir}/.cache`, { noCache });
   const tables = buildMajorTables(macFeed, iosFeed);
-  const devices = await fetchAllDevices(apiKey);
   const groups = await fetchDeviceGroups(apiKey);
+
+  let devices;
+  if (selector) {
+    const raw = await fetchAllDevicesRaw(apiKey);
+    let matchGroupIds = new Set();
+    if (selector.kind === "group") {
+      const ag = await fetchAssignmentGroups(apiKey); // understands assignment groups, not just legacy device groups
+      const wanted = selector.value.toLowerCase();
+      for (const [id, name] of [...groups, ...ag]) if (String(name).toLowerCase() === wanted) matchGroupIds.add(id);
+      if (matchGroupIds.size === 0) { console.error(`AUDIT FAILED: no device or assignment group named "${selector.value}"`); process.exit(3); }
+    }
+    const picked = selectDevices(raw, selector, matchGroupIds);
+    if (picked.length === 0) { console.error("AUDIT FAILED: no devices matched the selector"); process.exit(3); }
+    devices = picked.map(flatten);
+  } else {
+    devices = await fetchAllDevices(apiKey);
+  }
   for (const d of devices) d.device_group = groups.get(d.device_group_id) ?? "";
   const ev = devices.map((d) => evaluateDevice(d, tables));
   const cveDetail = aggregateCveDetail(ev, tables);
@@ -72,8 +97,11 @@ async function main() {
     });
   }
 
+  const scope = selector
+    ? `Scope: ${selector.kind === "group" ? `group "${selector.value}"` : selector.kind === "serial" ? `serial ${selector.value.join(",")}` : `last-seen ${selector.value}`}`
+    : "Scope: whole fleet";
   write("summary.txt",
-    `SOFA Audit ${dateStr}\nDevices: ${summary.total} (issues: ${summary.withIssues})\n` +
+    `SOFA Audit ${dateStr}\n${scope}\nDevices: ${summary.total} (issues: ${summary.withIssues})\n` +
     `OS Outdated ${summary.osOutdated} | No FileVault ${summary.noFileVault} | No SIP ${summary.noSip} | ` +
     `No Firewall ${summary.noFirewall} | XProtect Outdated ${summary.xprotectCollected ? summary.xprotectOutdated : "N/A (not set up)"} | Unfixed CVEs ${summary.unfixedCves}\n`);
 
