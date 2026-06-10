@@ -626,7 +626,7 @@ defensibility.
 
 ## Tools
 
-The server registers **173 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **179 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 Apple schema helpers (`search_apple_device_management_schemas`, `get_apple_device_management_schema`, `validate_apple_payload`, `build_mobileconfig`, `build_custom_declaration_payload`, plus convenience builders for Wi-Fi, restrictions, SCEP/certificates, VPN, web clips, content filters, FileVault escrow, firewall, passcode, and software update settings) use `data/apple-device-management/schema-cache.json`, generated from Apple's public `apple/device-management` YAML schemas, with curated fallback data for high-value payloads. They do not call the third-party Apple Profile Builder site at runtime. See [`docs/apple-schema-helpers.md`](docs/apple-schema-helpers.md) for the search -> validate/build -> create SimpleMDM profile/declaration workflow and [`data/apple-device-management/README.md`](data/apple-device-management/README.md) for cache refresh/maintenance details.
 
@@ -663,7 +663,7 @@ The server ships workflow **prompts** — templated starting points selectable f
 
 | Prompt | Arguments | What it does |
 |---|---|---|
-| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture`, summarizes posture, lists outliers, proposes up to 3 actions |
+| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit`, summarizes posture/APNs, lists outliers, proposes up to 3 actions |
 | `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
 | `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
 | `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
@@ -672,6 +672,7 @@ The server ships workflow **prompts** — templated starting points selectable f
 | `app-inventory-audit` | `limit` (default 25) | Cross-fleet top-apps + unmanaged-apps audit; recommends catalog additions/removals |
 | `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Calls `get_compliance_violators`, groups by failure type, proposes remediation tools per group |
 | `profile-coverage-remediation` | `profile_id` (required) | Calls `get_devices_missing_profile`, recommends bulk vs per-device assignment based on gap size |
+| `configure-webhooks-guide` | — | Walkthrough and guidance for manually configuring, securing, and testing SimpleMDM webhooks |
 
 Destructive prompts (offboarding, stale cleanup) include explicit guards: the LLM is told **not** to call write tools without you typing `CONFIRM`.
 
