@@ -407,6 +407,33 @@ node scripts/sofa-audit.mjs --format all   # csv | md | docx | all  (default: al
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
 
+At most one scope selector (`--serial` | `--group` | `--last-seen`); omit for the whole fleet. A
+scoped run also trims the **Vulnerability Check** to the OS major-version ladders the selected
+devices are on (drops the iOS/iPadOS table and unrelated macOS majors).
+
+#### Examples
+
+```bash
+# Whole fleet, every format (CSV + md/html/docx/pdf) — the default
+node scripts/sofa-audit.mjs --format all
+
+# Whole fleet, data files only (just the CSVs)
+node scripts/sofa-audit.mjs --format csv
+
+# One device (or several) by serial
+node scripts/sofa-audit.mjs --serial C02ABC123XYZ
+node scripts/sofa-audit.mjs --serial ABC123,DEF456 --format md
+
+# A device or assignment group by name (matches both kinds)
+node scripts/sofa-audit.mjs --group "Faculty" --format all
+
+# The 25 most recently seen devices, into a named directory
+node scripts/sofa-audit.mjs --last-seen 25 --out reports/recent-25 --format all
+
+# Force a fresh SOFA feed (ignore the on-disk cache)
+node scripts/sofa-audit.mjs --no-network-cache --format all
+```
+
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient — the audit never
 writes). `pandoc` only needed for `.docx`.
 
@@ -539,6 +566,9 @@ node scripts/logs-audit.mjs --serial ABC123,DEF456 --out reports/case-2026-06 --
 
 # Whole fleet (heavy — explicit acknowledgement required)
 node scripts/logs-audit.mjs --all --confirm-all --format csv
+
+# Full per-device event tables embedded in the report (vs. the default summary)
+node scripts/logs-audit.mjs --group "Faculty" --report-detail full --format all
 ```
 
 ### Output
