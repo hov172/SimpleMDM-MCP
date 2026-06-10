@@ -7,7 +7,7 @@ All notable changes to this project are documented here. Format follows
 ## [Unreleased]
 
 ### Added
-- `/inventory` skill + `scripts/inventory-report.mjs`: searchable fleet inventory reports (devices/apps/profiles/users) with a multi-keyword + field-filter query language (`--search`), sound device-level prefilter planning, SOFA model enrichment, assigned-vs-installed deployment-gap findings, per-section completeness model (exit 2 on partial data unless `--allow-partial`), owner-only output permissions, redacted opt-in raw dumps, and CSV/md/docx/pdf dossier output.
+- `/inventory` skill + `scripts/inventory-report.mjs`: searchable fleet inventory reports (devices/apps/profiles/users) with a multi-keyword + field-filter query language (`--search`), sound device-level prefilter planning, SOFA model enrichment, assigned-vs-installed deployment-gap findings, per-section completeness model (exit 2 on partial data unless `--allow-partial`), redacted opt-in raw dumps, and CSV/md/docx/pdf dossier output.
 - **Audit MCP Tools (`run_fleet_audit` / `run_device_logs_audit`)**: Exposed the host-side SOFA and activity log audits as native MCP tools, returning structured summaries and markdown report previews directly to the LLM.
 - **Webhooks Verification & Guidance**: Added `verify_webhook_payload` tool to validate JSON payloads by event type, and `configure-webhooks-guide` prompt to walk admins through manually configuring secure webhooks.
 - **APNs Expiration Checking in Prompt**: Enhanced `fleet-health-dashboard` prompt to query APNs certificate expiration and bubble up expiration alerts.
