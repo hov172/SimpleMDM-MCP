@@ -11,7 +11,7 @@ import {
   GetPromptRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
@@ -582,7 +582,7 @@ async function forEachDeviceInstalledApps(
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
-const TOOLS: Tool[] = [
+export const TOOLS: Tool[] = [
 
   // ══════════════════════════════════════════════════════════════════════════
   // ACCOUNT
@@ -1682,6 +1682,55 @@ const TOOLS: Tool[] = [
   { name: "get_api_coverage",
     description: "Read — Report which SimpleMDM capability areas this MCP server exposes (tool count per area, total tools, write vs read). Static introspection of the registered tool list.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "run_fleet_audit",
+    description: "Run the host-side macOS Security Audit script (scripts/sofa-audit.mjs). Joins live SimpleMDM inventory with the SOFA feed. Generates CSV, MD, Word, and PDF reports under reports/audit-YYYY-MM-DD.",
+    inputSchema: { type: "object", properties: {
+      format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report format to generate. Default is 'all'." },
+      serial: { type: "string", description: "Scope to these comma-separated serial numbers (e.g. C02ABC123,DEF456)." },
+      group: { type: "string", description: "Scope to this assignment group or device group name." },
+      last_seen: { type: "number", description: "Scope to this number of most recently active devices." },
+      no_network_cache: { type: "boolean", description: "Set true to ignore cached SOFA feed and refetch it." },
+      out_dir: { type: "string", description: "Custom output directory path." },
+    }}},
+
+  { name: "run_device_logs_audit",
+    description: "Run the host-side Forensic Logs Audit script (scripts/logs-audit.mjs). Collects /logs activity feed, detects reinstall loops or update failure loops, and writes report dossiers.",
+    inputSchema: { type: "object", properties: {
+      serial: { type: "string", description: "Comma-separated list of device serial numbers to audit." },
+      last_seen: { type: "number", description: "Audit the N most recently active devices." },
+      group: { type: "string", description: "Audit every device in a device/assignment group of this name." },
+      all: { type: "boolean", description: "Audit the whole fleet (heavy, requires confirm_all=true)." },
+      confirm_all: { type: "boolean", description: "Acknowledge running the audit against the entire fleet." },
+      with_inventory: { type: "boolean", description: "Include software inventory, installed apps, and profiles." },
+      with_security: { type: "boolean", description: "Include SOFA security eval (posture & CVE checks)." },
+      format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report formats to generate. Default is 'all'." },
+      report_detail: { type: "string", enum: ["summary", "table", "full"], description: "Per-device event detail level. Default is 'summary'." },
+      out_dir: { type: "string", description: "Custom output directory path." },
+    }}},
+
+  { name: "verify_webhook_payload",
+    description: "Validate the structure of an incoming SimpleMDM webhook JSON payload. Checks for expected fields by event type.",
+    inputSchema: { type: "object", required: ["payload"], properties: {
+      payload: { type: "string", description: "Raw JSON string of the webhook request body." },
+    }}},
+
+  { name: "get_dep_device_status",
+    description: "Derived — Search for a DEP device by serial number across all registered Apple DEP/ABM servers on the tenant.",
+    inputSchema: { type: "object", required: ["serial_number"], properties: {
+      serial_number: { type: "string", description: "Device serial number to search for." },
+    }}},
+
+  { name: "set_managed_app_config_schema",
+    description: "WRITE — Configure multiple managed configuration options (key-value schema) for an app, diffing and updating only changed fields, and push to devices.",
+    inputSchema: { type: "object", required: ["app_id", "config"], properties: {
+      app_id: { type: "string", description: "Catalog App ID to configure." },
+      config: { type: "object", description: "Key-value dictionary of settings (values can be strings, integers, or booleans)." },
+    }}},
+
+  { name: "get_managed_app_config_templates",
+    description: "Retrieve pre-defined managed configuration dictionary templates for common enterprise apps (Chrome, Zoom, Teams).",
+    inputSchema: { type: "object", properties: {} } },
 ];
 
 // ─── Tool handlers ────────────────────────────────────────────────────────────
@@ -1695,7 +1744,7 @@ function qs(args: Args, keys: string[]): string {
   return s ? `?${s}` : "";
 }
 
-async function handleTool(name: string, args: Args): Promise<unknown> {
+export async function handleTool(name: string, args: Args): Promise<unknown> {
   switch (name) {
 
     // ── Account ─────────────────────────────────────────────────────────────
@@ -3186,6 +3235,357 @@ async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/simplemdm/data/apple_care_stats");
     case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/simplemdm/data/supplemental_overview");
 
+    case "run_fleet_audit": {
+      const format = args.format as string | undefined ?? "all";
+      const serial = args.serial as string | undefined;
+      const group = args.group as string | undefined;
+      const lastSeen = args.last_seen as number | undefined;
+      const noNetworkCache = args.no_network_cache === true;
+      const customOutDir = args.out_dir as string | undefined;
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const outDir = customOutDir ?? `reports/audit-${dateStr}`;
+
+      const runArgs = ["--format", format, "--out", outDir];
+      if (serial) runArgs.push("--serial", serial);
+      if (group) runArgs.push("--group", group);
+      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
+      if (noNetworkCache) runArgs.push("--no-network-cache");
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      const scriptPath = resolve(here, "..", "scripts", "sofa-audit.mjs");
+
+      const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
+      
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+
+      try {
+        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+        
+        let summaryContent = "";
+        try {
+          summaryContent = readFileSync(resolve(outDir, "summary.txt"), "utf8");
+        } catch (e) {
+          summaryContent = `Audit ran but summary.txt could not be read: ${e instanceof Error ? e.message : String(e)}`;
+        }
+
+        let reportContent = "";
+        if (["md", "all"].includes(format)) {
+          try {
+            reportContent = readFileSync(resolve(outDir, "full-audit.md"), "utf8");
+          } catch {}
+        }
+
+        return {
+          success: true,
+          stdout,
+          stderr,
+          summary: summaryContent,
+          report: reportContent ? reportContent.slice(0, 15000) : undefined,
+          report_truncated: reportContent.length > 15000,
+          output_dir: outDir
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err.message,
+          stdout: err.stdout,
+          stderr: err.stderr,
+        };
+      }
+    }
+
+    case "run_device_logs_audit": {
+      const serial = args.serial as string | undefined;
+      const lastSeen = args.last_seen as number | undefined;
+      const group = args.group as string | undefined;
+      const all = args.all === true;
+      const confirmAll = args.confirm_all === true;
+      const withInventory = args.with_inventory === true;
+      const withSecurity = args.with_security === true;
+      const format = args.format as string | undefined ?? "all";
+      const reportDetail = args.report_detail as string | undefined ?? "summary";
+      const customOutDir = args.out_dir as string | undefined;
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const outDir = customOutDir ?? `reports/logs-audit-${dateStr}`;
+
+      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail, "--out", outDir];
+      if (serial) runArgs.push("--serial", serial);
+      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
+      if (group) runArgs.push("--group", group);
+      if (all) runArgs.push("--all");
+      if (confirmAll) runArgs.push("--confirm-all");
+      if (withInventory) runArgs.push("--with-inventory");
+      if (withSecurity) runArgs.push("--with-security");
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      const scriptPath = resolve(here, "..", "scripts", "logs-audit.mjs");
+
+      const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
+
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+
+      try {
+        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+
+        let summaryContent = "";
+        try {
+          summaryContent = readFileSync(resolve(outDir, "summary.txt"), "utf8");
+        } catch (e) {
+          summaryContent = `Logs audit ran but summary.txt could not be read: ${e instanceof Error ? e.message : String(e)}`;
+        }
+
+        let reportContent = "";
+        if (["md", "all"].includes(format)) {
+          try {
+            reportContent = readFileSync(resolve(outDir, "report.md"), "utf8");
+          } catch {}
+        }
+
+        return {
+          success: true,
+          stdout,
+          stderr,
+          summary: summaryContent,
+          report: reportContent ? reportContent.slice(0, 15000) : undefined,
+          report_truncated: reportContent.length > 15000,
+          output_dir: outDir
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err.message,
+          stdout: err.stdout,
+          stderr: err.stderr,
+        };
+      }
+    }
+
+    case "verify_webhook_payload": {
+      const payloadStr = args.payload as string;
+      try {
+        const payload = JSON.parse(payloadStr);
+        const eventType = payload.event as string | undefined;
+        if (!eventType) {
+          return { valid: false, error: "Missing 'event' field indicating event type." };
+        }
+        const expectedFields: Record<string, string[]> = {
+          "device.enrolled": ["device_id", "device_name", "serial_number"],
+          "device.unenrolled": ["device_id", "device_name", "serial_number"],
+          "device.changed_group": ["device_id", "device_name", "serial_number", "device_group_id"],
+          "device.lock.enabled": ["device_id", "device_name", "serial_number"],
+          "abm.device.added": ["serial_number", "model", "dep_server_id"],
+        };
+
+        const fields = expectedFields[eventType];
+        if (!fields) {
+          return {
+            valid: true,
+            warning: `Unknown event type '${eventType}'. Payload was parsed successfully as JSON but schema could not be verified.`,
+            payload
+          };
+        }
+
+        const missing: string[] = [];
+        const data = payload.data ?? {};
+        for (const f of fields) {
+          if (data[f] == null) missing.push(f);
+        }
+
+        if (missing.length > 0) {
+          return {
+            valid: false,
+            error: `Missing expected fields under 'data' for event type '${eventType}': ${missing.join(", ")}`,
+            payload
+          };
+        }
+
+        return {
+          valid: true,
+          event: eventType,
+          message: `Payload successfully validated against schema for '${eventType}'.`,
+          payload
+        };
+      } catch (e: any) {
+        return { valid: false, error: `Invalid JSON payload: ${e.message}` };
+      }
+    }
+
+    case "get_dep_device_status": {
+      const serialNumber = (args.serial_number as string).trim();
+      const depServers = await collectAllPages<AnyRecord>("/dep_servers");
+      
+      for (const server of depServers.data) {
+        const serverId = server.id;
+        const serverName = server.attributes?.name as string | undefined ?? "Unknown Server";
+        
+        try {
+          const depDevices = await collectAllPages<AnyRecord>(`/dep_servers/${serverId}/dep_devices`);
+          const matched = depDevices.data.find(d => {
+            const sn = d.attributes?.serial_number as string | undefined;
+            return sn && sn.toUpperCase() === serialNumber.toUpperCase();
+          });
+          
+          if (matched) {
+            return {
+              found: true,
+              dep_server: { id: serverId, name: serverName },
+              device: {
+                dep_device_id: matched.id,
+                serial_number: matched.attributes?.serial_number,
+                model: matched.attributes?.model,
+                description: matched.attributes?.description,
+                color: matched.attributes?.color,
+                asset_tag: matched.attributes?.asset_tag,
+                profile_status: matched.attributes?.profile_status,
+                profile_uuid: matched.attributes?.profile_uuid,
+                profile_assign_time: matched.attributes?.profile_assign_time,
+                profile_push_time: matched.attributes?.profile_push_time,
+                device_family: matched.attributes?.device_family,
+                os_version: matched.attributes?.os_version,
+              }
+            };
+          }
+        } catch (e) {
+          // Continue to next server on failure
+          console.error(`Error checking DEP server ${serverId}:`, e);
+        }
+      }
+      
+      return { found: false, message: `Device with serial '${serialNumber}' not found on any DEP servers.` };
+    }
+
+    case "set_managed_app_config_schema": {
+      requireWrites();
+      const appId = args.app_id as string;
+      const config = args.config as Record<string, unknown>;
+
+      // 1. Get current configs
+      const currentConfigs = await collectAllPages<AnyRecord>(`/apps/${seg(appId, "app_id")}/managed_configs`);
+      
+      const operations: Array<{ type: "delete" | "create"; key?: string; configId?: string|number; value?: unknown; kind?: string }> = [];
+      const currentMap = new Map<string, { id: string|number; value: unknown; kind: string }>();
+      
+      for (const item of currentConfigs.data) {
+        const key = item.attributes?.key as string | undefined;
+        if (key) {
+          currentMap.set(key, {
+            id: item.id,
+            value: item.attributes?.value,
+            kind: item.attributes?.kind as string ?? "string"
+          });
+        }
+      }
+
+      // 2. Diff config inputs
+      for (const [key, val] of Object.entries(config)) {
+        let kind: "string" | "boolean" | "integer" = "string";
+        if (typeof val === "boolean") kind = "boolean";
+        else if (typeof val === "number" && Number.isInteger(val)) kind = "integer";
+
+        const existing = currentMap.get(key);
+        if (existing) {
+          // If value or kind differs, we must delete and recreate (since SimpleMDM has no patch for managed config keys)
+          if (existing.value !== val || existing.kind !== kind) {
+            operations.push({ type: "delete", key, configId: existing.id });
+            operations.push({ type: "create", key, value: val, kind });
+          }
+        } else {
+          operations.push({ type: "create", key, value: val, kind });
+        }
+      }
+
+      const results = [];
+      
+      // 3. Execute deletions first
+      for (const op of operations.filter(o => o.type === "delete")) {
+        try {
+          await api(`/apps/${seg(appId, "app_id")}/managed_configs/${seg(op.configId, "config_id")}`, { method: "DELETE" });
+          results.push(`Deleted existing config key '${op.key}'`);
+        } catch (e: any) {
+          results.push(`Error deleting config key '${op.key}': ${e.message}`);
+        }
+      }
+
+      // 4. Execute creations
+      for (const op of operations.filter(o => o.type === "create")) {
+        try {
+          await api(`/apps/${seg(appId, "app_id")}/managed_configs`, {
+            method: "POST",
+            body: j({ key: op.key, value: op.value, kind: op.kind })
+          });
+          results.push(`Created config key '${op.key}' = ${op.value} (${op.kind})`);
+        } catch (e: any) {
+          results.push(`Error creating config key '${op.key}': ${e.message}`);
+        }
+      }
+
+      // 5. Push updates to devices
+      let pushSuccess = false;
+      try {
+        await api(`/apps/${seg(appId, "app_id")}/managed_configs/push`, { method: "POST" });
+        pushSuccess = true;
+        results.push("Successfully pushed managed configuration changes to devices.");
+      } catch (e: any) {
+        results.push(`Error pushing managed configuration changes: ${e.message}`);
+      }
+
+      return {
+        success: pushSuccess,
+        results
+      };
+    }
+
+    case "get_managed_app_config_templates": {
+      return {
+        templates: {
+          chrome: {
+            app_name: "Google Chrome",
+            description: "Common configuration options for Google Chrome Enterprise.",
+            config: {
+              HomepageLocation: "https://www.google.com",
+              RestoreOnStartup: 1, // 1 = Restore last session, 5 = Open Homepage
+              BookmarkBarEnabled: true,
+              ShowHomeButton: true,
+              IncognitoModeAvailability: 0, // 0 = Enabled, 1 = Disabled, 2 = Forced
+              ManagedBookmarks: JSON.stringify([
+                { "name": "IT Support", "url": "https://support.example.com" },
+                { "name": "Company Portal", "url": "https://portal.example.com" }
+              ])
+            }
+          },
+          zoom: {
+            app_name: "Zoom",
+            description: "Common configuration options for Zoom Client for IT administrators.",
+            config: {
+              SyncMeetingToCalendar: true,
+              DisableVideoOnJoin: true,
+              DisableAudioOnJoin: true,
+              DisableFaceBeauty: false,
+              MuteAudioOnJoin: true,
+              AutoSSOLogin: true,
+              SSO_URL: "example.zoom.us"
+            }
+          },
+          teams: {
+            app_name: "Microsoft Teams",
+            description: "Microsoft Teams configuration settings.",
+            config: {
+              AutoStart: true,
+              OpenAsHidden: true,
+              DisableGpu: false,
+              RegisterAsIMProvider: true
+            }
+          }
+        }
+      };
+    }
+
     case "get_api_coverage": {
       const areas: Record<string, RegExp> = {
         devices:        /^(get_device|list_devices|create_device|update_device|delete_device|lock_device|wipe_device|sync_device|restart_device|shutdown_device|unenroll_device|clear_|update_os|enable_lost|disable_lost|play_lost|update_lost)/,
@@ -3250,6 +3650,7 @@ const WRITE_TOOLS = new Set<string>([
   "sync_dep_server",
   "send_enrollment_invitation", "delete_enrollment",
   "create_managed_app_config", "delete_managed_app_config", "push_managed_app_configs",
+  "set_managed_app_config_schema",
   "create_script", "update_script", "delete_script",
   "create_script_job", "cancel_script_job",
 ]);
@@ -3290,7 +3691,7 @@ for (const t of TOOLS) {
 
 // ─── Resources (canonical report URIs) ────────────────────────────────────────
 
-const RESOURCES = [
+export const RESOURCES = [
   { uri: "simplemdm://fleet/summary",          name: "Fleet summary",          description: "Total devices, enrolled/unenrolled, supervised/DEP/FileVault posture, OS breakdown.",               mimeType: "application/json" },
   { uri: "simplemdm://reports/security-posture", name: "Security posture",     description: "Fleet-wide percentages and counts for supervised, DEP, FileVault, firmware/recovery/activation lock, UAMDM, passcode compliance.", mimeType: "application/json" },
   { uri: "simplemdm://reports/os-versions",    name: "OS version report",      description: "Device count by OS major/minor version across the fleet.",                                         mimeType: "application/json" },
@@ -3361,7 +3762,7 @@ async function readResource(uri: string): Promise<unknown> {
 
 // ─── Prompts (workflow templates) ─────────────────────────────────────────────
 
-const PROMPTS = [
+export const PROMPTS = [
   {
     name: "fleet-health-dashboard",
     description: "Comprehensive fleet health snapshot — enrollment, security posture, OS currency, recent unenrolled devices.",
@@ -3419,13 +3820,20 @@ const PROMPTS = [
       { name: "limit", description: "Top N apps to report. Default 25.", required: false },
     ],
   },
+  {
+    name: "configure-webhooks-guide",
+    description: "Guidance and walkthrough for manually configuring, securing, and testing SimpleMDM webhooks via the admin web console.",
+    arguments: [],
+  },
 ];
 
-function promptBody(name: string, args: Record<string, string> | undefined): string {
+export function promptBody(name: string, args: Record<string, string> | undefined): string {
   const a = args ?? {};
   switch (name) {
     case "fleet-health-dashboard":
-      return "Give me a fleet health dashboard. Call get_fleet_summary and get_security_posture in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, and any obvious posture outliers. End with up to 3 concrete recommendations.";
+      return "Give me a fleet health dashboard. Call get_fleet_summary, get_security_posture, and get_certificate_expiration_audit in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, APNs push certificate expiration status, and any obvious posture outliers. End with up to 3 concrete recommendations.";
+    case "configure-webhooks-guide":
+      return "Provide a comprehensive guide on manually configuring, securing, and testing SimpleMDM Webhooks. Explain that because the SimpleMDM REST API doesn't support webhook CRUD operations, webhooks must be created in the SimpleMDM admin portal under Settings > Webhooks. Describe how to secure webhook endpoints using a shared query parameter token (e.g. ?token=secret) and validate payload schemas using the verify_webhook_payload tool.";
     case "security-audit":
       return "Run a full security audit. Call get_security_posture. For each posture metric below 80%, note it as an outlier. Specifically check: supervised, dep_enrolled, filevault_enabled, firmware_password, recovery_lock_password, activation_lock, user_approved_mdm, passcode_compliant. For macOS specifically, if FileVault enablement is under 80%, list the Macs that are off (call the simplemdm://reports/filevault resource). End with a prioritized remediation plan.";
     case "new-device-onboarding":
@@ -3551,7 +3959,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-main().catch(err => {
-  console.error(`Fatal: ${formatError(err)}`);
-  process.exit(1);
-});
+if (process.env.SIMPLEMDM_TEST_MODE !== "true") {
+  main().catch(err => {
+    console.error(`Fatal: ${formatError(err)}`);
+    process.exit(1);
+  });
+}

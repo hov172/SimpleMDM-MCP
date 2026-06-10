@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **173 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **179 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -12,6 +12,8 @@ The server registers **173 tools** covering the full SimpleMDM API surface (28 d
 | `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
+| `run_fleet_audit` | Run host-side SOFA macOS Security Audit script (`scripts/sofa-audit.mjs`) |
+| `run_device_logs_audit` | Run host-side Forensic Logs Audit script (`scripts/logs-audit.mjs`) |
 
 **Apple schema helpers**
 
@@ -57,6 +59,7 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 | `list_app_installs` | Install records for an app across the fleet |
 | `get_installed_app` | Detail for a specific installed-app record |
 | `list_managed_app_configs` | Managed app configurations |
+| `get_managed_app_config_templates` | Retrieve managed app configuration templates (Chrome, Zoom, Teams) |
 
 **Profiles & declarations**
 | Tool | Description |
@@ -98,6 +101,7 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 | `get_dep_server` | Single DEP server detail |
 | `list_dep_devices` | DEP devices for a server |
 | `get_dep_device` | Single DEP device detail |
+| `get_dep_device_status` | Search for a DEP device by serial across all DEP servers |
 
 **Logs & certificates**
 | Tool | Description |
@@ -106,6 +110,7 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 | `get_log` | Single log entry |
 | `get_push_certificate` | APNs push certificate info |
 | `get_signed_csr` | Signed CSR for push certificate renewal |
+| `verify_webhook_payload` | Validate incoming SimpleMDM webhook JSON payload schema |
 
 **Fleet analytics (derived — iterate the fleet)**
 
@@ -204,6 +209,7 @@ All tools below modify fleet state. The API permission column tells you what the
 | `request_app_management` | Apps: write |
 | `create_managed_app_config` · `delete_managed_app_config` | Apps: write |
 | `push_managed_app_configs` | Apps: write |
+| `set_managed_app_config_schema` | Apps: write — Configure multiple options (diff and write) and push |
 
 **Profiles**
 | Tool | API Permission |
