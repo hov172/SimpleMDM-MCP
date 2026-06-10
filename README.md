@@ -630,8 +630,6 @@ A **searchable, structured inventory** of your entire fleet — devices, install
 
 In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags):
 
-### Inventory reports (`/inventory`)
-
 > "Give me an inventory of all faculty and staff devices seen since 2025"
 
 > "Which MacBooks are still on macOS 14 or older, excluding loaners?"
