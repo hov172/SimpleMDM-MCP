@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { renderReportPdf } from "./lib/report-pdf.mjs";
 import {
   fetchAllDevicesRaw, fetchDeviceLogs, fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers,
   fetchDeviceGroups, fetchAssignmentGroups, flatten,
@@ -20,42 +20,16 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// Render report.md -> report.html (pandoc) and report.pdf (headless Chrome).
-// Both are best-effort: missing tooling logs a warning and skips, never throws.
+// Render report.md -> report.html + report.pdf via the shared renderer
+// (WeasyPrint preferred, Chrome fallback). Returns produced basenames.
 function renderHtmlAndPdf(outDir) {
-  const produced = [];
-  const style = join(HERE, "logs-report.head.html"); // dedicated portrait dossier stylesheet
-  const mdPath = join(outDir, "report.md");
-  if (!existsSync(mdPath)) return produced;
-  const htmlPath = join(outDir, "report.html");
-  const pdfPath = join(outDir, "report.pdf");
-  const pandoc = spawnSync("pandoc", [mdPath, "-s", ...(existsSync(style) ? ["-H", style] : []), "-o", htmlPath]);
-  if (pandoc.status === 0) produced.push("report.html");
-  else { console.warn("logs-audit: html skipped (pandoc unavailable)"); return produced; }
-
-  const found = (cands) => cands.find((c) => c.includes("/") ? existsSync(c) : spawnSync("which", [c]).status === 0);
-
-  // Prefer WeasyPrint — it honors CSS paged media (@page footer with real page numbers).
-  const weasy = found(["weasyprint", "/opt/homebrew/bin/weasyprint", "/usr/local/bin/weasyprint"]);
-  if (weasy) {
-    const wp = spawnSync(weasy, [htmlPath, pdfPath]);
-    if (wp.status === 0) { produced.push("report.pdf"); return produced; }
-    console.warn("logs-audit: weasyprint failed, falling back to Chrome (no page numbers)");
-  }
-
-  // Fallback: headless Chrome (renders correctly, but cannot emit page numbers).
-  const chrome = found([
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "google-chrome", "chromium", "chromium-browser",
-  ]);
-  if (!chrome) { console.warn("logs-audit: pdf skipped (no WeasyPrint or Chrome/Chromium/Edge)"); return produced; }
-  const pdf = spawnSync(chrome, ["--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-    `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`]);
-  if (pdf.status === 0) produced.push("report.pdf");
-  else console.warn("logs-audit: pdf skipped (Chrome render failed)");
-  return produced;
+  return renderReportPdf({
+    mdPath: join(outDir, "report.md"),
+    htmlPath: join(outDir, "report.html"),
+    pdfPath: join(outDir, "report.pdf"),
+    style: join(HERE, "logs-report.head.html"),
+    label: "logs-audit",
+  }).map((p) => p.split("/").pop());
 }
 
 function loadEnvKey() {

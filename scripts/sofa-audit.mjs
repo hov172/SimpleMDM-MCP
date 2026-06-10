@@ -7,6 +7,11 @@ import {
   toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows, groupBreakdownRows,
 } from "./lib/render.mjs";
 import { mdToDocx } from "./lib/docx.mjs";
+import { renderReportPdf } from "./lib/report-pdf.mjs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 function arg(name, def) {
   const i = process.argv.indexOf(`--${name}`);
@@ -59,6 +64,13 @@ async function main() {
   const md = renderMarkdown(ev, cveDetail, summary, tables, dateStr);
   if (["md", "docx", "all"].includes(format)) write("full-audit.md", md);
   if (["docx", "all"].includes(format)) mdToDocx(`${outDir}/full-audit.md`, `${outDir}/full-audit.docx`);
+  // Auto-render full-audit.html + full-audit.pdf (A3 landscape; WeasyPrint preferred → footer page numbers).
+  if (format === "all") {
+    renderReportPdf({
+      mdPath: `${outDir}/full-audit.md`, htmlPath: `${outDir}/full-audit.html`, pdfPath: `${outDir}/full-audit.pdf`,
+      style: join(HERE, "audit-report.head.html"), label: "audit",
+    });
+  }
 
   write("summary.txt",
     `SOFA Audit ${dateStr}\nDevices: ${summary.total} (issues: ${summary.withIssues})\n` +
