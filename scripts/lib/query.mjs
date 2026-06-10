@@ -149,3 +149,51 @@ export function parseTerm(token) {
   }
   return { neg, field: null, src, alts: [{ match: "substr", text: stripQuotes(tok).toLowerCase() }] };
 }
+
+export function parseQuery(q) {
+  const toks = tokenize(q);
+  if (!toks.length) throw new QueryError("Empty --search query");
+  const units = [];
+  let i = 0;
+  while (i < toks.length) {
+    if (toks[i].toUpperCase() === "OR") throw new QueryError(`"OR" needs a term on both sides`);
+    const terms = [parseTerm(toks[i])];
+    i++;
+    while (i < toks.length && toks[i].toUpperCase() === "OR") {
+      if (i + 1 >= toks.length) throw new QueryError(`"OR" needs a term on both sides`);
+      terms.push(parseTerm(toks[i + 1]));
+      i += 2;
+    }
+    units.push({ terms });
+  }
+  return { units };
+}
+
+export function termScope(term) {
+  if (term.field === null) return "per-device";           // bare keyword can match anything
+  if (term.field === "attr") return "device";
+  return FIELDS[term.field].scope;
+}
+
+// A unit prefilters ONLY if every OR alternative is device-level: every match
+// must satisfy every AND unit, so conjunctive device-level units are a sound
+// prefilter; a mixed OR could be satisfied by its per-device branch alone.
+export function planQuery(ast) {
+  const deviceUnits = [];
+  const perDeviceUnits = [];
+  for (const u of ast.units) {
+    (u.terms.every((t) => termScope(t) === "device") ? deviceUnits : perDeviceUnits).push(u);
+  }
+  return { deviceUnits, perDeviceUnits };
+}
+
+export function sectionsReferenced(ast) {
+  const s = new Set();
+  for (const u of ast?.units ?? []) {
+    for (const t of u.terms) {
+      const sec = t.field && FIELDS[t.field]?.section;
+      if (sec) s.add(sec);
+    }
+  }
+  return s;
+}

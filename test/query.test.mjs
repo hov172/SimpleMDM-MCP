@@ -81,3 +81,40 @@ test("parseTerm: unknown field fails fast listing valid fields; empty value fail
   assert.throws(() => parseTerm("os:"), /needs a value/);
   assert.throws(() => parseTerm("attr.:5"), /attr\./);
 });
+
+import { parseQuery, planQuery, sectionsReferenced } from "../scripts/lib/query.mjs";
+
+test("parseQuery groups OR-adjacent terms into one unit, ANDs the rest", () => {
+  const ast = parseQuery("macbook os:<15.5 serial:C02* OR serial:FVFG*");
+  assert.equal(ast.units.length, 3);
+  assert.equal(ast.units[2].terms.length, 2);
+});
+
+test("parseQuery rejects dangling OR and empty queries", () => {
+  assert.throws(() => parseQuery("OR x"), /both sides/);
+  assert.throws(() => parseQuery("x OR"), /both sides/);
+  assert.throws(() => parseQuery(""), /Empty/);
+});
+
+test("planQuery: pure device-level query has an empty per-device pass", () => {
+  const p = planQuery(parseQuery("group:faculty,staff seen:>=2025-01-01"));
+  assert.equal(p.deviceUnits.length, 2);
+  assert.equal(p.perDeviceUnits.length, 0);
+});
+
+test("planQuery: mixed-scope OR unit is NEVER a prefilter unit (Codex finding 1)", () => {
+  const p = planQuery(parseQuery("group:faculty OR app:zoom"));
+  assert.equal(p.deviceUnits.length, 0);
+  assert.equal(p.perDeviceUnits.length, 1);
+});
+
+test("planQuery: bare keywords and negated per-device terms are per-device", () => {
+  const p = planQuery(parseQuery("macbook -app:zoom os:<15.5"));
+  assert.equal(p.deviceUnits.length, 1);     // os:<15.5
+  assert.equal(p.perDeviceUnits.length, 2);  // keyword + -app:
+});
+
+test("sectionsReferenced lists the per-device sections a query touches", () => {
+  assert.deepEqual([...sectionsReferenced(parseQuery("app:zoom user:alice os:15"))].sort(), ["apps", "users"]);
+  assert.deepEqual([...sectionsReferenced(parseQuery("os:15"))], []);
+});
