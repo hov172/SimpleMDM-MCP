@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.23.0] - 2026-06-10
 
 ### Added
 - **`--report-style flat`** — single-table report (model #, marketing name, release year, **device_group as a column**, device name, serial, local users, assignment groups, macOS, last seen); the spreadsheet-like hand-off view, in all four formats. Also on the `run_inventory_report` MCP tool.
