@@ -15,7 +15,8 @@ dist/
 .prd-current.md
 
 # Generated audit output — local only, never committed (contains live tenant data + secrets)
-reports/
+reports/*
+!reports/.gitkeep
 audit_export/
 
 # Brainstorming/planning design docs — local only, not published to the repo
