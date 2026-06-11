@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.22.0] - 2026-06-10
 
 ### Added
 - **Legacy Apple model enrichment** — curated identifier → marketing-name + release-year table (`scripts/lib/apple-legacy-models.mjs`, sourced from Apple's identify-your-model pages) fills the gap for pre-SOFA hardware: iMac14,1/14,2 now report "Late 2013 / 2013" instead of blanks; SOFA overlays the table whenever it knows the model.
