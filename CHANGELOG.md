@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`run_inventory_report` MCP tool** — the searchable fleet inventory report (`scripts/inventory-report.mjs`) is now MCP-invokable like its siblings (`run_fleet_audit`, `run_device_logs_audit`): accepts `search`/selector/format/report_detail/allow_partial/raw arguments, returns the structured summary + markdown report preview, surfaces partial-data runs (engine exit 2) with `partial_data: true` and the written output directory. Tool count: 180.
+
 ## [0.19.0] - 2026-06-10
 
 ### Added

@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **179 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **180 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -14,6 +14,7 @@ The server registers **179 tools** covering the full SimpleMDM API surface (28 d
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
 | `run_fleet_audit` | Run host-side SOFA macOS Security Audit script (`scripts/sofa-audit.mjs`) |
 | `run_device_logs_audit` | Run host-side Forensic Logs Audit script (`scripts/logs-audit.mjs`) |
+| `run_inventory_report` | Run host-side searchable Fleet Inventory Report script (`scripts/inventory-report.mjs`) |
 
 **Apple schema helpers**
 

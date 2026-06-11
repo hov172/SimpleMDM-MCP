@@ -166,7 +166,7 @@ Open work (not yet started):
 
 ## MCP context budget
 
-The catalog is now **179 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **180 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.
