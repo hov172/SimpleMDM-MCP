@@ -1709,6 +1709,22 @@ export const TOOLS: Tool[] = [
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
 
+  { name: "run_inventory_report",
+    description: "Run the host-side Fleet Inventory Report script (scripts/inventory-report.mjs). Searchable inventory of devices, installed/assigned apps and profiles, and security posture, with deployment-gap findings. Writes CSVs and a md/html/docx/pdf dossier under reports/inventory-YYYY-MM-DD.",
+    inputSchema: { type: "object", properties: {
+      search: { type: "string", description: "Query, e.g. 'group:faculty,staff seen:>=2025-01-01' or 'type:laptop os:<15 filevault:off'. Bare keywords AND together; OR between terms; -term excludes; field:value supports comma-lists, * wildcards, comparators, ranges, relative dates (seen:90d)." },
+      serial: { type: "string", description: "Comma-separated device serial numbers." },
+      group: { type: "string", description: "Device/assignment group name." },
+      last_seen: { type: "number", description: "The N most recently seen devices." },
+      all: { type: "boolean", description: "Whole fleet (heavy, requires confirm_all=true)." },
+      confirm_all: { type: "boolean", description: "Acknowledge a whole-fleet per-device scan (needed for --all, or a fleet-wide search whose terms are all per-device)." },
+      format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report formats to generate. Default is 'all'." },
+      report_detail: { type: "string", enum: ["summary", "table", "full"], description: "Per-device table detail in the dossier. Default is 'summary'." },
+      allow_partial: { type: "boolean", description: "Treat partial per-device data as success (otherwise the run reports partial data as a failure)." },
+      raw: { type: "boolean", description: "Also write redacted raw device JSON (secrets are always redacted)." },
+      out_dir: { type: "string", description: "Custom output directory path." },
+    }}},
+
   { name: "verify_webhook_payload",
     description: "Validate the structure of an incoming SimpleMDM webhook JSON payload. Checks for expected fields by event type.",
     inputSchema: { type: "object", required: ["payload"], properties: {
@@ -3362,6 +3378,83 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
           error: err.message,
           stdout: err.stdout,
           stderr: err.stderr,
+        };
+      }
+    }
+
+    case "run_inventory_report": {
+      const search = args.search as string | undefined;
+      const serial = args.serial as string | undefined;
+      const group = args.group as string | undefined;
+      const lastSeen = args.last_seen as number | undefined;
+      const all = args.all === true;
+      const confirmAll = args.confirm_all === true;
+      const format = args.format as string | undefined ?? "all";
+      const reportDetail = args.report_detail as string | undefined ?? "summary";
+      const allowPartial = args.allow_partial === true;
+      const raw = args.raw === true;
+      const customOutDir = args.out_dir as string | undefined;
+
+      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail];
+      if (search) runArgs.push("--search", search);
+      if (serial) runArgs.push("--serial", serial);
+      if (group) runArgs.push("--group", group);
+      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
+      if (all) runArgs.push("--all");
+      if (confirmAll) runArgs.push("--confirm-all");
+      if (allowPartial) runArgs.push("--allow-partial");
+      if (raw) runArgs.push("--raw");
+      // No default --out: the engine picks reports/inventory-YYYY-MM-DD and
+      // auto-suffixes -2, -3… so same-day runs never mix outputs. We recover
+      // the directory from the engine's "Output: <dir>" summary line.
+      if (customOutDir) runArgs.push("--out", customOutDir);
+
+      const here = dirname(fileURLToPath(import.meta.url));
+      const scriptPath = resolve(here, "..", "scripts", "inventory-report.mjs");
+
+      const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
+
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileAsync = promisify(execFile);
+
+      const collectOutputs = (stdout: string | undefined) => {
+        const outDir = customOutDir ?? stdout?.match(/^Output: (.+)$/m)?.[1];
+        if (!outDir) return { outDir: undefined, summary: "", report: "" };
+        let summary = "";
+        try { summary = readFileSync(resolve(outDir, "summary.txt"), "utf8"); } catch {}
+        let report = "";
+        if (["md", "all"].includes(format)) {
+          try { report = readFileSync(resolve(outDir, "report.md"), "utf8"); } catch {}
+        }
+        return { outDir, summary, report };
+      };
+
+      try {
+        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+        const { outDir, summary, report } = collectOutputs(stdout);
+        return {
+          success: true,
+          stdout,
+          stderr,
+          summary: summary || undefined,
+          report: report ? report.slice(0, 15000) : undefined,
+          report_truncated: report.length > 15000,
+          output_dir: outDir,
+        };
+      } catch (err: any) {
+        // exit 2 with outputs on disk = partial per-device data (by design,
+        // unless allow_partial) — surface the summary so the caller sees what
+        // was written and which fetches failed.
+        const { outDir, summary } = collectOutputs(err.stdout);
+        return {
+          success: false,
+          partial_data: Boolean(summary),
+          error: err.message,
+          stdout: err.stdout,
+          stderr: err.stderr,
+          summary: summary || undefined,
+          output_dir: outDir,
         };
       }
     }
