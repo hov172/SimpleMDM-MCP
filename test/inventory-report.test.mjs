@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fetchAssignmentGroupsRaw, fetchAppCatalog } from "../scripts/lib/simplemdm.mjs";
 import {
-  buildModelMap, deriveType, normalizeDevice, assignmentAppMap,
+  buildModelMap, deriveType, normalizeDevice, assignmentAppMap, profileAssignmentMap,
   normalizeApps, normalizeProfiles, normalizeUsers, parseInvArgs,
 } from "../scripts/lib/inventory.mjs";
 
@@ -13,6 +13,7 @@ const AG = FIX("assignment-groups.json").data;
 const SOFA = FIX("sofa-models.json");
 const SECTIONS = FIX("device-sections.json");
 const APPCAT = new Map(FIX("app-catalog.json").data.map((a) => [a.id, a.attributes.name]));
+const PROFCAT = FIX("profiles-catalog.json").data;
 const DG = new Map([[9001, "Faculty"], [9002, "Staff iMacs"], [9003, "Library"]]);
 const AGN = new Map(AG.map((g) => [g.id, g.attributes.name]));
 
@@ -123,8 +124,9 @@ import {
 function buildRecords() {
   const models = buildModelMap(SOFA.mac, SOFA.ios);
   const agApps = assignmentAppMap(AG, APPCAT);
+  const profileAssign = profileAssignmentMap(PROFCAT);
   return DEVICES.map((d) => {
-    const r = normalizeDevice(d, { dgMap: DG, agNames: AGN, agAppsByDevice: agApps, models });
+    const r = normalizeDevice(d, { dgMap: DG, agNames: AGN, agAppsByDevice: agApps, models, profileAssign });
     const sec = SECTIONS[String(d.id)];
     r.apps = normalizeApps(sec.apps); r.profiles = normalizeProfiles(sec.profiles); r.users = normalizeUsers(sec.users);
     r.sections = { apps: "ok", profiles: "ok", users: "ok" };
@@ -259,4 +261,62 @@ test("renderInventoryReport: failed devices and undetermined matches are called 
   assert.match(md, /PARTIAL/);
   assert.match(md, /D25STA222.*apps.*boom/);
   assert.match(md, /undetermined/i);
+});
+
+import { assignedProfileRows, ASSIGNED_PROFILE_COLUMNS } from "../scripts/lib/inventory-render.mjs";
+
+test("profileAssignmentMap maps device-group and direct-device profile assignments", () => {
+  const m = profileAssignmentMap(PROFCAT);
+  assert.deepEqual(m.byDeviceGroup.get(9001).map((p) => p.profile), ["WiFi - Campus", "FileVault Escrow"]);
+  assert.deepEqual(m.byDeviceGroup.get(9002).map((p) => p.profile), ["FileVault Escrow"]);
+  assert.deepEqual(m.byDevice.get(204).map((p) => p.profile), ["Library Web Clip"]);
+});
+
+test("normalizeDevice carries assigned_profile_detail with via attribution", () => {
+  const recs = buildRecords();
+  const alice = recs.find((r) => r.serial === "C02FAC111");
+  assert.deepEqual(alice.assigned_profile_detail.map((p) => [p.profile, p.via]),
+    [["WiFi - Campus", "Faculty"], ["FileVault Escrow", "Faculty"]]);
+  const ipad = recs.find((r) => r.serial === "F44PAD444");
+  assert.deepEqual(ipad.assigned_profile_detail.map((p) => [p.profile, p.via]), [["Library Web Clip", "direct"]]);
+  const carol = recs.find((r) => r.serial === "E33LAB333");
+  assert.deepEqual(carol.assigned_profile_detail, []);
+});
+
+test("assignedProfileRows: installed by identifier match, gaps as no, failed section as unknown", () => {
+  const recs = buildRecords();
+  const rows = assignedProfileRows(recs);
+  for (const c of ASSIGNED_PROFILE_COLUMNS) assert.ok(c in rows[0], `missing column ${c}`);
+  assert.equal(rows.find((r) => r.serial === "C02FAC111" && r.profile_name === "WiFi - Campus").installed, "yes");
+  assert.equal(rows.find((r) => r.serial === "C02FAC111" && r.profile_name === "FileVault Escrow").installed, "no");
+  assert.equal(rows.find((r) => r.serial === "D25STA222" && r.profile_name === "FileVault Escrow").installed, "yes");
+  assert.equal(rows.find((r) => r.serial === "F44PAD444").installed, "no");
+  const broken = buildRecords();
+  const alice = broken.find((r) => r.serial === "C02FAC111");
+  alice.sections.profiles = "failed"; alice.profiles = null;
+  assert.ok(assignedProfileRows(broken).filter((r) => r.serial === "C02FAC111").every((r) => r.installed === "unknown"));
+});
+
+test("inventoryFindings: assigned-profile-missing flags gaps, unknown on failed profile fetch", () => {
+  const f = inventoryFindings(buildRecords(), { now: NOW2 });
+  assert.ok(f.find((x) => x.type === "assigned-profile-missing" && x.serial === "C02FAC111" && /FileVault Escrow/.test(x.detail) && x.status === "flag"));
+  assert.ok(!f.find((x) => x.type === "assigned-profile-missing" && x.serial === "C02FAC111" && /WiFi - Campus/.test(x.detail)));
+  assert.ok(f.find((x) => x.type === "assigned-profile-missing" && x.serial === "F44PAD444" && x.status === "flag"));
+  const broken = buildRecords();
+  const alice = broken.find((r) => r.serial === "C02FAC111");
+  alice.sections.profiles = "failed"; alice.profiles = null;
+  const fb = inventoryFindings(broken, { now: NOW2 });
+  assert.ok(fb.filter((x) => x.type === "assigned-profile-missing" && x.serial === "C02FAC111").every((x) => x.status === "unknown"));
+});
+
+test("renderInventoryReport: assigned apps + assigned profiles tables appear at EVERY detail level", () => {
+  const recs = buildRecords();
+  const summary = renderInventoryReport(recs, { query: null, scopeLabel: "--group Faculty", dateStr: "2026-06-10", findings: [], detail: "summary", failures: [] });
+  assert.match(summary, /\*\*Assigned apps\*\* \(via assignment groups\):/);
+  assert.match(summary, /\*\*Assigned profiles\*\* \(via device group \/ direct\):/);
+  assert.match(summary, /\| Zoom \| Faculty Apps \| yes \|/);
+  assert.match(summary, /\| FileVault Escrow \| Faculty \| no \|/);
+  assert.match(summary, /\| Library Web Clip \| direct \| no \|/);
+  assert.match(summary, /assigned profiles\n/);
+  assert.doesNotMatch(summary, /\*\*Installed apps:\*\*/, "summary still omits installed-app tables");
 });

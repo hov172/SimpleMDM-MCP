@@ -48,6 +48,20 @@ export function assignedAppRows(records) {
   })));
 }
 
+// Assigned profile -> installed match: exact profile_identifier when the
+// catalog provides one, else case-insensitive name equality.
+const installedProfileHas = (r, ap) =>
+  (r.profiles ?? []).some((p) =>
+    (ap.identifier && p.identifier === ap.identifier) || p.name.toLowerCase() === ap.profile.toLowerCase());
+
+export const ASSIGNED_PROFILE_COLUMNS = ["serial", "device", "profile_name", "profile_identifier", "via", "installed"];
+export function assignedProfileRows(records) {
+  return records.flatMap((r) => (r.assigned_profile_detail ?? []).map((x) => ({
+    serial: r.serial, device: r.name, profile_name: x.profile, profile_identifier: x.identifier, via: x.via,
+    installed: r.sections?.profiles === "ok" ? (installedProfileHas(r, x) ? "yes" : "no") : "unknown",
+  })));
+}
+
 export const PROFILE_COLUMNS = ["serial", "device", "profile_name", "identifier", "matched"];
 export function profileRows(records) {
   return records.flatMap((r) => (r.profiles ?? []).map((p) => ({
@@ -146,6 +160,13 @@ export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, 
         add("assigned-app-missing", "unknown", r, `"${appName}" is assigned; installed-app inventory unavailable (fetch ${r.sections.apps})`);
       }
     }
+    for (const ap of r.assigned_profile_detail ?? []) {
+      if (r.sections?.profiles === "ok") {
+        if (!installedProfileHas(r, ap)) add("assigned-profile-missing", "flag", r, `"${ap.profile}" is assigned (via ${ap.via}) but not installed`);
+      } else if (r.sections?.profiles === "failed" || r.sections?.profiles === "pending") {
+        add("assigned-profile-missing", "unknown", r, `"${ap.profile}" is assigned; installed-profile inventory unavailable (fetch ${r.sections.profiles})`);
+      }
+    }
   }
   return out;
 }
@@ -200,12 +221,24 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
     const failed = Object.entries(r.sections ?? {}).filter(([, v]) => v === "failed").map(([k]) => k);
     if (failed.length) out.push(`> ⚠ **Incomplete:** ${failed.join(", ")} fetch failed — counts below exclude those sections.`);
     const nApps = r.apps?.length ?? "?", nProf = r.profiles?.length ?? "?", nUsers = r.users?.length ?? "?";
-    out.push(`**Inventory** — ${nApps} installed apps · ${nProf} profiles · ${nUsers} local users · ${r.assigned_apps?.length ?? 0} assigned apps\n`);
+    out.push(`**Inventory** — ${nApps} installed apps · ${nProf} profiles · ${nUsers} local users · ` +
+      `${r.assigned_apps?.length ?? 0} assigned apps · ${r.assigned_profile_detail?.length ?? 0} assigned profiles\n`);
+    // Assigned apps/profiles render at EVERY detail level — they are the deployment
+    // contract for the device and stay small, unlike the installed-app table.
+    out.push(`**Assigned apps** (via assignment groups):\n`);
+    out.push(mdTable(["app_name", "assignment_group", "installed"],
+      assignedAppRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
+    out.push(`**Assigned profiles** (via device group / direct):\n`);
+    out.push(mdTable(["profile_name", "via", "installed"],
+      assignedProfileRows([r]).map(({ serial, device, profile_identifier, ...rest }) => rest)) + "\n");
     if (detail !== "summary") {
+      out.push(`**Installed apps:**\n`);
       out.push(mdTable(["app_name", "identifier", "version", "managed", "matched"],
         appRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
       if (detail === "full") {
+        out.push(`**Installed profiles:**\n`);
         out.push(mdTable(["profile_name", "identifier", "matched"], profileRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
+        out.push(`**Local users:**\n`);
         out.push(mdTable(["username", "full_name", "matched"], userRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
       }
     }
@@ -213,7 +246,8 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
 
   out.push("## 4. Methodology & Disclosures\n");
   out.push("- Inventory data reflects the device's last MDM check-in (`last_seen_at`), not a live poll.");
-  out.push("- Assigned-vs-installed matching is a case-insensitive substring heuristic (catalog name vs installed name/bundle id).");
+  out.push("- Assigned-vs-installed app matching is a case-insensitive substring heuristic (catalog name vs installed name/bundle id); profile matching uses the exact profile identifier when available, else name equality.");
+  out.push("- Assigned apps come from assignment groups; assigned profiles come from device-group and direct-device profile assignments.");
   out.push("- Findings with status `unknown` could not be decided because a per-device fetch failed; they are never asserted.");
   out.push("- FileVault recovery keys are never written to any output; only the escrowed yes/no fact is reported.");
   if (failures.length) {

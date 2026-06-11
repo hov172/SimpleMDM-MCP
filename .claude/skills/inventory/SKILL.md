@@ -23,4 +23,5 @@ Searchable sibling to `/audit` and `/logs-audit`. Runs the engine and reports wh
 - Read-only: a read-only `SIMPLEMDM_API_KEY` in `.env` suffices. No SimpleMDM writes.
 - Device-level filters run before per-device fetches, so scoped searches stay fast; the engine prints its plan.
 - FileVault recovery keys are never written to any output (raw dumps are redacted; `--raw` is off by default).
-- Findings: assigned-app-missing, low-storage, stale-device, recovery-key-missing, duplicate-name, os-outlier; `unknown` status means the deciding fetch failed.
+- Findings: assigned-app-missing, assigned-profile-missing, low-storage, stale-device, recovery-key-missing, duplicate-name, os-outlier; `unknown` status means the deciding fetch failed.
+- Assigned apps come from assignment groups; assigned profiles come from device-group/direct profile assignments. Both render as per-device tables in the dossier at every detail level, plus `assigned-apps.csv` / `assigned-profiles.csv`.

@@ -1,0 +1,8 @@
+{ "data": [
+  { "type": "profile", "id": 70001, "attributes": { "name": "WiFi - Campus", "profile_identifier": "edu.slc.wifi" },
+    "relationships": { "device_groups": { "data": [ { "type": "device group", "id": 9001 } ] }, "devices": { "data": [] } } },
+  { "type": "profile", "id": 70002, "attributes": { "name": "FileVault Escrow", "profile_identifier": "edu.slc.fv" },
+    "relationships": { "device_groups": { "data": [ { "type": "device group", "id": 9001 }, { "type": "device group", "id": 9002 } ] }, "devices": { "data": [] } } },
+  { "type": "profile", "id": 70003, "attributes": { "name": "Library Web Clip", "profile_identifier": "edu.slc.webclip" },
+    "relationships": { "device_groups": { "data": [] }, "devices": { "data": [ { "type": "device", "id": 204 } ] } } }
+], "has_more": false }
