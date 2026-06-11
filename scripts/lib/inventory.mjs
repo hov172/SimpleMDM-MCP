@@ -2,8 +2,13 @@
 // record consumed by query.mjs. Knows the SimpleMDM API shapes; knows nothing
 // about query syntax.
 
+import { LEGACY_MODELS } from "./apple-legacy-models.mjs";
+
 export function buildModelMap(macFeed, iosFeed) {
-  const map = new Map();
+  // Seed with the curated legacy table (pre-SOFA hardware, frozen set,
+  // sourced from Apple's identify-your-model pages), then overlay SOFA —
+  // anything the live feed knows wins.
+  const map = new Map(Object.entries(LEGACY_MODELS).map(([id, v]) => [id, { ...v }]));
   for (const feed of [macFeed, iosFeed]) {
     for (const [id, info] of Object.entries(feed?.Models ?? {})) {
       const marketing = info?.MarketingName ?? "";
