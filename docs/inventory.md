@@ -156,6 +156,67 @@ normalized record carries only booleans (`recoverykey`, `firmwarelock`, `recover
 and `--raw` dumps replace the values with `[REDACTED set=yes]`. The engine tests assert
 fixture secrets appear in no output.
 
+## Prompt cookbook
+
+Common phrasings and what they translate to. (In Claude Code the `/inventory` skill — or
+the `run_inventory_report` MCP tool — does this mapping for you.)
+
+### Everyday inventory
+
+| Say this | Runs |
+|---|---|
+| "inventory the Faculty group" | `--group "Faculty"` |
+| "full inventory of the 10 most recently seen devices" | `--last-seen 10 --report-detail full` |
+| "all faculty and staff devices seen since 2025" | `--search 'group:faculty,staff seen:>=2025-01-01'` |
+| "which devices haven't checked in for 90 days?" | `--search '-seen:90d'` |
+| "every Intel Mac still in service" | `--search 'arch:intel seen:90d'` |
+| "all the M1 iMacs" | `--search 'model:"iMac (24-inch, M1, 2021)"'` |
+| "iPads only, as a PDF" | `--search 'type:ipad' --format all` |
+
+### Security & compliance
+
+| Say this | Runs |
+|---|---|
+| "unencrypted Macs that are actively used" | `--search 'filevault:off seen:30d'` |
+| "FileVault on but recovery key not escrowed" | `--search 'filevault:on recoverykey:no'` |
+| "Remote Desktop enabled but no firewall" | `--search 'ard:on firewall:off'` |
+| "anything still below macOS 15" | `--search 'os:<15 type:laptop,imac,desktop,mac'` |
+| "devices not enrolled through ADE/DEP" | `--search 'dep:no'` |
+| "who's not on declarative management yet?" | `--search 'ddm:off'` |
+
+### Deployment gaps & app management
+
+| Say this | Runs |
+|---|---|
+| "assigned Zoom but don't have it" | `--search 'assigned:zoom -app:zoom' --confirm-all` |
+| "who has Zoom older than 6.0?" | `--search 'app:zoom<6.0' --confirm-all` |
+| "is the assigned software actually installed in this lab?" | `--group "<Lab>" --report-detail table` → `assigned-apps.csv` (`installed` / `managed` / `installed_as`) |
+| "unmanaged copies of assigned apps" | any scope → filter `assigned-apps.csv` for `installed=yes, managed=no` |
+
+### Lifecycle & housekeeping
+
+| Say this | Runs |
+|---|---|
+| "devices running out of disk" | `--search 'storage:<20 seen:30d'` |
+| "laptops with dying batteries" | `--search 'type:laptop battery:<50 seen:7d'` |
+| "everything enrolled this semester" | `--search 'enrolled:2026-01-15..2026-06-10'` |
+| "hardware age report" | any scope → `by-model.csv` (marketing name + release year) |
+
+### Targeted hunts
+
+| Say this | Runs |
+|---|---|
+| "who owns MAC address a4:83:e7…?" | `--search 'mac:a4:83:e7*'` (WiFi, Bluetooth, Ethernet) |
+| "which device had IP 148.74.x?" | `--search 'ip:148.74.*'` |
+| "serials starting C02 or FVFG, on macOS 13" | `--search 'serial:C02* OR serial:FVFG* os:13'` |
+
+Composite phrasings translate directly: *"intel laptops without filevault seen this month,
+excluding loaners"* → `arch:intel type:laptop filevault:off seen:30d -group:loaners`.
+
+When `/inventory` isn't the right tool: what's *vulnerable* (CVEs, upgrade paths) →
+[`/audit`](fleet-audit.md); what *happened* (activity timeline, forensic dossier) →
+[`/logs-audit`](logs-audit.md).
+
 ## Output reference
 
 See the [README section](../README.md#fleet-inventory-reports-inventory) for the
