@@ -680,9 +680,10 @@ In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags)
 | *"which devices haven't checked in for 90 days?"* | `--search '-seen:90d'` |
 | *"FileVault on but recovery key not escrowed"* | `--search 'filevault:on recoverykey:no'` |
 | *"who owns MAC address a4:83:e7…?"* | `--search 'mac:a4:83:e7*'` |
+| *"a roster of the faculty and staff machines I can hand to the department"* | `--search 'devicegroup:faculty,staff' --report-style roster` |
 
-More phrasings (security/compliance, deployment gaps, lifecycle, targeted hunts) in the
-[prompt cookbook](docs/inventory.md#prompt-cookbook).
+More phrasings (security/compliance, deployment gaps, lifecycle, targeted hunts) plus
+ready-to-paste command templates in the [prompt cookbook](docs/inventory.md#prompt-cookbook).
 
 Or run the engine directly — a selector, a `--search` query, or both:
 
@@ -708,7 +709,7 @@ date-aware for `seen:`/`enrolled:`), `..` ranges, and relative dates (`seen:90d`
 | identity: `name` `devicename` `serial` `udid` `imei` `mac` `ip` | `serial:C02*`, `mac:a4:83:*`, `ip:10.42.*` |
 | hardware: `model` `type` `arch` `storage` `battery` | `model:"iMac (24-inch, M1, 2021)"`, `type:laptop`, `arch:intel`, `storage:<20`, `battery:<50` |
 | OS: `os` `build` | `os:<15.5`, `os:15.1..15.7` |
-| groups & apps: `group` `assignment` `assigned` `app` `profile` `user` | `group:faculty,staff`, `app:zoom<6.0.10`, `assigned:zoom -app:zoom` |
+| groups & apps: `group` `devicegroup` `assignment` `assigned` `app` `profile` `user` | `group:faculty,staff` (device + assignment groups), `devicegroup:faculty` (device groups only), `app:zoom<6.0.10`, `assigned:zoom -app:zoom` |
 | dates: `seen` `enrolled` | `seen:90d`, `enrolled:2025-01-01..2025-06-30` |
 | posture: `filevault` `recoverykey` `sip` `firewall` `supervised` `dep` `ard` `uamdm` `ddm` `activationlock` `lostmode` `firmwarelock` `recoverylock` `passcode` `status` | `filevault:off`, `recoverykey:no`, `ard:on`, `ddm:off`, `status:awaiting` |
 | custom attributes: `attr.<name>` | `attr.xprotect_version:<5305` |
@@ -717,6 +718,7 @@ date-aware for `seen:`/`enrolled:`), `..` ranges, and relative dates (`seen:90d`
 |------|---------|
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device tables in the report: `summary` (counts + assigned tables, default) \| `table` (+ installed apps) \| `full` (+ profiles and users) |
+| `--report-style <style>` | `dossier` (default — audit style: rollups, findings, per-device facts) \| `roster` (people-facing: by-group summary, type/model breakdowns, then one row per device with local users and assignment groups inline — the classic "hand this list to the department" export) |
 | `--no-apps` / `--no-profiles` / `--no-users` | skip per-device sections for speed |
 | `--no-findings` | suppress the auto-detected findings pass |
 | `--raw` | also write redacted raw device JSON (off by default) |
@@ -750,6 +752,9 @@ node scripts/inventory-report.mjs --group "Library" --report-detail full --forma
 
 # Old hardware by version-aware compare and wildcard serials
 node scripts/inventory-report.mjs --search 'serial:C02* OR serial:FVFG* os:13'
+
+# People-facing roster: faculty/staff device groups, one row per device with users
+node scripts/inventory-report.mjs --search 'devicegroup:faculty,staff' --report-style roster --format all
 ```
 
 ### Output

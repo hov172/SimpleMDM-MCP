@@ -1720,6 +1720,7 @@ export const TOOLS: Tool[] = [
       confirm_all: { type: "boolean", description: "Acknowledge a whole-fleet per-device scan (needed for --all, or a fleet-wide search whose terms are all per-device)." },
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report formats to generate. Default is 'all'." },
       report_detail: { type: "string", enum: ["summary", "table", "full"], description: "Per-device table detail in the dossier. Default is 'summary'." },
+      report_style: { type: "string", enum: ["dossier", "roster"], description: "'dossier' (default) = audit style with rollups/findings/per-device facts; 'roster' = people-facing list — by-group summary, type/model breakdowns, then one row per device with users and assignment groups inline." },
       allow_partial: { type: "boolean", description: "Treat partial per-device data as success (otherwise the run reports partial data as a failure)." },
       raw: { type: "boolean", description: "Also write redacted raw device JSON (secrets are always redacted)." },
       out_dir: { type: "string", description: "Custom output directory path." },
@@ -3391,11 +3392,12 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const confirmAll = args.confirm_all === true;
       const format = args.format as string | undefined ?? "all";
       const reportDetail = args.report_detail as string | undefined ?? "summary";
+      const reportStyle = args.report_style as string | undefined ?? "dossier";
       const allowPartial = args.allow_partial === true;
       const raw = args.raw === true;
       const customOutDir = args.out_dir as string | undefined;
 
-      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail];
+      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail, "--report-style", reportStyle];
       if (search) runArgs.push("--search", search);
       if (serial) runArgs.push("--serial", serial);
       if (group) runArgs.push("--group", group);

@@ -21,7 +21,7 @@ import {
   DEVICE_COLUMNS, deviceRows, APP_COLUMNS, appRows, ASSIGNED_COLUMNS, assignedAppRows,
   ASSIGNED_PROFILE_COLUMNS, assignedProfileRows,
   PROFILE_COLUMNS, profileRows, USER_COLUMNS, userRows, APP_CATALOG_COLUMNS, appCatalogRows,
-  rollupRows, BY_MODEL_COLUMNS, byModelRows, FINDING_COLUMNS, inventoryFindings, renderInventoryReport,
+  rollupRows, BY_MODEL_COLUMNS, byModelRows, FINDING_COLUMNS, inventoryFindings, renderInventoryReport, renderInventoryRoster,
 } from "./lib/inventory-render.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -190,7 +190,9 @@ export async function run(argv) {
     ? `--${opts.selector.kind}${opts.selector.kind === "all" ? "" : ` ${Array.isArray(opts.selector.value) ? opts.selector.value.join(",") : opts.selector.value}`}`
     : "search (whole fleet)";
   if (["md", "docx", "all"].includes(opts.format)) {
-    const md = renderInventoryReport(records, { query: opts.search, scopeLabel, dateStr, findings, detail: opts.reportDetail, failures, account });
+    const md = opts.reportStyle === "roster"
+      ? renderInventoryRoster(records, { query: opts.search, scopeLabel, dateStr, failures, account })
+      : renderInventoryReport(records, { query: opts.search, scopeLabel, dateStr, findings, detail: opts.reportDetail, failures, account });
     writeOut("report.md", md);
     if (["docx", "all"].includes(opts.format)) {
       if (mdToDocx(join(outDir, "report.md"), join(outDir, "report.docx"))) written.push("report.docx");

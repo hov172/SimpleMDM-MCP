@@ -37,6 +37,7 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 |---|---|
 | `--format csv\|md\|docx\|all` | `csv` → CSVs + summary only; `md` adds `report.md`; `docx` adds Word; `all` (default) adds HTML + PDF |
 | `--report-detail summary\|table\|full` | per-device dossier tables: `summary` = facts + assigned apps/profiles tables; `table` adds the installed-apps table; `full` adds installed profiles + local users |
+| `--report-style dossier\|roster` | `dossier` (default) = audit style (rollups → findings → per-device facts); `roster` = people-facing list — by-group summary with total, type/model breakdowns, then one section per device group with one row per device (model #, marketing name, year, device name, serial, **local users**, **assignment groups**, macOS, last seen), sorted oldest-seen first |
 | `--no-apps` / `--no-profiles` / `--no-users` | skip a per-device section entirely (its CSV is skipped; a query referencing it errors) |
 | `--no-findings` | skip the findings pass |
 | `--raw` | write `raw/devices.json` (redacted — see Secrets) |
@@ -78,6 +79,7 @@ Value syntax, per field kind:
 | `arch` | text | `processor_architecture` (e.g. `intel`, `arm64`) |
 | `os` `build` | version / text | `os` compares numerically |
 | `group` | text | device **and** assignment group names |
+| `devicegroup` | text | device group name only (use when assignment-group matches would over-select) |
 | `assignment` | text | assignment group names only |
 | `assigned` | text | apps assigned via the device's assignment groups ("should have") |
 | `app` | app | installed apps ("does have"), optional version tail |
@@ -215,22 +217,68 @@ excluding loaners"* → `arch:intel type:laptop filevault:off seen:30d -group:lo
 
 ### Recipe: people-facing roster export
 
-To reproduce a roster-style report ("Faculty/Staff Device Inventory — Active in 2026":
-a by-group summary, then one compact row per device with model, marketing name, release
-year, serial, local users, macOS, and last seen):
+To produce a roster-style report ("Faculty/Staff Device Inventory" — by-group summary,
+type/model breakdowns, then one compact section per device group with one row per device:
+model #, marketing name, release year, device name, serial, local users, assignment
+groups, macOS, last seen) — one command:
 
 ```bash
 node scripts/inventory-report.mjs \
-  --search 'group:faculty,staff seen:>=2026-01-01' --report-detail full --format all
+  --search 'devicegroup:faculty,staff' --report-style roster --format all
 ```
 
-Every roster column is captured: `devices.csv` carries `model_id`, `model_name`,
-`release_year`, `name`, `serial`, `os_version`, `seen_at`, and `device_group`;
-`users.csv` has the local users per serial (join on `serial`). The generated dossier is
-**audit-style** (rollups → findings → per-device sections) rather than a one-line-per-device
-roster — for a roster *layout*, pivot the two CSVs in a spreadsheet (group rows by
-`device_group`, join users inline). A `--report-style roster` layout option is a natural
-future addition if this becomes a recurring need.
+Add `seen:>=2026-01-01` for an "active this year" variant. Note `devicegroup:` (not
+`group:`): the roster is organized by *device* group, and `group:` would also pull in
+devices whose *assignment* groups happen to match the keywords. Full data still lands in
+the CSVs (`devices.csv` + `users.csv`), and the same roster renders in md/html/docx/pdf.
+
+### Quick command templates
+
+Fill in the `<angle brackets>`; everything else is ready to paste.
+
+```bash
+# GENERAL TEMPLATE
+node scripts/inventory-report.mjs \
+  --search '<query>' \
+  --report-style <dossier|roster> --report-detail <summary|table|full> \
+  --format <csv|md|docx|all> [--out reports/<name>]
+
+# COMMON ─────────────────────────────────────────────────────────────────────
+# Group roster (people-facing PDF/Word)
+node scripts/inventory-report.mjs --search 'devicegroup:<groups>' --report-style roster --format all
+
+# Full audit dossier for one group
+node scripts/inventory-report.mjs --group "<Group>" --report-detail full --format all
+
+# Most recently active devices, everything
+node scripts/inventory-report.mjs --last-seen <N> --report-detail full --format all
+
+# Stale sweep: not seen in N days
+node scripts/inventory-report.mjs --search '-seen:<N>d' --format csv
+
+# SPECIALIZED ────────────────────────────────────────────────────────────────
+# Compliance pack: unencrypted + actively used (leadership-ready PDF)
+node scripts/inventory-report.mjs --search 'filevault:off seen:30d' --format all
+
+# Escrow gap: encrypted but no recovery key
+node scripts/inventory-report.mjs --search 'filevault:on recoverykey:no' --format csv
+
+# Deployment gap: assigned an app but missing it (fleet-wide per-device scan)
+node scripts/inventory-report.mjs --search 'assigned:<app> -app:<app>' --confirm-all
+
+# Refresh planning: old Intel machines still in use
+node scripts/inventory-report.mjs --search 'arch:intel seen:30d os:<15' --format all
+
+# Low disk before it bites
+node scripts/inventory-report.mjs --search 'storage:<20 seen:30d' --format csv
+
+# Forensic hunt by network identity
+node scripts/inventory-report.mjs --search 'mac:<prefix>*' --format csv
+node scripts/inventory-report.mjs --search 'ip:<prefix>*' --format csv
+
+# Semester intake: everything enrolled in a window
+node scripts/inventory-report.mjs --search 'enrolled:<YYYY-MM-DD>..<YYYY-MM-DD>' --report-style roster --format all
+```
 
 When `/inventory` isn't the right tool: what's *vulnerable* (CVEs, upgrade paths) →
 [`/audit`](fleet-audit.md); what *happened* (activity timeline, forensic dossier) →

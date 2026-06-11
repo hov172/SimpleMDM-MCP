@@ -40,6 +40,7 @@ export const FIELDS = {
   os:          { kind: "version", scope: "device",     get: (r) => r.os_version },
   build:       { kind: "text",    scope: "device",     get: (r) => [r.build_version] },
   group:       { kind: "text",    scope: "device",     get: (r) => [r.device_group, ...(r.assignment_groups ?? [])] },
+  devicegroup: { kind: "text",    scope: "device",     get: (r) => [r.device_group] },
   assignment:  { kind: "text",    scope: "device",     get: (r) => r.assignment_groups ?? [] },
   assigned:    { kind: "text",    scope: "device",     get: (r) => r.assigned_apps ?? [] },
   seen:        { kind: "date",    scope: "device",     get: (r) => r.seen_at },
