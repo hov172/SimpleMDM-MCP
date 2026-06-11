@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.24.0] - 2026-06-11
+
+### Added
+- **`report-table.csv`** — flat and roster inventory styles now also write a CSV twin of the report's device table(s): same columns (`model_id` … `last_seen`, local users + assignment groups inline, `device_group` as a column), same cells, same row order as `report.md`/`.pdf`; roster rows follow the report's section reading order. The rendered tables and the CSV share one row source, so they cannot drift. Covered by `manifest.sha256`; documented on the `run_inventory_report` MCP tool.
+
 ## [0.23.0] - 2026-06-10
 
 ### Added
