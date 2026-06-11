@@ -22,7 +22,7 @@ import {
   ASSIGNED_PROFILE_COLUMNS, assignedProfileRows,
   PROFILE_COLUMNS, profileRows, USER_COLUMNS, userRows, APP_CATALOG_COLUMNS, appCatalogRows,
   rollupRows, BY_MODEL_COLUMNS, byModelRows, FINDING_COLUMNS, inventoryFindings,
-  renderInventoryReport, renderInventoryRoster, renderInventoryFlat,
+  renderInventoryReport, renderInventoryRoster, renderInventoryFlat, FLAT_COLUMNS, flatTableRows, rosterTableRows,
 } from "./lib/inventory-render.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -179,6 +179,9 @@ export async function run(argv) {
   writeOut("by-model.csv", toCsv([BY_MODEL_COLUMNS], byModelRows(records)));
   writeOut("by-os.csv", toCsv([["os", "devices"]], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")));
   writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
+  // CSV twin of the flat/roster report tables — same columns, cells, and row order.
+  if (opts.reportStyle === "flat") writeOut("report-table.csv", toCsv([FLAT_COLUMNS], flatTableRows(records, opts.sort)));
+  else if (opts.reportStyle === "roster") writeOut("report-table.csv", toCsv([FLAT_COLUMNS], rosterTableRows(records, opts.sort)));
 
   if (opts.raw) {
     mkdirSync(join(outDir, "raw"), { recursive: true });

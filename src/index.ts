@@ -1720,7 +1720,7 @@ export const TOOLS: Tool[] = [
       confirm_all: { type: "boolean", description: "Acknowledge a whole-fleet per-device scan (needed for --all, or a fleet-wide search whose terms are all per-device)." },
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report formats to generate. Default is 'all'." },
       report_detail: { type: "string", enum: ["summary", "table", "full"], description: "Per-device table detail in the dossier. Default is 'summary'." },
-      report_style: { type: "string", enum: ["dossier", "roster", "flat"], description: "'dossier' (default) = audit style with rollups/findings/per-device facts; 'roster' = people-facing list grouped into device-group sections; 'flat' = one single table, device_group as a column — the spreadsheet-like hand-off view." },
+      report_style: { type: "string", enum: ["dossier", "roster", "flat"], description: "'dossier' (default) = audit style with rollups/findings/per-device facts; 'roster' = people-facing list grouped into device-group sections; 'flat' = one single table, device_group as a column — the spreadsheet-like hand-off view. Roster and flat also write report-table.csv, a CSV twin of the report's device rows." },
       sort: { type: "string", description: "Row order for roster/flat styles: seen|name|serial|model|os|group|year, optionally :asc or :desc (e.g. 'seen:desc' = most recently seen first). Defaults: roster oldest-seen first per group; flat by device group then last seen." },
       allow_partial: { type: "boolean", description: "Treat partial per-device data as success (otherwise the run reports partial data as a failure)." },
       raw: { type: "boolean", description: "Also write redacted raw device JSON (secrets are always redacted)." },

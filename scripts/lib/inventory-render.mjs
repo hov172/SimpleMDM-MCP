@@ -369,6 +369,22 @@ function rosterCells(r) {
   };
 }
 
+// Roster reading order: device groups largest-first, oldest-seen first within
+// each group unless --sort overrides. Shared by the report sections and
+// report-table.csv so the CSV always mirrors the rendered tables.
+function rosterGroups(records) {
+  const byGroup = new Map();
+  for (const r of records) {
+    const g = r.device_group || "(no device group)";
+    byGroup.set(g, [...(byGroup.get(g) ?? []), r]);
+  }
+  return [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+export function rosterTableRows(records, sort = null) {
+  return rosterGroups(records).flatMap(([g, rs]) =>
+    sortRecords(rs, sort ?? { field: "seen", dir: "asc" }).map((r) => ({ ...rosterCells(r), device_group: g })));
+}
+
 // People-facing roster (--report-style roster): by-group summary, type/model
 // breakdowns, then one compact table per device group — one row per device
 // with local users and assignment groups inline, sorted oldest-seen first.
@@ -393,12 +409,7 @@ export function renderInventoryRoster(records, { query, scopeLabel, dateStr, fai
   const models = [...byModelRows(records)].sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : b.devices - a.devices));
   out.push(mdTable(["type", "model_id", "model_name", "release_year", "devices"], models) + "\n");
 
-  const byGroup = new Map();
-  for (const r of records) {
-    const g = r.device_group || "(no device group)";
-    byGroup.set(g, [...(byGroup.get(g) ?? []), r]);
-  }
-  for (const [g, rs] of [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length)) {
+  for (const [g, rs] of rosterGroups(records)) {
     out.push(`## ${mdEsc(g)} (${rs.length})\n`);
     const rows = sortRecords(rs, sort ?? { field: "seen", dir: "asc" });
     out.push(mdTable(["model_id", "model_name", "release_year", "device_name", "serial", "users", "assignment_groups", "os", "last_seen"],
@@ -416,6 +427,9 @@ export function renderInventoryRoster(records, { query, scopeLabel, dateStr, fai
 // Single flat table (--report-style flat): every matched device as one row
 // with device_group as a column — the spreadsheet-like hand-off view.
 export const FLAT_COLUMNS = ["model_id", "model_name", "release_year", "device_group", "device_name", "serial", "users", "assignment_groups", "os", "last_seen"];
+export function flatTableRows(records, sort = null) {
+  return sortRecords(records, sort).map((r) => ({ ...rosterCells(r), device_group: r.device_group || "(none)" }));
+}
 export function renderInventoryFlat(records, { query, scopeLabel, dateStr, failures = [], account = null, sort = null } = {}) {
   const out = [];
   out.push(`# SimpleMDM Device Inventory (flat) — ${dateStr}\n`);
@@ -425,9 +439,7 @@ export function renderInventoryFlat(records, { query, scopeLabel, dateStr, failu
   }
   out.push(`Scope: ${scopeLabel}${query ? ` · Query: \`${query}\`` : ""} · Devices: **${records.length}**` +
     (failures.length ? ` · **PARTIAL** (${failures.length} failed section fetch(es))` : "") + "\n");
-  out.push(mdTable(FLAT_COLUMNS, sortRecords(records, sort).map((r) => ({
-    ...rosterCells(r), device_group: r.device_group || "(none)",
-  }))) + "\n");
+  out.push(mdTable(FLAT_COLUMNS, flatTableRows(records, sort)) + "\n");
   if (failures.length) {
     out.push("### Failed section fetches\n");
     out.push(mdTable(["serial", "section", "message"], failures) + "\n");

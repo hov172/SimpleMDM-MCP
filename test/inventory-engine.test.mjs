@@ -129,6 +129,38 @@ test("engine: prefiltered-out devices incur zero per-device fetches", async () =
   assert.ok(!sectionCalls.some((u) => /\/devices\/20[34]\//.test(u)), "devices 203/204 were prefiltered out and must not be fetched");
 });
 
+test("engine: --report-style flat also writes report-table.csv mirroring the flat report table", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "ft");
+  const code = await run(["--search", "group:faculty,staff seen:>=2025-01-01", "--report-style", "flat", "--format", "md", "--out", dir]);
+  assert.equal(code, 0);
+  const csv = readFileSync(join(dir, "report-table.csv"), "utf8");
+  assert.match(csv, /^model_id,model_name,release_year,device_group,device_name,serial,users,assignment_groups,os,last_seen/);
+  // same cells as the report.md flat table: users + assignment groups inline, short date
+  assert.match(csv, /"MacBookPro18,1","MacBook Pro \(16-inch, M1 Pro, 2021\)",2021,Faculty,Alice MBP,C02FAC111,Alice Anderson,Faculty Apps,15.5,2026-06-09/);
+  const manifest = readFileSync(join(dir, "manifest.sha256"), "utf8");
+  assert.match(manifest, /^[0-9a-f]{64} {2}report-table\.csv$/m);
+  // dossier style must NOT emit it
+  const dir2 = join(mkdtempSync(join(tmpdir(), "inv-")), "ft2");
+  assert.equal(await run(["--search", "group:faculty,staff seen:>=2025-01-01", "--format", "md", "--out", dir2]), 0);
+  assert.ok(!existsSync(join(dir2, "report-table.csv")), "report-table.csv is flat/roster only");
+});
+
+test("engine: --report-style roster also writes report-table.csv in roster reading order", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "rt");
+  assert.equal(await run(["--all", "--confirm-all", "--report-style", "roster", "--format", "md", "--out", dir]), 0);
+  const csv = readFileSync(join(dir, "report-table.csv"), "utf8");
+  assert.match(csv, /^model_id,model_name,release_year,device_group,device_name,serial,users,assignment_groups,os,last_seen/);
+  assert.match(csv, /,Faculty,Alice MBP,C02FAC111,Alice Anderson,Faculty Apps,15.5,2026-06-09/);
+  assert.match(csv, /,\(no device group\),Carol Mini,E33LAB333,/, "ungrouped devices use the roster's section label");
+  // row order mirrors the roster sections: same serial sequence as the report.md tables
+  const serialOf = (line) => (line.match(/C02FAC111|D25STA222|E33LAB333|F44PAD444/) ?? [])[0];
+  const csvOrder = csv.split(/\r?\n/).map(serialOf).filter(Boolean);
+  const mdOrder = readFileSync(join(dir, "report.md"), "utf8").split("\n")
+    .filter((l) => l.startsWith("| ") && /\| (C02FAC111|D25STA222|E33LAB333|F44PAD444) \|/.test(l)).map(serialOf).filter(Boolean);
+  assert.deepEqual(csvOrder, mdOrder, "CSV rows must be in the report's reading order");
+  assert.match(readFileSync(join(dir, "manifest.sha256"), "utf8"), /^[0-9a-f]{64} {2}report-table\.csv$/m);
+});
+
 test("engine: zero-match run still writes all outputs and exits 0", async () => {
   const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "z");
   assert.equal(await run(["--search", "group:doesnotexistanywhere", "--format", "csv", "--out", dir]), 0);
