@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.21.0] - 2026-06-10
 
 ### Added
 - **`--report-style roster`** for `/inventory` (also via `run_inventory_report` `report_style`): people-facing roster layout — by-group summary with total, device-type and type/model breakdowns, then one section per device group with one row per device (model #, marketing name, release year, device name, serial, **local users**, **assignment groups**, macOS, last seen), sorted oldest-seen first. Renders in all four formats via the same pipeline.
