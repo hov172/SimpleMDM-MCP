@@ -148,7 +148,7 @@ export const normalizeUsers = (raw) => (raw ?? []).map((x) => ({
 export function parseInvArgs(argv) {
   const o = {
     selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary", reportStyle: "dossier", sort: null,
-    noApps: false, noProfiles: false, noUsers: false, noFindings: false,
+    noApps: false, noProfiles: false, noUsers: false, noFindings: false, reportOnly: false,
     raw: false, allowPartial: false, out: null, error: null,
   };
   const selectors = [];
@@ -195,6 +195,7 @@ export function parseInvArgs(argv) {
     else if (a === "--no-profiles") o.noProfiles = true;
     else if (a === "--no-users") o.noUsers = true;
     else if (a === "--no-findings") o.noFindings = true;
+    else if (a === "--report-only") o.reportOnly = true;
     else if (a === "--raw") o.raw = true;
     else if (a === "--allow-partial") o.allowPartial = true;
     else if (a === "--out") {
@@ -207,5 +208,6 @@ export function parseInvArgs(argv) {
   o.selector = selectors[0] ?? null;
   if (!o.selector && !o.search) { o.error = "give a selector (--serial/--group/--last-seen/--all) and/or a --search query"; return o; }
   if (o.selector?.kind === "all" && !o.confirmAll) { o.error = "--all fetches apps/profiles/users for every device in the fleet; add --confirm-all to proceed"; return o; }
+  if (o.reportOnly && o.format === "csv") { o.error = "--report-only with --format csv writes no report — drop one of them"; return o; }
   return o;
 }

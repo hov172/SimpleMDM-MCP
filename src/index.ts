@@ -1691,6 +1691,7 @@ export const TOOLS: Tool[] = [
       group: { type: "string", description: "Scope to this assignment group or device group name." },
       last_seen: { type: "number", description: "Scope to this number of most recently active devices." },
       no_network_cache: { type: "boolean", description: "Set true to ignore cached SOFA feed and refetch it." },
+      report_only: { type: "boolean", description: "Write only the rendered report + summary; skip the data CSV exports. Not valid with format 'csv'." },
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
 
@@ -1706,6 +1707,7 @@ export const TOOLS: Tool[] = [
       with_security: { type: "boolean", description: "Include SOFA security eval (posture & CVE checks)." },
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report formats to generate. Default is 'all'." },
       report_detail: { type: "string", enum: ["summary", "table", "full"], description: "Per-device event detail level. Default is 'summary'." },
+      report_only: { type: "boolean", description: "Write only the rendered report dossier + manifest + summary; skip the CSV/JSON data exports. Not valid with format 'csv'." },
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
 
@@ -1723,6 +1725,7 @@ export const TOOLS: Tool[] = [
       report_style: { type: "string", enum: ["dossier", "roster", "flat"], description: "'dossier' (default) = audit style with rollups/findings/per-device facts; 'roster' = people-facing list grouped into device-group sections; 'flat' = one single table, device_group as a column — the spreadsheet-like hand-off view. Roster and flat also write report-table.csv, a CSV twin of the report's device rows." },
       sort: { type: "string", description: "Row order for roster/flat styles: seen|name|serial|model|os|group|year, optionally :asc or :desc (e.g. 'seen:desc' = most recently seen first). Defaults: roster oldest-seen first per group; flat by device group then last seen." },
       allow_partial: { type: "boolean", description: "Treat partial per-device data as success (otherwise the run reports partial data as a failure)." },
+      report_only: { type: "boolean", description: "Write only the rendered report + summary + manifest (plus report-table.csv for roster/flat styles); skip the data CSV exports. Not valid with format 'csv'." },
       raw: { type: "boolean", description: "Also write redacted raw device JSON (secrets are always redacted)." },
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
@@ -3269,6 +3272,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       if (group) runArgs.push("--group", group);
       if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
       if (noNetworkCache) runArgs.push("--no-network-cache");
+      if (args.report_only === true) runArgs.push("--report-only");
 
       const here = dirname(fileURLToPath(import.meta.url));
       const scriptPath = resolve(here, "..", "scripts", "sofa-audit.mjs");
@@ -3338,6 +3342,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       if (confirmAll) runArgs.push("--confirm-all");
       if (withInventory) runArgs.push("--with-inventory");
       if (withSecurity) runArgs.push("--with-security");
+      if (args.report_only === true) runArgs.push("--report-only");
 
       const here = dirname(fileURLToPath(import.meta.url));
       const scriptPath = resolve(here, "..", "scripts", "logs-audit.mjs");
@@ -3408,6 +3413,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       if (all) runArgs.push("--all");
       if (confirmAll) runArgs.push("--confirm-all");
       if (allowPartial) runArgs.push("--allow-partial");
+      if (args.report_only === true) runArgs.push("--report-only");
       if (raw) runArgs.push("--raw");
       // No default --out: the engine picks reports/inventory-YYYY-MM-DD and
       // auto-suffixes -2, -3… so same-day runs never mix outputs. We recover

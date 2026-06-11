@@ -294,3 +294,14 @@ test("device group surfaces per-row and in the per-group rollup", () => {
   assert.equal(labA.no_filevault, 1);   // id1 off, id2 on
   assert.equal(g[0].device_group, "Lab A"); // sorted by device count desc
 });
+
+import { reportOnlyGate } from "../scripts/lib/render.mjs";
+
+test("reportOnlyGate: data CSVs gated by --report-only; csv format conflicts", () => {
+  assert.deepEqual(reportOnlyGate("all", false), { writeData: true, error: null });
+  assert.deepEqual(reportOnlyGate("md", true), { writeData: false, error: null });
+  assert.deepEqual(reportOnlyGate("csv", false), { writeData: true, error: null });
+  const conflict = reportOnlyGate("csv", true);
+  assert.equal(conflict.writeData, false);
+  assert.match(conflict.error, /--report-only/);
+});

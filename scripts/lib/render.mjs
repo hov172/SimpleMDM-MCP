@@ -13,6 +13,15 @@ export function toCsv(header, rows) {
   return lines.join("\r\n");
 }
 
+// --report-only: write the rendered report (+ summary/manifest) but skip the
+// data CSV/JSON exports. csv format renders no report, so the combination is
+// an error rather than a silently empty run.
+export function reportOnlyGate(format, reportOnly) {
+  if (!reportOnly) return { writeData: true, error: null };
+  if (format === "csv") return { writeData: false, error: "--report-only with --format csv writes no report — drop one of them" };
+  return { writeData: false, error: null };
+}
+
 // "2026-06-06T21:51:22.000-04:00" -> "2026-06-06 21:51" (drop seconds/ms/tz)
 function shortTs(ts) { return ts ? String(ts).slice(0, 16).replace("T", " ") : ""; }
 

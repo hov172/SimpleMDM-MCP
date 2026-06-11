@@ -165,25 +165,28 @@ export async function run(argv) {
     written.push(name);
   };
 
-  writeOut("devices.csv", toCsv([DEVICE_COLUMNS], deviceRows(records)));
-  if (!opts.noApps) {
-    writeOut("apps.csv", toCsv([APP_COLUMNS], appRows(records)));
-    writeOut("app-catalog.csv", toCsv([APP_CATALOG_COLUMNS], appCatalogRows(records)));
+  if (!opts.reportOnly) {
+    writeOut("devices.csv", toCsv([DEVICE_COLUMNS], deviceRows(records)));
+    if (!opts.noApps) {
+      writeOut("apps.csv", toCsv([APP_COLUMNS], appRows(records)));
+      writeOut("app-catalog.csv", toCsv([APP_CATALOG_COLUMNS], appCatalogRows(records)));
+    }
+    writeOut("assigned-apps.csv", toCsv([ASSIGNED_COLUMNS], assignedAppRows(records)));
+    writeOut("assigned-profiles.csv", toCsv([ASSIGNED_PROFILE_COLUMNS], assignedProfileRows(records)));
+    if (!opts.noProfiles) writeOut("profiles.csv", toCsv([PROFILE_COLUMNS], profileRows(records)));
+    if (!opts.noUsers) writeOut("users.csv", toCsv([USER_COLUMNS], userRows(records)));
+    writeOut("by-group.csv", toCsv([["device_group", "devices"]], rollupRows(records, (r) => r.device_group, "device_group")));
+    writeOut("by-type.csv", toCsv([["type", "devices"]], rollupRows(records, (r) => r.type, "type")));
+    writeOut("by-model.csv", toCsv([BY_MODEL_COLUMNS], byModelRows(records)));
+    writeOut("by-os.csv", toCsv([["os", "devices"]], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")));
+    writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
   }
-  writeOut("assigned-apps.csv", toCsv([ASSIGNED_COLUMNS], assignedAppRows(records)));
-  writeOut("assigned-profiles.csv", toCsv([ASSIGNED_PROFILE_COLUMNS], assignedProfileRows(records)));
-  if (!opts.noProfiles) writeOut("profiles.csv", toCsv([PROFILE_COLUMNS], profileRows(records)));
-  if (!opts.noUsers) writeOut("users.csv", toCsv([USER_COLUMNS], userRows(records)));
-  writeOut("by-group.csv", toCsv([["device_group", "devices"]], rollupRows(records, (r) => r.device_group, "device_group")));
-  writeOut("by-type.csv", toCsv([["type", "devices"]], rollupRows(records, (r) => r.type, "type")));
-  writeOut("by-model.csv", toCsv([BY_MODEL_COLUMNS], byModelRows(records)));
-  writeOut("by-os.csv", toCsv([["os", "devices"]], rollupRows(records, (r) => (r.os_version ? r.os_version.split(".")[0] + ".x" : ""), "os")));
-  writeOut("findings.csv", toCsv([FINDING_COLUMNS], findings));
-  // CSV twin of the flat/roster report tables — same columns, cells, and row order.
+  // CSV twin of the flat/roster report tables — same columns, cells, and row
+  // order. Written even with --report-only: it IS the report, as a CSV.
   if (opts.reportStyle === "flat") writeOut("report-table.csv", toCsv([FLAT_COLUMNS], flatTableRows(records, opts.sort)));
   else if (opts.reportStyle === "roster") writeOut("report-table.csv", toCsv([FLAT_COLUMNS], rosterTableRows(records, opts.sort)));
 
-  if (opts.raw) {
+  if (opts.raw && !opts.reportOnly) {
     mkdirSync(join(outDir, "raw"), { recursive: true });
     const redacted = records.map((r) => redactDeviceRaw(rawById.get(r.id)));
     writeFileSync(join(outDir, "raw", "devices.json"), JSON.stringify(redacted, null, 2));

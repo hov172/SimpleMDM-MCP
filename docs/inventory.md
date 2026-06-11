@@ -43,6 +43,7 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 | `--no-findings` | skip the findings pass |
 | `--raw` | write `raw/devices.json` (redacted — see Secrets) |
 | `--allow-partial` | exit 0 despite failed per-device fetches (default exit 2 — see Completeness) |
+| `--report-only` | write only the rendered report + `summary.txt` + `manifest.sha256` — plus `report-table.csv` for roster/flat styles; skips all data CSVs (`devices.csv`, rollups, findings, apps/profiles/users, assigned-*). Not valid with `--format csv` |
 | `--out <dir>` | output directory (default `reports/inventory-YYYY-MM-DD/`, auto-suffixed `-2`, `-3`… if it exists) |
 
 Exit codes: `0` ok · `1` fatal · `2` argument/query error **or** partial data without

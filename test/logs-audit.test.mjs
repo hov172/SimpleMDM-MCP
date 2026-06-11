@@ -372,3 +372,11 @@ test("renderDetailedReport detail modes: summary omits the full table, full incl
   assert.doesNotMatch(summary, /Full event log/);
   assert.match(full, /\*\*Full event log \(1 events\):\*\*/);
 });
+
+test("parseArgs: --report-only flag; conflicts with --format csv", () => {
+  const o = parseArgs(["--serial", "X1", "--report-only"]);
+  assert.equal(o.reportOnly, true);
+  assert.equal(o.error, null);
+  assert.equal(parseArgs(["--serial", "X1"]).reportOnly, false);
+  assert.match(parseArgs(["--serial", "X1", "--report-only", "--format", "csv"]).error, /--report-only/);
+});

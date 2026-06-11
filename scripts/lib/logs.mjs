@@ -28,6 +28,7 @@ export function parseArgs(argv) {
     withSecurity: has("--with-security"),
     format: val("--format") ?? "all",
     reportDetail: val("--report-detail") ?? "summary",
+    reportOnly: has("--report-only"),
     out: val("--out") ?? null,
     error: null,
   };
@@ -38,6 +39,7 @@ export function parseArgs(argv) {
   if (opts.selector.kind === "group" && !opts.selector.value) { opts.error = "--group requires a group name"; return opts; }
   if (!["csv", "md", "docx", "all"].includes(opts.format)) { opts.error = `Invalid --format '${opts.format}' (use csv|md|docx|all)`; return opts; }
   if (!["summary", "table", "full"].includes(opts.reportDetail)) { opts.error = `Invalid --report-detail '${opts.reportDetail}' (use summary|table|full)`; return opts; }
+  if (opts.reportOnly && opts.format === "csv") { opts.error = "--report-only with --format csv writes no report — drop one of them"; return opts; }
   return opts;
 }
 

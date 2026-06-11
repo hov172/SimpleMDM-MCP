@@ -104,22 +104,25 @@ async function main() {
     written.push({ name, path, description, record_scope: scope });
   };
 
-  // CSV + JSON core (always).
+  // CSV + JSON core (rows always computed — summary.txt needs them; files
+  // skipped under --report-only).
   const lr = logRows(bundles), sr = statusSnapshotRows(bundles), mr = logSummaryRows(bundles);
-  writeFile("logs.csv", toCsv([LOG_COLUMNS], lr), "Activity events: one row per event, ISO+verbatim time, typed, sorted", `${lr.length} events`);
-  writeFile("logs-status-snapshots.csv", toCsv([STATUS_COLUMNS], sr), "status.changed snapshots; full status JSON externalized to status-snapshots/ (see status_json_file column)", `${sr.length} snapshots`);
-  // Externalize each full status snapshot to its own JSON file so no CSV cell is oversized.
-  const snapFiles = statusSnapshotFiles(bundles);
-  if (snapFiles.length) {
-    mkdirSync(`${outDir}/status-snapshots`, { recursive: true });
-    for (const sf of snapFiles) writeFileSync(`${outDir}/${sf.file}`, JSON.stringify(sf.json, null, 2));
-  }
-  writeFile("logs-summary.csv", toCsv([SUMMARY_COLUMNS], mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
   const fr = findingRows(bundles);
-  if (fr.length) writeFile("findings.csv", toCsv([FINDINGS_COLUMNS], fr), "Auto-detected per-device findings (reinstall loops, update-failure loops, profile churn)", `${fr.length} findings`);
-  writeFile("raw-logs.json", JSON.stringify({ generated_at: nowIso(), selector: opts.selector, devices: bundles.map((b) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
+  const snapFiles = opts.reportOnly ? [] : statusSnapshotFiles(bundles);
+  if (!opts.reportOnly) {
+    writeFile("logs.csv", toCsv([LOG_COLUMNS], lr), "Activity events: one row per event, ISO+verbatim time, typed, sorted", `${lr.length} events`);
+    writeFile("logs-status-snapshots.csv", toCsv([STATUS_COLUMNS], sr), "status.changed snapshots; full status JSON externalized to status-snapshots/ (see status_json_file column)", `${sr.length} snapshots`);
+    // Externalize each full status snapshot to its own JSON file so no CSV cell is oversized.
+    if (snapFiles.length) {
+      mkdirSync(`${outDir}/status-snapshots`, { recursive: true });
+      for (const sf of snapFiles) writeFileSync(`${outDir}/${sf.file}`, JSON.stringify(sf.json, null, 2));
+    }
+    writeFile("logs-summary.csv", toCsv([SUMMARY_COLUMNS], mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
+    if (fr.length) writeFile("findings.csv", toCsv([FINDINGS_COLUMNS], fr), "Auto-detected per-device findings (reinstall loops, update-failure loops, profile churn)", `${fr.length} findings`);
+    writeFile("raw-logs.json", JSON.stringify({ generated_at: nowIso(), selector: opts.selector, devices: bundles.map((b) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
+  }
 
-  if (opts.withInventory) {
+  if (opts.withInventory && !opts.reportOnly) {
     const invRows = bundles.map((b) => flatten(b.device));
     writeFile("inventory.csv", toCsv([["id", "name", "serial", "model", "osVersion", "last_seen_at", "filevault_enabled", "sip_enabled", "firewall_enabled", "device_group_id"]], invRows), "Per-device inventory", `${invRows.length} devices`);
     const appRows = bundles.flatMap((b) => (b.apps ?? []).map((a) => ({ serial: b.device.attributes?.serial_number, name: a.attributes?.name, identifier: a.attributes?.identifier, version: a.attributes?.version, managed: a.attributes?.managed })));
@@ -128,7 +131,7 @@ async function main() {
     writeFile("profiles.csv", toCsv([["serial", "type", "id", "name"]], profRows), "Profiles per device", `${profRows.length} profile records`);
   }
 
-  if (securityResult) {
+  if (securityResult && !opts.reportOnly) {
     const { tables, evald } = securityResult;
     writeFile("security-posture.csv", toCsv([["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(evald)), "SOFA posture for selected devices", `${evald.length} devices`);
     writeFile("device-cves.csv", toCsv([["name", "serial", "device_group", "model", "os", "unfixed_count", "exploited_count", "cves"]], deviceCveRows(evald, tables)), "Per-device outstanding CVEs", `${evald.length} devices`);
@@ -185,7 +188,7 @@ async function main() {
     `By type: app.installing ${byType.app_installing} | profile.installed ${byType.profile_installed} | status.changed ${byType.status_changed} | bootstrap_token.get ${byType.bootstrap_token_get}`,
     `Unparseable timestamps: ${unparseableTimestamps}`,
     noisy.length ? `Noisy devices (>=25% of events): ${noisy.map((d) => `${d.serial} (${Math.round(d.share * 100)}%)`).join(", ")}` : null,
-    fr.length ? `Findings: ${fr.length} across ${new Set(fr.map((r) => r.serial_number)).size} device(s) — see findings.csv` : null,
+    fr.length ? `Findings: ${fr.length} across ${new Set(fr.map((r) => r.serial_number)).size} device(s)${opts.reportOnly ? "" : " — see findings.csv"}` : null,
     errors.length ? `Failed devices: ${errors.length} (export is PARTIAL)` : `Failed devices: 0`,
     `Output: ${outDir}`].filter(Boolean).join("\n");
   writeFileSync(`${outDir}/summary.txt`, head + "\n");
