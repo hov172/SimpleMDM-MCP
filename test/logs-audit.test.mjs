@@ -380,3 +380,17 @@ test("parseArgs: --report-only flag; conflicts with --format csv", () => {
   assert.equal(parseArgs(["--serial", "X1"]).reportOnly, false);
   assert.match(parseArgs(["--serial", "X1", "--report-only", "--format", "csv"]).error, /--report-only/);
 });
+
+test("renderDetailedReport: report-only wording drops references to CSV/JSON artifacts", () => {
+  const b = { device: { id: 1, attributes: { name: "A", serial_number: "X1XXX1111" } }, logs: [] };
+  const normal = renderDetailedReport([b], null, "2026-06-11", {}, {});
+  assert.match(normal, /CSV\/JSON artifacts in this export remain authoritative/);
+  assert.match(normal, /status-snapshots\//);
+  const ro = renderDetailedReport([b], null, "2026-06-11", {}, { reportOnly: true });
+  assert.doesNotMatch(ro, /remain authoritative/, "must not claim artifacts that were not written");
+  assert.doesNotMatch(ro, /are the verbatim record/);
+  assert.doesNotMatch(ro, /status-snapshots\//);
+  assert.doesNotMatch(ro, /raw-logs\.json/);
+  assert.match(ro, /report-only export/i);
+  assert.match(ro, /re-run without --report-only/i, "points the reader at how to get the verbatim records");
+});

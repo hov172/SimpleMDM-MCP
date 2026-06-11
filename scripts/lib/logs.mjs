@@ -352,7 +352,9 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
   if (securityEval) parts.push("the SOFA-evaluated security posture");
   if (hasInventory) parts.push("software inventory");
   const partsList = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
-  P(`This report combines, per device, ${partsList}. The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis.`); P("");
+  P(`This report combines, per device, ${partsList}. ${opts.reportOnly
+    ? "This is a report-only export: the underlying records were not written alongside it — re-run without --report-only for the verbatim CSV/JSON artifacts."
+    : "The CSV/JSON artifacts in this export remain authoritative; this document is a derived synthesis."}`); P("");
 
   if (noisy.length) {
     P(`> ⚠ **Noisy device${noisy.length > 1 ? "s" : ""}:** ` +
@@ -447,6 +449,8 @@ export function renderDetailedReport(bundles, securityEval, dateStr, groupNameMa
   P(`## 3. Disclosures`); P("");
   P(`- **Timestamps:** \`at\` is verbatim from /logs (account display timezone, America/New_York; no UTC offset stamped). ISO renderings apply no shift and are NOT UTC.`);
   P(`- **Retention:** the /logs feed is retention-bounded; the earliest event per device is the API retention horizon, not device-lifetime history.`);
-  P(`- **Authoritative sources:** the CSV and raw-logs.json artifacts are the verbatim record; this document is a derived synthesis. Full status.changed snapshots are in status-snapshots/ and raw-logs.json.`); P("");
+  P(opts.reportOnly
+    ? `- **Authoritative sources:** this is a report-only export — the verbatim per-event records were not written. Re-run without --report-only to export the CSV/JSON artifacts and full status.changed snapshots.`
+    : `- **Authoritative sources:** the CSV and raw-logs.json artifacts are the verbatim record; this document is a derived synthesis. Full status.changed snapshots are in status-snapshots/ and raw-logs.json.`); P("");
   return out.join("\n");
 }

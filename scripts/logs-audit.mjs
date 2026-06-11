@@ -145,7 +145,7 @@ async function main() {
       const ag = await fetchAssignmentGroups(apiKey);
       groupNameMap = Object.fromEntries([...dg, ...ag].map(([id, name]) => [String(id), name]));
     } catch (e) { console.warn(`logs-audit: group names unavailable for report (${e.message})`); }
-    const md = renderDetailedReport(bundles, securityEval, dateStr, groupNameMap, { detail: opts.reportDetail });
+    const md = renderDetailedReport(bundles, securityEval, dateStr, groupNameMap, { detail: opts.reportDetail, reportOnly: opts.reportOnly });
     writeFile("report.md", md, "Detailed combined dossier: identity + security + activity + inventory per device", "1 document");
     if (["docx", "all"].includes(opts.format)) {
       const ok = mdToDocx(`${outDir}/report.md`, `${outDir}/report.docx`);
