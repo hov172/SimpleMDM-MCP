@@ -213,6 +213,25 @@ the `run_inventory_report` MCP tool — does this mapping for you.)
 Composite phrasings translate directly: *"intel laptops without filevault seen this month,
 excluding loaners"* → `arch:intel type:laptop filevault:off seen:30d -group:loaners`.
 
+### Recipe: people-facing roster export
+
+To reproduce a roster-style report ("Faculty/Staff Device Inventory — Active in 2026":
+a by-group summary, then one compact row per device with model, marketing name, release
+year, serial, local users, macOS, and last seen):
+
+```bash
+node scripts/inventory-report.mjs \
+  --search 'group:faculty,staff seen:>=2026-01-01' --report-detail full --format all
+```
+
+Every roster column is captured: `devices.csv` carries `model_id`, `model_name`,
+`release_year`, `name`, `serial`, `os_version`, `seen_at`, and `device_group`;
+`users.csv` has the local users per serial (join on `serial`). The generated dossier is
+**audit-style** (rollups → findings → per-device sections) rather than a one-line-per-device
+roster — for a roster *layout*, pivot the two CSVs in a spreadsheet (group rows by
+`device_group`, join users inline). A `--report-style roster` layout option is a natural
+future addition if this becomes a recurring need.
+
 When `/inventory` isn't the right tool: what's *vulnerable* (CVEs, upgrade paths) →
 [`/audit`](fleet-audit.md); what *happened* (activity timeline, forensic dossier) →
 [`/logs-audit`](logs-audit.md).
