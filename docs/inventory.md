@@ -74,7 +74,7 @@ Value syntax, per field kind:
 | `name` `devicename` `serial` `udid` `imei` | text | identity |
 | `mac` | text | matches WiFi, Bluetooth, and Ethernet MACs |
 | `ip` | text | last-seen IP |
-| `model` | text | matches the model identifier **and** the SOFA marketing name |
+| `model` | text | matches the model identifier **and** the marketing name (SOFA feed, with a curated [Apple legacy table](../scripts/lib/apple-legacy-models.mjs) covering pre-SOFA Macs back to 2009) |
 | `type` | text | derived class: `imac` `laptop` `desktop` `ipad` `iphone` `appletv` `mac` `other` |
 | `arch` | text | `processor_architecture` (e.g. `intel`, `arm64`) |
 | `os` `build` | version / text | `os` compares numerically |
