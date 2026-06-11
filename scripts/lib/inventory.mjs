@@ -66,6 +66,9 @@ export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agA
   const modelId = a.product_name || a.model || "";
   const m = models.get(modelId);
   const marketing = m?.marketing || a.model_name || "";
+  // year from SOFA when known, else from whatever name we ended up with
+  // (some SimpleMDM model_name values embed the year, e.g. "iMac (24-inch, 2023)")
+  const modelYear = m?.year || (marketing.match(/\b(19|20)\d{2}\b/)?.[0] ?? "");
   const agIds = (d.relationships?.groups?.data ?? []).map((g) => g.id);
   const assignedDetail = agIds.flatMap((id) =>
     (agAppsByDevice.get(id) ?? []).map((app) => ({ app, group: agNames.get(id) ?? String(id) })));
@@ -84,7 +87,7 @@ export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agA
     name: a.name ?? "", device_name: a.device_name ?? "", serial: a.serial_number ?? "",
     udid: a.unique_identifier ?? "", imei: a.imei ?? "",
     wifi_mac: a.wifi_mac ?? "", ethernet_macs: a.ethernet_macs ?? [], last_ip: a.last_seen_ip ?? "",
-    model_id: modelId, model_name: marketing, model_year: m?.year ?? "",
+    model_id: modelId, model_name: marketing, model_year: modelYear,
     type: deriveType(modelId, marketing),
     arch: a.processor_architecture ?? "",
     os_version: a.os_version ?? "", build_version: a.build_version ?? "",

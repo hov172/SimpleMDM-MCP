@@ -6,6 +6,11 @@ import { tmpdir } from "node:os";
 
 process.env.SIMPLEMDM_API_KEY = "dummy-key";
 
+// Run from a scratch cwd so the engine's relative paths (reports/.inventory-cache,
+// default output dirs) never touch the real repo — otherwise loadSofa would
+// poison the real SOFA cache with this file's mock feed for 24h.
+process.chdir(mkdtempSync(join(tmpdir(), "inv-cwd-")));
+
 const FIX = (n) => JSON.parse(readFileSync(new URL(`./fixtures/inventory/${n}`, import.meta.url)));
 const DEVICES = FIX("devices.json");
 const AG = FIX("assignment-groups.json");
