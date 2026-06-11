@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.25.0] - 2026-06-11
+
+### Added
+- **`--report-only`** on all three report engines (inventory, fleet audit, logs audit) — write only the rendered report + `summary.txt` (+ integrity manifest where the engine has one), skipping the data CSV/JSON exports. Inventory keeps `report-table.csv` for roster/flat styles. `--report-only` with `--format csv` is rejected (it would write no report at all). Exposed as `report_only` on the `run_inventory_report`, `run_fleet_audit`, and `run_device_logs_audit` MCP tools.
+
 ## [0.24.0] - 2026-06-11
 
 ### Added
