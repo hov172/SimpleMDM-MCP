@@ -229,3 +229,10 @@ test("evaluate: new posture bool fields (ard/uamdm/ddm/locks/passcode) work as d
   const p = planQuery(parseQuery("ard:on app:zoom"));
   assert.equal(p.deviceUnits.length, 1, "new posture fields are device-level prefilter units");
 });
+
+test("evaluate: devicegroup matches device groups ONLY (group: also matches assignment groups)", () => {
+  assert.equal(evaluate(parseQuery("devicegroup:faculty"), REC, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("devicegroup:apps"), REC, { now: NOW }).matched, false);  // "Faculty Apps" is an assignment group
+  assert.equal(evaluate(parseQuery("group:apps"), REC, { now: NOW }).matched, true);
+  assert.equal(planQuery(parseQuery("devicegroup:faculty")).deviceUnits.length, 1);
+});

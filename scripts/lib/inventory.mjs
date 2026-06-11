@@ -139,7 +139,7 @@ export const normalizeUsers = (raw) => (raw ?? []).map((x) => ({
 
 export function parseInvArgs(argv) {
   const o = {
-    selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary",
+    selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary", reportStyle: "dossier",
     noApps: false, noProfiles: false, noUsers: false, noFindings: false,
     raw: false, allowPartial: false, out: null, error: null,
   };
@@ -173,6 +173,10 @@ export function parseInvArgs(argv) {
       const v = next();
       if (!["summary", "table", "full"].includes(v)) { o.error = `Invalid --report-detail "${v}" (summary|table|full)`; return o; }
       o.reportDetail = v;
+    } else if (a === "--report-style") {
+      const v = next();
+      if (!["dossier", "roster"].includes(v)) { o.error = `Invalid --report-style "${v}" (dossier|roster)`; return o; }
+      o.reportStyle = v;
     } else if (a === "--no-apps") o.noApps = true;
     else if (a === "--no-profiles") o.noProfiles = true;
     else if (a === "--no-users") o.noUsers = true;

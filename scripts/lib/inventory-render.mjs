@@ -333,3 +333,53 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
   }
   return out.join("\n");
 }
+
+// People-facing roster (--report-style roster): by-group summary, type/model
+// breakdowns, then one compact table per device group — one row per device
+// with local users and assignment groups inline, sorted oldest-seen first.
+export function renderInventoryRoster(records, { query, scopeLabel, dateStr, failures = [], account = null } = {}) {
+  const out = [];
+  out.push(`# SimpleMDM Device Roster — ${dateStr}\n`);
+  out.push(`> **Confidential** — contains device identifiers and user names. Local-only; delete when no longer needed.\n`);
+  if (account) {
+    out.push(`Account: **${mdEsc(account.name)}**${account.total != null ? ` · licenses ${account.total - (account.available ?? 0)} used of ${account.total}` : ""}\n`);
+  }
+  out.push(`Scope: ${scopeLabel}${query ? ` · Query: \`${query}\`` : ""} · Devices: **${records.length}**` +
+    (failures.length ? ` · **PARTIAL** (${failures.length} failed section fetch(es))` : "") + "\n");
+
+  out.push("## Summary — by Device Group\n");
+  const groupRollup = rollupRows(records, (r) => r.device_group, "device_group");
+  out.push(mdTable(["device_group", "devices"], [...groupRollup, { device_group: "**Total**", devices: `**${records.length}**` }]) + "\n");
+
+  out.push("## Breakdown by Device Type\n");
+  out.push(mdTable(["type", "devices"], rollupRows(records, (r) => r.type, "type")) + "\n");
+
+  out.push("### By type and model\n");
+  const models = [...byModelRows(records)].sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : b.devices - a.devices));
+  out.push(mdTable(["type", "model_id", "model_name", "release_year", "devices"], models) + "\n");
+
+  const byGroup = new Map();
+  for (const r of records) {
+    const g = r.device_group || "(no device group)";
+    byGroup.set(g, [...(byGroup.get(g) ?? []), r]);
+  }
+  for (const [g, rs] of [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    out.push(`## ${mdEsc(g)} (${rs.length})\n`);
+    const rows = [...rs].sort((a, b) => String(a.seen_at ?? "").localeCompare(String(b.seen_at ?? "")));
+    out.push(mdTable(["model_id", "model_name", "release_year", "device_name", "serial", "users", "assignment_groups", "os", "last_seen"],
+      rows.map((r) => ({
+        model_id: r.model_id, model_name: r.model_name || "—", release_year: r.model_year || "—",
+        device_name: r.name, serial: r.serial,
+        users: r.sections?.users === "ok" ? ((r.users ?? []).map((u) => u.full_name || u.username).join(", ") || "—") : "—",
+        assignment_groups: (r.assignment_groups ?? []).join(", ") || "—",
+        os: r.os_version, last_seen: short(r.seen_at) || "—",
+      }))) + "\n");
+  }
+
+  if (failures.length) {
+    out.push("### Failed section fetches\n");
+    out.push(mdTable(["serial", "section", "message"], failures) + "\n");
+  }
+  out.push(`_Generated ${dateStr} by simplemdm-mcp /inventory (roster style). Full data in the accompanying CSVs; integrity hashes in manifest.sha256._`);
+  return out.join("\n");
+}

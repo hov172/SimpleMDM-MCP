@@ -348,3 +348,43 @@ test("renderInventoryReport: assigned apps + assigned profiles tables appear at 
   assert.match(summary, /assigned profiles\n/);
   assert.doesNotMatch(summary, /\*\*Installed apps:\*\*/, "summary still omits installed-app tables");
 });
+
+test("parseInvArgs: --report-style roster|dossier", () => {
+  assert.equal(parseInvArgs(["--search", "x"]).reportStyle, "dossier");
+  assert.equal(parseInvArgs(["--search", "x", "--report-style", "roster"]).reportStyle, "roster");
+  assert.match(parseInvArgs(["--search", "x", "--report-style", "fancy"]).error, /Invalid --report-style/);
+});
+
+import { renderInventoryRoster } from "../scripts/lib/inventory-render.mjs";
+
+test("renderInventoryRoster: by-group sections, one row per device with users + assignment groups inline", () => {
+  const recs = buildRecords();
+  const md = renderInventoryRoster(recs, {
+    query: "group:faculty,staff", scopeLabel: "search (whole fleet)", dateStr: "2026-06-11",
+    failures: [], account: { name: "Test U", total: 500, available: 51 },
+  });
+  assert.match(md, /# SimpleMDM Device Roster — 2026-06-11/);
+  assert.match(md, /licenses 449 used of 500/);
+  assert.match(md, /## Summary — by Device Group/);
+  assert.match(md, /\| \*\*Total\*\* \| \*\*4\*\* \|/);
+  assert.match(md, /## Breakdown by Device Type/);
+  assert.match(md, /### By type and model/);
+  assert.match(md, /## Faculty \(1\)/);
+  assert.match(md, /\| model_id \| model_name \| release_year \| device_name \| serial \| users \| assignment_groups \| os \| last_seen \|/);
+  assert.match(md, /\| MacBookPro18,1 \| MacBook Pro \(16-inch, M1 Pro, 2021\) \| 2021 \| Alice MBP \| C02FAC111 \| Alice Anderson \| Faculty Apps \| 15.5 \| 2026-06-09 \|/);
+  assert.match(md, /## \(no device group\) \(1\)/);          // Carol Mini
+  assert.match(md, /\| Library iPad \| F44PAD444 \| — \| iPad Core \| 18.5 \|/);  // empty users render as —
+  assert.doesNotMatch(md, /Findings/, "roster is people-facing — no findings section");
+});
+
+test("renderInventoryRoster: failed users section renders — and PARTIAL banner shows", () => {
+  const recs = buildRecords();
+  const alice = recs.find((r) => r.serial === "C02FAC111");
+  alice.sections.users = "failed"; alice.users = null;
+  const md = renderInventoryRoster(recs, {
+    query: null, scopeLabel: "--group Faculty", dateStr: "2026-06-11",
+    failures: [{ serial: "C02FAC111", section: "users", message: "boom" }],
+  });
+  assert.match(md, /PARTIAL/);
+  assert.match(md, /\| Alice MBP \| C02FAC111 \| — \| Faculty Apps \|/);
+});
