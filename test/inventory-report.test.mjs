@@ -395,3 +395,13 @@ test("normalizeDevice: release year falls back to the model_name string when SOF
   assert.equal(r.model_name, "iMac (24-inch, 2023)");
   assert.equal(r.model_year, "2023");
 });
+
+test("buildModelMap: legacy Apple models fill SOFA gaps; SOFA overlays when it knows the model", () => {
+  const m = buildModelMap(SOFA.mac, SOFA.ios);
+  assert.equal(m.get("iMac14,1").year, "2013");                            // legacy table (Apple 108054)
+  assert.equal(m.get("iMac14,2").marketing, "iMac (27-inch, Late 2013)");
+  assert.equal(m.get("MacPro6,1").year, "2013");                           // the cylinder
+  assert.equal(m.get("iMac21,1").marketing, "iMac (24-inch, M1, 2021, Four Ports)", "SOFA entry wins over any legacy value");
+  const empty = buildModelMap(null, null);
+  assert.equal(empty.get("MacBookAir7,2").year, "2015", "legacy table works even with SOFA unavailable");
+});

@@ -298,7 +298,8 @@ CSVs keep full ISO timestamps.
 |---|---|
 | `scripts/inventory-report.mjs` | CLI engine: guards → fleet sweeps → prefilter → per-device fetches → evaluate → write |
 | `scripts/lib/query.mjs` | pure query language: tokenizer → parser → planner → tri-state evaluator (no I/O) |
-| `scripts/lib/inventory.mjs` | API-shape normalization: searchable record, model enrichment (SOFA `Models`), assignment maps, CLI args |
+| `scripts/lib/inventory.mjs` | API-shape normalization: searchable record, model enrichment (SOFA `Models` overlaid on the legacy table), assignment maps, CLI args |
+| `scripts/lib/apple-legacy-models.mjs` | curated identifier → marketing name + release year for pre-SOFA Macs (iMac14,1 → "iMac (21.5-inch, Late 2013)"), sourced from Apple's identify-your-model pages (e.g. [108054](https://support.apple.com/en-us/108054)); SOFA wins whenever it knows the model |
 | `scripts/lib/inventory-render.mjs` | CSV row builders, rollups, findings, markdown dossier |
 | `scripts/inventory-report.head.html` | A3-landscape PDF stylesheet (shared renderer: `scripts/lib/report-pdf.mjs`) |
 | `test/query.test.mjs`, `test/inventory-report.test.mjs`, `test/inventory-engine.test.mjs` | parser/evaluator units, normalization/render units, end-to-end engine with mocked fetch |
