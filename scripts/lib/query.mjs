@@ -32,7 +32,7 @@ export const FIELDS = {
   serial:      { kind: "text",    scope: "device",     get: (r) => [r.serial] },
   udid:        { kind: "text",    scope: "device",     get: (r) => [r.udid] },
   imei:        { kind: "text",    scope: "device",     get: (r) => [r.imei] },
-  mac:         { kind: "text",    scope: "device",     get: (r) => [r.wifi_mac, ...(r.ethernet_macs ?? [])] },
+  mac:         { kind: "text",    scope: "device",     get: (r) => [r.wifi_mac, r.bluetooth_mac, ...(r.ethernet_macs ?? [])] },
   ip:          { kind: "text",    scope: "device",     get: (r) => [r.last_ip] },
   model:       { kind: "text",    scope: "device",     get: (r) => [r.model_id, r.model_name] },
   type:        { kind: "text",    scope: "device",     get: (r) => [r.type] },
@@ -52,6 +52,14 @@ export const FIELDS = {
   supervised:  { kind: "bool",    scope: "device",     get: (r) => r.supervised },
   recoverykey: { kind: "bool",    scope: "device",     get: (r) => r.recoverykey },
   dep:         { kind: "bool",    scope: "device",     get: (r) => r.dep },
+  ard:            { kind: "bool", scope: "device",     get: (r) => r.ard },
+  uamdm:          { kind: "bool", scope: "device",     get: (r) => r.uamdm },
+  ddm:            { kind: "bool", scope: "device",     get: (r) => r.ddm },
+  activationlock: { kind: "bool", scope: "device",     get: (r) => r.activation_lock },
+  lostmode:       { kind: "bool", scope: "device",     get: (r) => r.lost_mode },
+  firmwarelock:   { kind: "bool", scope: "device",     get: (r) => r.firmware_lock },
+  recoverylock:   { kind: "bool", scope: "device",     get: (r) => r.recovery_lock },
+  passcode:       { kind: "bool", scope: "device",     get: (r) => r.passcode_present },
   status:      { kind: "text",    scope: "device",     get: (r) => [r.status] },
   app:         { kind: "app",          scope: "per-device", section: "apps" },
   profile:     { kind: "section-text", scope: "per-device", section: "profiles", get: (r) => (r.profiles ?? []).map((p) => p.name) },
@@ -269,9 +277,10 @@ const triAnd = (vs) => (vs.includes(false) ? false : vs.includes("unknown") ? "u
 // Device-level string surface for bare keywords (always available).
 function keywordHaystack(r) {
   return [
-    r.name, r.device_name, r.serial, r.udid, r.imei, r.wifi_mac, ...(r.ethernet_macs ?? []), r.last_ip,
-    r.model_id, r.model_name, r.model_year, r.type, r.arch, r.os_version, r.build_version,
+    r.name, r.device_name, r.serial, r.udid, r.imei, r.wifi_mac, r.bluetooth_mac, ...(r.ethernet_macs ?? []), r.last_ip,
+    r.model_id, r.model_name, r.model_year, r.type, r.arch, r.os_version, r.build_version, r.rsr,
     r.device_group, ...(r.assignment_groups ?? []), ...(r.assigned_apps ?? []),
+    r.meid, r.iccid, r.time_zone, ...(r.enrollment_channels ?? []),
     r.status, ...Object.values(r.attrs ?? {}),
   ].filter((v) => v !== null && v !== undefined).map(String);
 }

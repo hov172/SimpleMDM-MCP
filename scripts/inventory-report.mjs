@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import {
-  fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroupsRaw, fetchAppCatalog, fetchProfilesRaw,
+  fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroupsRaw, fetchAppCatalog, fetchProfilesRaw, fetchAccount,
   fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers,
 } from "./lib/simplemdm.mjs";
 import { selectDevices } from "./lib/logs.mjs";
@@ -43,11 +43,15 @@ function uniqueDir(base) {
   return d;
 }
 
-// raw API dumps must never carry the recovery key value
+// raw API dumps must never carry secret values: the FileVault recovery key,
+// the firmware (EFI) password, or the Recovery Lock password
+const SECRET_DEVICE_ATTRS = ["filevault_recovery_key", "firmware_password", "recovery_lock_password"];
 export function redactDeviceRaw(d) {
   const c = JSON.parse(JSON.stringify(d));
-  if (c.attributes && "filevault_recovery_key" in c.attributes) {
-    c.attributes.filevault_recovery_key = c.attributes.filevault_recovery_key ? "[REDACTED escrowed=yes]" : null;
+  if (c.attributes) {
+    for (const k of SECRET_DEVICE_ATTRS) {
+      if (k in c.attributes) c.attributes[k] = c.attributes[k] ? "[REDACTED set=yes]" : null;
+    }
   }
   return c;
 }
@@ -85,9 +89,12 @@ export async function run(argv) {
   let appCatalog = new Map();
   try { appCatalog = await fetchAppCatalog(apiKey); }
   catch (e) { console.warn(`inventory-report: app catalog unavailable (${e.message}) — assigned-app data will be empty`); }
-  let profileAssign = { byDeviceGroup: new Map(), byDevice: new Map() };
+  let profileAssign = { byDeviceGroup: new Map(), byAssignmentGroup: new Map(), byDevice: new Map() };
   try { profileAssign = profileAssignmentMap(await fetchProfilesRaw(apiKey)); }
   catch (e) { console.warn(`inventory-report: profile catalog unavailable (${e.message}) — assigned-profile data will be empty`); }
+  let account = null;
+  try { account = await fetchAccount(apiKey); }
+  catch (e) { console.warn(`inventory-report: account info unavailable (${e.message})`); }
   let models = new Map();
   try {
     const { macFeed, iosFeed } = await loadSofa("reports/.inventory-cache", {});
@@ -183,7 +190,7 @@ export async function run(argv) {
     ? `--${opts.selector.kind}${opts.selector.kind === "all" ? "" : ` ${Array.isArray(opts.selector.value) ? opts.selector.value.join(",") : opts.selector.value}`}`
     : "search (whole fleet)";
   if (["md", "docx", "all"].includes(opts.format)) {
-    const md = renderInventoryReport(records, { query: opts.search, scopeLabel, dateStr, findings, detail: opts.reportDetail, failures });
+    const md = renderInventoryReport(records, { query: opts.search, scopeLabel, dateStr, findings, detail: opts.reportDetail, failures, account });
     writeOut("report.md", md);
     if (["docx", "all"].includes(opts.format)) {
       if (mdToDocx(join(outDir, "report.md"), join(outDir, "report.docx"))) written.push("report.docx");
@@ -200,6 +207,7 @@ export async function run(argv) {
   const undetermined = records.filter((r) => r.match_status === "unknown").length;
   const head = [
     `Inventory Report ${dateStr}`,
+    account ? `Account: ${account.name}${account.total != null ? ` — licenses ${account.total - (account.available ?? 0)} used of ${account.total}` : ""}` : null,
     opts.search ? `Query: ${opts.search}` : null,
     `Scope: ${scopeLabel}`,
     `Devices: ${records.length} matched (of ${selectedRaw.length} selected, fleet ${rawDevices.length})`,

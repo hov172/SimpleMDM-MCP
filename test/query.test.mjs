@@ -218,3 +218,14 @@ test("parseTerm: quoted phrase with commas stays ONE alternative (no silent OR e
   assert.equal(mixed.alts[0].text, "faculty, staff");
   assert.equal(mixed.alts[1].text, "loaners");
 });
+
+test("evaluate: new posture bool fields (ard/uamdm/ddm/locks/passcode) work as device-level filters", () => {
+  const rec = { ...REC, ard: true, uamdm: true, ddm: false, activation_lock: false, lost_mode: false, firmware_lock: null, recovery_lock: null, passcode_present: true };
+  assert.equal(evaluate(parseQuery("ard:on uamdm:on ddm:off"), rec, { now: NOW }).matched, true);
+  assert.equal(evaluate(parseQuery("activationlock:on"), rec, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("firmwarelock:on"), rec, { now: NOW }).matched, false);  // null posture matches neither
+  assert.equal(evaluate(parseQuery("firmwarelock:off"), rec, { now: NOW }).matched, false);
+  assert.equal(evaluate(parseQuery("passcode:yes"), rec, { now: NOW }).matched, true);
+  const p = planQuery(parseQuery("ard:on app:zoom"));
+  assert.equal(p.deviceUnits.length, 1, "new posture fields are device-level prefilter units");
+});

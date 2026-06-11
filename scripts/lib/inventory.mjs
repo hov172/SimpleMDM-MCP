@@ -27,20 +27,26 @@ export function deriveType(modelId, family = "") {
 }
 
 // profilesRaw: raw /profiles records. Profiles are assigned to device groups
-// (relationships.device_groups) or directly to devices (relationships.devices).
+// (relationships.device_groups), to assignment groups (relationships.groups —
+// verified live: those ids belong to /assignment_groups), or directly to
+// devices (relationships.devices).
 export function profileAssignmentMap(profilesRaw) {
   const byDeviceGroup = new Map();
+  const byAssignmentGroup = new Map();
   const byDevice = new Map();
   for (const p of profilesRaw ?? []) {
     const info = { profile_id: p.id, profile: p.attributes?.name ?? String(p.id), identifier: p.attributes?.profile_identifier ?? "" };
     for (const g of p.relationships?.device_groups?.data ?? []) {
       byDeviceGroup.set(g.id, [...(byDeviceGroup.get(g.id) ?? []), info]);
     }
+    for (const g of p.relationships?.groups?.data ?? []) {
+      byAssignmentGroup.set(g.id, [...(byAssignmentGroup.get(g.id) ?? []), info]);
+    }
     for (const d of p.relationships?.devices?.data ?? []) {
       byDevice.set(d.id, [...(byDevice.get(d.id) ?? []), info]);
     }
   }
-  return { byDeviceGroup, byDevice };
+  return { byDeviceGroup, byAssignmentGroup, byDevice };
 }
 
 // agRaw: raw /assignment_groups records; appCatalog: Map app id -> name.
@@ -53,7 +59,7 @@ export function assignmentAppMap(agRaw, appCatalog) {
   return m;
 }
 
-export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agAppsByDevice = new Map(), models = new Map(), profileAssign = { byDeviceGroup: new Map(), byDevice: new Map() } } = {}) {
+export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agAppsByDevice = new Map(), models = new Map(), profileAssign = { byDeviceGroup: new Map(), byAssignmentGroup: new Map(), byDevice: new Map() } } = {}) {
   const a = d.attributes ?? {};
   const attrs = {};
   for (const c of d.relationships?.custom_attribute_values?.data ?? []) attrs[c.id] = c.attributes?.value ?? null;
@@ -64,8 +70,13 @@ export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agA
   const assignedDetail = agIds.flatMap((id) =>
     (agAppsByDevice.get(id) ?? []).map((app) => ({ app, group: agNames.get(id) ?? String(id) })));
   const dgId = d.relationships?.device_group?.data?.id;
-  const assignedProfiles = new Map(); // by profile id — group assignment wins over a duplicate direct assignment
+  const assignedProfiles = new Map(); // by profile id — device-group, then assignment-group, then direct
   for (const p of profileAssign.byDeviceGroup.get(dgId) ?? []) assignedProfiles.set(p.profile_id, { ...p, via: dgMap.get(dgId) ?? "device group" });
+  for (const agId of agIds) {
+    for (const p of profileAssign.byAssignmentGroup?.get(agId) ?? []) {
+      if (!assignedProfiles.has(p.profile_id)) assignedProfiles.set(p.profile_id, { ...p, via: agNames.get(agId) ?? String(agId) });
+    }
+  }
   for (const p of profileAssign.byDevice.get(d.id) ?? []) if (!assignedProfiles.has(p.profile_id)) assignedProfiles.set(p.profile_id, { ...p, via: "direct" });
   const battery = a.battery_level == null ? NaN : parseFloat(String(a.battery_level));
   return {
@@ -93,6 +104,22 @@ export function normalizeDevice(d, { dgMap = new Map(), agNames = new Map(), agA
     supervised: a.is_supervised ?? null,
     dep: a.is_dep_enrollment ?? null,
     status: a.status ?? "",
+    ard: a.remote_desktop_enabled ?? null,
+    uamdm: a.is_user_approved_enrollment ?? null,
+    ddm: a.ddm_enabled ?? null,
+    activation_lock: a.is_activation_lock_enabled ?? null,
+    lost_mode: a.lost_mode_enabled ?? null,
+    // booleans only — the password VALUES are secrets and never enter the record
+    firmware_lock: a.firmware_password_enabled ?? null,
+    recovery_lock: a.recovery_lock_password_enabled ?? null,
+    passcode_present: a.passcode_present ?? null,
+    passcode_compliant: a.passcode_compliant ?? null,
+    rsr: a.supplemental_os_version_extra || a.supplemental_build_version || "",
+    bluetooth_mac: a.bluetooth_mac ?? "", meid: a.meid ?? "", iccid: a.iccid ?? "",
+    time_zone: a.time_zone ?? "",
+    cloud_backup: a.is_cloud_backup_enabled ?? null,
+    cloud_backup_at: a.last_cloud_backup_date ?? null,
+    enrollment_channels: a.enrollment_channels ?? [],
     attrs,
     apps: null, profiles: null, users: null,
     sections: { apps: "pending", profiles: "pending", users: "pending" },
