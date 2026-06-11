@@ -408,6 +408,12 @@ test("buildModelMap: legacy Apple models fill SOFA gaps; SOFA overlays when it k
 
 import { renderInventoryFlat, FLAT_COLUMNS, sortRecords } from "../scripts/lib/inventory-render.mjs";
 
+test("parseInvArgs: --report-only flag; conflicts with --format csv", () => {
+  assert.equal(parseInvArgs(["--search", "x", "--report-only"]).reportOnly, true);
+  assert.equal(parseInvArgs(["--search", "x"]).reportOnly, false);
+  assert.match(parseInvArgs(["--search", "x", "--report-only", "--format", "csv"]).error, /--report-only/);
+});
+
 test("parseInvArgs: --report-style flat and --sort validation", () => {
   assert.equal(parseInvArgs(["--search", "x", "--report-style", "flat"]).reportStyle, "flat");
   assert.deepEqual(parseInvArgs(["--search", "x", "--sort", "seen:desc"]).sort, { field: "seen", dir: "desc" });

@@ -161,6 +161,17 @@ test("engine: --report-style roster also writes report-table.csv in roster readi
   assert.match(readFileSync(join(dir, "manifest.sha256"), "utf8"), /^[0-9a-f]{64} {2}report-table\.csv$/m);
 });
 
+test("engine: --report-only writes only report files, report-table.csv, summary, manifest", async () => {
+  const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "ro");
+  assert.equal(await run(["--search", "group:faculty,staff seen:>=2025-01-01", "--report-style", "flat", "--report-only", "--format", "md", "--out", dir]), 0);
+  assert.deepEqual(readdirSync(dir).sort(), ["manifest.sha256", "report-table.csv", "report.md", "summary.txt"]);
+  assert.match(readFileSync(join(dir, "manifest.sha256"), "utf8"), /^[0-9a-f]{64} {2}report-table\.csv$/m);
+  // dossier style report-only: no report-table.csv (dossier has no single-table twin)
+  const dir2 = join(mkdtempSync(join(tmpdir(), "inv-")), "ro2");
+  assert.equal(await run(["--search", "group:faculty,staff seen:>=2025-01-01", "--report-only", "--format", "md", "--out", dir2]), 0);
+  assert.deepEqual(readdirSync(dir2).sort(), ["manifest.sha256", "report.md", "summary.txt"]);
+});
+
 test("engine: zero-match run still writes all outputs and exits 0", async () => {
   const dir = join(mkdtempSync(join(tmpdir(), "inv-")), "z");
   assert.equal(await run(["--search", "group:doesnotexistanywhere", "--format", "csv", "--out", dir]), 0);

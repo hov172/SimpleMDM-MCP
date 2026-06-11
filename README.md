@@ -443,6 +443,7 @@ node scripts/sofa-audit.mjs --format all   # csv | md | docx | all  (default: al
 | `--last-seen N` | scope to the N most recently seen devices |
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
+| `--report-only` | write only the rendered report + `summary.txt`; skip the data CSV exports (not valid with `--format csv`) |
 
 At most one scope selector (`--serial` | `--group` | `--last-seen`); omit for the whole fleet. A
 scoped run also trims the **Vulnerability Check** to the OS major-version ladders the selected
@@ -588,6 +589,7 @@ node scripts/logs-audit.mjs <selector> [flags]
 | `--with-security` | also run the SOFA evaluation on the selected devices (posture + CVEs) |
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device log detail in the report: `summary` (aggregation + findings, default) \| `table` (full event table) \| `full` (both). CSV/JSON always keep 100%. |
+| `--report-only` | write only the report dossier + `manifest.csv` + `summary.txt`; skip the CSV/JSON data exports (not valid with `--format csv`) |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).
@@ -728,6 +730,7 @@ date-aware for `seen:`/`enrolled:`), `..` ranges, and relative dates (`seen:90d`
 | `--no-findings` | suppress the auto-detected findings pass |
 | `--raw` | also write redacted raw device JSON (off by default) |
 | `--allow-partial` | exit 0 even if some per-device fetches failed (default: exit 2 so partial data is never silent) |
+| `--report-only` | write only the rendered report + `summary.txt` + `manifest.sha256` — plus `report-table.csv` for roster/flat styles; skip the data CSV exports (not valid with `--format csv`) |
 | `--out <dir>` | output directory (default `reports/inventory-YYYY-MM-DD/`) |
 
 Device-level filters run **before** per-device fetches, so scoped searches stay fast — the

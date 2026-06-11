@@ -5,7 +5,7 @@ import { fetchAllDevices, fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignment
 import { selectDevices } from "./lib/logs.mjs";
 import { buildMajorTables, evaluateDevice, aggregateCveDetail, deviceCveRows, cveDeviceRows, summarize } from "./lib/evaluate.mjs";
 import {
-  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows, groupBreakdownRows,
+  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows, renderMarkdown, vulnerabilityRows, groupBreakdownRows, reportOnlyGate,
 } from "./lib/render.mjs";
 import { mdToDocx } from "./lib/docx.mjs";
 import { renderReportPdf } from "./lib/report-pdf.mjs";
@@ -36,6 +36,8 @@ async function main() {
   const dateStr = todayStr();
   const outDir = arg("out", `reports/audit-${dateStr}`);
   const noCache = process.argv.includes("--no-network-cache");
+  const gate = reportOnlyGate(format, process.argv.includes("--report-only"));
+  if (gate.error) { console.error(`AUDIT FAILED: ${gate.error}`); process.exit(2); }
 
   const apiKey = loadEnvKey();
   if (!apiKey) { console.error("AUDIT FAILED: Missing SIMPLEMDM_API_KEY (set it in .env or the environment)"); process.exit(1); }
@@ -75,7 +77,7 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
   const write = (name, content) => writeFileSync(`${outDir}/${name}`, content);
 
-  if (["csv", "all", "md", "docx"].includes(format)) {
+  if (["csv", "all", "md", "docx"].includes(format) && gate.writeData) {
     write("security-report.csv", toCsv([["name", "serial", "device_group", "model", "os", "findings", "unfixed_cves", "exploited", "fail_count", "last_seen"]], securityRows(ev)));
     write("need-updates.csv", toCsv([["name", "serial", "device_group", "model", "current", "path", "target", "replace"]], needUpdateRows(ev)));
     write("all-devices.csv", toCsv([["name", "device_name", "serial", "device_group", "os_version", "latest_minor", "latest_major", "unfixed_cves", "product", "fv", "sip", "fw", "xp", "last_seen"]], allDeviceRows(ev)));
