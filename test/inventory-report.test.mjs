@@ -388,3 +388,10 @@ test("renderInventoryRoster: failed users section renders — and PARTIAL banner
   assert.match(md, /PARTIAL/);
   assert.match(md, /\| Alice MBP \| C02FAC111 \| — \| Faculty Apps \|/);
 });
+
+test("normalizeDevice: release year falls back to the model_name string when SOFA lacks the model", () => {
+  const d = { type: "device", id: 999, attributes: { name: "X", serial_number: "X1", product_name: "Mac15,5", model_name: "iMac (24-inch, 2023)" }, relationships: {} };
+  const r = normalizeDevice(d, {});   // no SOFA models map
+  assert.equal(r.model_name, "iMac (24-inch, 2023)");
+  assert.equal(r.model_year, "2023");
+});
