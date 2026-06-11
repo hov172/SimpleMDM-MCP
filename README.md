@@ -109,6 +109,15 @@ docker run --rm -i \
   simplemdm-mcp
 ```
 
+**Optional — persist generated reports.** The report tools (`run_fleet_audit`,
+`run_device_logs_audit`, `run_inventory_report`) write under `/app/reports`
+inside the container, which vanishes when the `--rm` container exits (the tool
+response still includes the summary and report preview). Mount a host directory
+to keep the files:
+```bash
+docker run --rm -i --env-file .env -v "$PWD/reports:/app/reports" simplemdm-mcp
+```
+
 **Optional — bake the version into the image label** for `docker inspect` traceability:
 
 ```bash

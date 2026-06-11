@@ -43,6 +43,12 @@ COPY --from=build --chown=node:node /app/dist ./dist
 RUN apk add --no-cache pandoc-cli weasyprint font-dejavu fontconfig
 COPY --chown=node:node scripts ./scripts
 
+# The report tools (run_fleet_audit / run_device_logs_audit / run_inventory_report)
+# write under /app/reports; /app itself is root-owned, so pre-create it for the
+# node user. Mount a host dir here (-v "$PWD/reports:/app/reports") to keep the
+# generated reports after the container exits.
+RUN mkdir -p /app/reports && chown node:node /app/reports
+
 USER node
 
 CMD ["node", "dist/index.js"]

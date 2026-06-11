@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Report MCP tools failed with `EACCES` in the Docker image** — `/app` is root-owned and the server runs as `node`, so `run_fleet_audit`, `run_device_logs_audit`, and `run_inventory_report` could not create `reports/`. The image now pre-creates `/app/reports` owned by `node`; mount `-v "$PWD/reports:/app/reports"` to persist generated reports on the host.
+
 ## [0.20.0] - 2026-06-10
 
 ### Added
