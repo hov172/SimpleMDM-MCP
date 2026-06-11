@@ -138,3 +138,9 @@ export async function fetchAppCatalog(apiKey) {
   for (const a of await getAll(apiKey, `/apps`)) map.set(a.id, a.attributes?.name ?? String(a.id));
   return map;
 }
+
+// Raw account profile records (with relationships.device_groups / devices —
+// profiles are assigned via device groups or directly, not assignment groups).
+export async function fetchProfilesRaw(apiKey) {
+  return getAll(apiKey, `/profiles`);
+}

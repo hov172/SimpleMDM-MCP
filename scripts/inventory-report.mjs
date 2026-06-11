@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import {
-  fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroupsRaw, fetchAppCatalog,
+  fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroupsRaw, fetchAppCatalog, fetchProfilesRaw,
   fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers,
 } from "./lib/simplemdm.mjs";
 import { selectDevices } from "./lib/logs.mjs";
@@ -15,10 +15,11 @@ import { renderReportPdf } from "./lib/report-pdf.mjs";
 import { parseQuery, planQuery, sectionsReferenced, evaluate, QueryError } from "./lib/query.mjs";
 import {
   parseInvArgs, normalizeDevice, normalizeApps, normalizeProfiles, normalizeUsers,
-  buildModelMap, assignmentAppMap,
+  buildModelMap, assignmentAppMap, profileAssignmentMap,
 } from "./lib/inventory.mjs";
 import {
   DEVICE_COLUMNS, deviceRows, APP_COLUMNS, appRows, ASSIGNED_COLUMNS, assignedAppRows,
+  ASSIGNED_PROFILE_COLUMNS, assignedProfileRows,
   PROFILE_COLUMNS, profileRows, USER_COLUMNS, userRows, APP_CATALOG_COLUMNS, appCatalogRows,
   rollupRows, BY_MODEL_COLUMNS, byModelRows, FINDING_COLUMNS, inventoryFindings, renderInventoryReport,
 } from "./lib/inventory-render.mjs";
@@ -84,6 +85,9 @@ export async function run(argv) {
   let appCatalog = new Map();
   try { appCatalog = await fetchAppCatalog(apiKey); }
   catch (e) { console.warn(`inventory-report: app catalog unavailable (${e.message}) — assigned-app data will be empty`); }
+  let profileAssign = { byDeviceGroup: new Map(), byDevice: new Map() };
+  try { profileAssign = profileAssignmentMap(await fetchProfilesRaw(apiKey)); }
+  catch (e) { console.warn(`inventory-report: profile catalog unavailable (${e.message}) — assigned-profile data will be empty`); }
   let models = new Map();
   try {
     const { macFeed, iosFeed } = await loadSofa("reports/.inventory-cache", {});
@@ -100,7 +104,7 @@ export async function run(argv) {
   if (opts.selector && selectedRaw.length === 0) { console.error("inventory-report: no devices matched the selector"); return 3; }
 
   const agApps = assignmentAppMap(agRaw, appCatalog);
-  let records = selectedRaw.map((d) => normalizeDevice(d, { dgMap, agNames, agAppsByDevice: agApps, models }));
+  let records = selectedRaw.map((d) => normalizeDevice(d, { dgMap, agNames, agAppsByDevice: agApps, models, profileAssign }));
   const rawById = new Map(selectedRaw.map((d) => [d.id, d]));
 
   if (plan.deviceUnits.length) {
@@ -159,6 +163,7 @@ export async function run(argv) {
     writeOut("app-catalog.csv", toCsv([APP_CATALOG_COLUMNS], appCatalogRows(records)));
   }
   writeOut("assigned-apps.csv", toCsv([ASSIGNED_COLUMNS], assignedAppRows(records)));
+  writeOut("assigned-profiles.csv", toCsv([ASSIGNED_PROFILE_COLUMNS], assignedProfileRows(records)));
   if (!opts.noProfiles) writeOut("profiles.csv", toCsv([PROFILE_COLUMNS], profileRows(records)));
   if (!opts.noUsers) writeOut("users.csv", toCsv([USER_COLUMNS], userRows(records)));
   writeOut("by-group.csv", toCsv([["device_group", "devices"]], rollupRows(records, (r) => r.device_group, "device_group")));

@@ -10,6 +10,7 @@ const FIX = (n) => JSON.parse(readFileSync(new URL(`./fixtures/inventory/${n}`, 
 const DEVICES = FIX("devices.json");
 const AG = FIX("assignment-groups.json");
 const APPCAT = FIX("app-catalog.json");
+const PROFCAT = FIX("profiles-catalog.json");
 const SECTIONS = FIX("device-sections.json");
 const SOFA = FIX("sofa-models.json");
 const DG = { data: [
@@ -29,6 +30,7 @@ globalThis.fetch = async (url) => {
     if (path === "/api/v1/device_groups") return DG;
     if (path === "/api/v1/assignment_groups") return AG;
     if (path === "/api/v1/apps") return APPCAT;
+    if (path === "/api/v1/profiles") return PROFCAT;
     const m = path.match(/^\/api\/v1\/devices\/(\d+)\/(installed_apps|profiles|users)$/);
     if (m) {
       if (m[2] === "installed_apps" && failApps) return null; // simulate failure
@@ -63,6 +65,9 @@ test("engine end-to-end: search run writes outputs and never leaks the recovery 
   }
   const manifest = readFileSync(join(dir, "manifest.sha256"), "utf8");
   assert.match(manifest, /^[0-9a-f]{64} {2}devices\.csv$/m);
+  const assignedProfiles = readFileSync(join(dir, "assigned-profiles.csv"), "utf8");
+  assert.match(assignedProfiles, /C02FAC111,Alice MBP,WiFi - Campus,edu\.slc\.wifi,Faculty,yes/);
+  assert.match(assignedProfiles, /C02FAC111,Alice MBP,FileVault Escrow,edu\.slc\.fv,Faculty,no/);
   const devices = readFileSync(join(dir, "devices.csv"), "utf8");
   assert.match(devices, /C02FAC111/);
   assert.doesNotMatch(devices, /E33LAB333/);               // stale Mac mini: seen 2024, filtered out
