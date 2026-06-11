@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`--report-style flat`** — single-table report (model #, marketing name, release year, **device_group as a column**, device name, serial, local users, assignment groups, macOS, last seen); the spreadsheet-like hand-off view, in all four formats. Also on the `run_inventory_report` MCP tool.
+- **`--sort <field[:asc|desc]>`** for roster/flat styles (`seen|name|serial|model|os|group|year`; `os` compares numerically) — e.g. `--sort seen:desc` puts the most recently seen devices first. Defaults preserved: roster oldest-seen first per group, flat by group then last seen.
+
 ## [0.22.0] - 2026-06-10
 
 ### Added

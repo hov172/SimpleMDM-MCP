@@ -147,7 +147,7 @@ export const normalizeUsers = (raw) => (raw ?? []).map((x) => ({
 
 export function parseInvArgs(argv) {
   const o = {
-    selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary", reportStyle: "dossier",
+    selector: null, search: null, confirmAll: false, format: "all", reportDetail: "summary", reportStyle: "dossier", sort: null,
     noApps: false, noProfiles: false, noUsers: false, noFindings: false,
     raw: false, allowPartial: false, out: null, error: null,
   };
@@ -183,8 +183,14 @@ export function parseInvArgs(argv) {
       o.reportDetail = v;
     } else if (a === "--report-style") {
       const v = next();
-      if (!["dossier", "roster"].includes(v)) { o.error = `Invalid --report-style "${v}" (dossier|roster)`; return o; }
+      if (!["dossier", "roster", "flat"].includes(v)) { o.error = `Invalid --report-style "${v}" (dossier|roster|flat)`; return o; }
       o.reportStyle = v;
+    } else if (a === "--sort") {
+      const v = next() ?? "";
+      const [field, dir = "asc"] = v.split(":");
+      const valid = ["seen", "name", "serial", "model", "os", "group", "year"];
+      if (!valid.includes(field) || !["asc", "desc"].includes(dir)) { o.error = `Invalid --sort "${v}" (${valid.join("|")}[:asc|desc])`; return o; }
+      o.sort = { field, dir };
     } else if (a === "--no-apps") o.noApps = true;
     else if (a === "--no-profiles") o.noProfiles = true;
     else if (a === "--no-users") o.noUsers = true;

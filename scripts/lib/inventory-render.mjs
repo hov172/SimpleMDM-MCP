@@ -1,6 +1,8 @@
 // CSV row builders, rollups, findings and the markdown dossier for the
 // inventory report. Pure functions over normalized records.
 
+import { compareVersions } from "./evaluate.mjs";
+
 const onOff = (v) => (v === true ? "on" : v === false ? "off" : "");
 const join = (xs) => (xs ?? []).join(" | ");
 const short = (v) => (v ? String(v).slice(0, 10) : ""); // display dates as YYYY-MM-DD; full ISO stays in the CSVs
@@ -334,10 +336,43 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
   return out.join("\n");
 }
 
+// Row ordering for the roster/flat styles. --sort <field[:asc|desc]>;
+// null = each style's default (roster: oldest-seen first per group;
+// flat: device group, then last seen).
+const SORT_GETTERS = {
+  seen: (r) => r.seen_at ?? "", name: (r) => (r.name ?? "").toLowerCase(), serial: (r) => r.serial ?? "",
+  model: (r) => r.model_id ?? "", group: (r) => (r.device_group ?? "").toLowerCase(), year: (r) => r.model_year ?? "",
+};
+export function sortRecords(records, sort) {
+  const rows = [...records];
+  if (!sort) {
+    return rows.sort((a, b) =>
+      SORT_GETTERS.group(a).localeCompare(SORT_GETTERS.group(b)) ||
+      String(SORT_GETTERS.seen(a)).localeCompare(String(SORT_GETTERS.seen(b))));
+  }
+  const sgn = sort.dir === "desc" ? -1 : 1;
+  if (sort.field === "os") {
+    return rows.sort((a, b) => sgn * compareVersions(a.os_version || "0", b.os_version || "0") || (a.serial ?? "").localeCompare(b.serial ?? ""));
+  }
+  const get = SORT_GETTERS[sort.field];
+  return rows.sort((a, b) => sgn * String(get(a)).localeCompare(String(get(b))) || (a.serial ?? "").localeCompare(b.serial ?? ""));
+}
+
+// One roster/flat table row per device — users and assignment groups inline.
+function rosterCells(r) {
+  return {
+    model_id: r.model_id, model_name: r.model_name || "—", release_year: r.model_year || "—",
+    device_name: r.name, serial: r.serial,
+    users: r.sections?.users === "ok" ? ((r.users ?? []).map((u) => u.full_name || u.username).join(", ") || "—") : "—",
+    assignment_groups: (r.assignment_groups ?? []).join(", ") || "—",
+    os: r.os_version, last_seen: short(r.seen_at) || "—",
+  };
+}
+
 // People-facing roster (--report-style roster): by-group summary, type/model
 // breakdowns, then one compact table per device group — one row per device
 // with local users and assignment groups inline, sorted oldest-seen first.
-export function renderInventoryRoster(records, { query, scopeLabel, dateStr, failures = [], account = null } = {}) {
+export function renderInventoryRoster(records, { query, scopeLabel, dateStr, failures = [], account = null, sort = null } = {}) {
   const out = [];
   out.push(`# SimpleMDM Device Roster — ${dateStr}\n`);
   out.push(`> **Confidential** — contains device identifiers and user names. Local-only; delete when no longer needed.\n`);
@@ -365,15 +400,9 @@ export function renderInventoryRoster(records, { query, scopeLabel, dateStr, fai
   }
   for (const [g, rs] of [...byGroup.entries()].sort((a, b) => b[1].length - a[1].length)) {
     out.push(`## ${mdEsc(g)} (${rs.length})\n`);
-    const rows = [...rs].sort((a, b) => String(a.seen_at ?? "").localeCompare(String(b.seen_at ?? "")));
+    const rows = sortRecords(rs, sort ?? { field: "seen", dir: "asc" });
     out.push(mdTable(["model_id", "model_name", "release_year", "device_name", "serial", "users", "assignment_groups", "os", "last_seen"],
-      rows.map((r) => ({
-        model_id: r.model_id, model_name: r.model_name || "—", release_year: r.model_year || "—",
-        device_name: r.name, serial: r.serial,
-        users: r.sections?.users === "ok" ? ((r.users ?? []).map((u) => u.full_name || u.username).join(", ") || "—") : "—",
-        assignment_groups: (r.assignment_groups ?? []).join(", ") || "—",
-        os: r.os_version, last_seen: short(r.seen_at) || "—",
-      }))) + "\n");
+      rows.map(rosterCells)) + "\n");
   }
 
   if (failures.length) {
@@ -381,5 +410,28 @@ export function renderInventoryRoster(records, { query, scopeLabel, dateStr, fai
     out.push(mdTable(["serial", "section", "message"], failures) + "\n");
   }
   out.push(`_Generated ${dateStr} by simplemdm-mcp /inventory (roster style). Full data in the accompanying CSVs; integrity hashes in manifest.sha256._`);
+  return out.join("\n");
+}
+
+// Single flat table (--report-style flat): every matched device as one row
+// with device_group as a column — the spreadsheet-like hand-off view.
+export const FLAT_COLUMNS = ["model_id", "model_name", "release_year", "device_group", "device_name", "serial", "users", "assignment_groups", "os", "last_seen"];
+export function renderInventoryFlat(records, { query, scopeLabel, dateStr, failures = [], account = null, sort = null } = {}) {
+  const out = [];
+  out.push(`# SimpleMDM Device Inventory (flat) — ${dateStr}\n`);
+  out.push(`> **Confidential** — contains device identifiers and user names. Local-only; delete when no longer needed.\n`);
+  if (account) {
+    out.push(`Account: **${mdEsc(account.name)}**${account.total != null ? ` · licenses ${account.total - (account.available ?? 0)} used of ${account.total}` : ""}\n`);
+  }
+  out.push(`Scope: ${scopeLabel}${query ? ` · Query: \`${query}\`` : ""} · Devices: **${records.length}**` +
+    (failures.length ? ` · **PARTIAL** (${failures.length} failed section fetch(es))` : "") + "\n");
+  out.push(mdTable(FLAT_COLUMNS, sortRecords(records, sort).map((r) => ({
+    ...rosterCells(r), device_group: r.device_group || "(none)",
+  }))) + "\n");
+  if (failures.length) {
+    out.push("### Failed section fetches\n");
+    out.push(mdTable(["serial", "section", "message"], failures) + "\n");
+  }
+  out.push(`_Generated ${dateStr} by simplemdm-mcp /inventory (flat style). Full data in the accompanying CSVs; integrity hashes in manifest.sha256._`);
   return out.join("\n");
 }
