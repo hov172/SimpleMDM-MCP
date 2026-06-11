@@ -156,8 +156,16 @@ test("appRows flag matched rows from hits; assignedAppRows compute installed yes
   assert.equal(apps.find((r) => r.serial === "C02FAC111" && r.app_name === "zoom.us").matched, "yes");
   assert.equal(apps.find((r) => r.serial === "C02FAC111" && r.app_name === "Google Chrome").matched, "");
   const assigned = assignedAppRows(recs);
-  assert.equal(assigned.find((r) => r.serial === "C02FAC111" && r.app_name === "Zoom").installed, "yes");     // zoom.us matches Zoom
-  assert.equal(assigned.find((r) => r.serial === "D25STA222" && r.app_name === "Zoom").installed, "no");      // the deployment gap
+  const aliceZoom = assigned.find((r) => r.serial === "C02FAC111" && r.app_name === "Zoom");
+  assert.equal(aliceZoom.installed, "yes");                 // zoom.us matches Zoom
+  assert.equal(aliceZoom.managed, "yes");                   // the matched installed copy is MDM-managed
+  assert.equal(aliceZoom.installed_as, "zoom.us 5.9.0");    // what it matched in the live device inventory
+  const aliceWord = assigned.find((r) => r.serial === "C02FAC111" && r.app_name === "Google Chrome");
+  assert.equal(aliceWord.managed, "yes");
+  const bobZoom = assigned.find((r) => r.serial === "D25STA222" && r.app_name === "Zoom");
+  assert.equal(bobZoom.installed, "no");                    // the deployment gap
+  assert.equal(bobZoom.managed, "");
+  assert.equal(bobZoom.installed_as, "");
   const unknownRecs = buildRecords();
   unknownRecs[1].sections.apps = "failed"; unknownRecs[1].apps = null;
   assert.equal(assignedAppRows(unknownRecs).find((r) => r.serial === "D25STA222" && r.app_name === "Zoom").installed, "unknown");
@@ -321,7 +329,7 @@ test("renderInventoryReport: assigned apps + assigned profiles tables appear at 
   const summary = renderInventoryReport(recs, { query: null, scopeLabel: "--group Faculty", dateStr: "2026-06-10", findings: [], detail: "summary", failures: [] });
   assert.match(summary, /\*\*Assigned apps\*\* \(via assignment groups\):/);
   assert.match(summary, /\*\*Assigned profiles\*\* \(via device group \/ direct\):/);
-  assert.match(summary, /\| Zoom \| Faculty Apps \| yes \|/);
+  assert.match(summary, /\| Zoom \| Faculty Apps \| yes \| yes \| zoom\.us 5\.9\.0 \|/, "assigned-app row shows installed + managed + matched live app");
   assert.match(summary, /\| FileVault Escrow \| Faculty \| no \|/);
   assert.match(summary, /\| Library Web Clip \| direct \| no \|/);
   assert.match(summary, /assigned profiles\n/);

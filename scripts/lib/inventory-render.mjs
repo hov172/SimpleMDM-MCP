@@ -38,15 +38,22 @@ export function appRows(records) {
   })));
 }
 
-const installedHas = (r, appName) =>
-  (r.apps ?? []).some((a) => `${a.name} ${a.identifier}`.toLowerCase().includes(appName.toLowerCase()));
+const findInstalled = (r, appName) =>
+  (r.apps ?? []).find((a) => `${a.name} ${a.identifier}`.toLowerCase().includes(appName.toLowerCase()));
+const installedHas = (r, appName) => Boolean(findInstalled(r, appName));
 
-export const ASSIGNED_COLUMNS = ["serial", "device", "app_name", "assignment_group", "installed"];
+export const ASSIGNED_COLUMNS = ["serial", "device", "app_name", "assignment_group", "installed", "managed", "installed_as"];
 export function assignedAppRows(records) {
-  return records.flatMap((r) => (r.assigned_detail ?? []).map((x) => ({
-    serial: r.serial, device: r.name, app_name: x.app, assignment_group: x.group,
-    installed: r.sections?.apps === "ok" ? (installedHas(r, x.app) ? "yes" : "no") : "unknown",
-  })));
+  return records.flatMap((r) => (r.assigned_detail ?? []).map((x) => {
+    const ok = r.sections?.apps === "ok";
+    const hit = ok ? findInstalled(r, x.app) : null;
+    return {
+      serial: r.serial, device: r.name, app_name: x.app, assignment_group: x.group,
+      installed: ok ? (hit ? "yes" : "no") : "unknown",
+      managed: hit ? (hit.managed ? "yes" : "no") : "",   // is the matched installed copy MDM-managed?
+      installed_as: hit ? `${hit.name}${hit.version ? ` ${hit.version}` : ""}` : "",
+    };
+  }));
 }
 
 // Assigned profile -> installed match: exact profile_identifier when the
@@ -279,7 +286,7 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
     // Assigned apps/profiles render at EVERY detail level — they are the deployment
     // contract for the device and stay small, unlike the installed-app table.
     out.push(`**Assigned apps** (via assignment groups):\n`);
-    out.push(mdTable(["app_name", "assignment_group", "installed"],
+    out.push(mdTable(["app_name", "assignment_group", "installed", "managed", "installed_as"],
       assignedAppRows([r]).map(({ serial, device, ...rest }) => rest)) + "\n");
     out.push(`**Assigned profiles** (via device group / direct):\n`);
     out.push(mdTable(["profile_name", "via", "installed"],
