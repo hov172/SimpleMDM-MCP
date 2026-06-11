@@ -61,6 +61,18 @@ test("normalizeDevice builds the full searchable record (real attribute names)",
   assert.equal(r.battery_pct, 88);                        // parsed from "88%"
   assert.equal(r.storage_free_gb, 512.5);
   assert.equal(r.recoverykey, true);
+  assert.equal(r.ard, true);
+  assert.equal(r.uamdm, true);
+  assert.equal(r.ddm, true);
+  assert.equal(r.activation_lock, false);
+  assert.equal(r.firmware_lock, true);
+  assert.equal(r.recovery_lock, true);
+  assert.equal(r.passcode_present, true);
+  assert.equal(r.rsr, "(a)");
+  assert.equal(r.bluetooth_mac, "a4:83:e7:11:11:13");
+  assert.equal(r.time_zone, "America/New_York");
+  assert.ok(!JSON.stringify(r).includes("FWSECRET-999") && !JSON.stringify(r).includes("RLSECRET-888"),
+    "firmware/recovery-lock password values must never enter the record");
   assert.equal(r.attrs.xprotect_version, "5305");
   assert.deepEqual(r.sections, { apps: "pending", profiles: "pending", users: "pending" });
   assert.ok(!JSON.stringify(r).includes("SECRETKEY-FVR-123"), "normalized record must never carry the recovery key value");
@@ -246,7 +258,7 @@ test("renderInventoryReport: header, banner, rollups, findings, per-device secti
   assert.match(md, /\| assigned-app-missing \| 1 \| 1 \|/, "rollup counts the Zoom gap");
   assert.match(md, /### Assigned apps missing \(1\)/, "per-type subsection with count in heading");
   assert.match(md, /\| Bob iMac \(D25STA222\) \| Zoom \| Faculty Apps \|/, "compact per-type row: device, app, via group");
-  assert.match(md, /### Assigned profiles missing \(2\)/);
+  assert.match(md, /### Assigned profiles missing \(4\)/);   // Alice FV + Alice/Bob ag-assigned Zoom Settings + iPad web clip
   assert.doesNotMatch(md, /is assigned via an assignment group but not installed/, "boilerplate sentence no longer repeated in the dossier");
   assert.match(md, /## 3\. Per-Device Inventory/);
   assert.match(md, /\| Serial \/ UDID \| `C02FAC111` · `UDID-201` \|/, "facts table row");
@@ -283,6 +295,7 @@ import { assignedProfileRows, ASSIGNED_PROFILE_COLUMNS } from "../scripts/lib/in
 test("profileAssignmentMap maps device-group and direct-device profile assignments", () => {
   const m = profileAssignmentMap(PROFCAT);
   assert.deepEqual(m.byDeviceGroup.get(9001).map((p) => p.profile), ["WiFi - Campus", "FileVault Escrow"]);
+  assert.deepEqual(m.byAssignmentGroup.get(501).map((p) => p.profile), ["Zoom Settings"]);   // profiles assigned via assignment groups (the live-verified gap)
   assert.deepEqual(m.byDeviceGroup.get(9002).map((p) => p.profile), ["FileVault Escrow"]);
   assert.deepEqual(m.byDevice.get(204).map((p) => p.profile), ["Library Web Clip"]);
 });
@@ -291,7 +304,7 @@ test("normalizeDevice carries assigned_profile_detail with via attribution", () 
   const recs = buildRecords();
   const alice = recs.find((r) => r.serial === "C02FAC111");
   assert.deepEqual(alice.assigned_profile_detail.map((p) => [p.profile, p.via]),
-    [["WiFi - Campus", "Faculty"], ["FileVault Escrow", "Faculty"]]);
+    [["WiFi - Campus", "Faculty"], ["FileVault Escrow", "Faculty"], ["Zoom Settings", "Faculty Apps"]]);
   const ipad = recs.find((r) => r.serial === "F44PAD444");
   assert.deepEqual(ipad.assigned_profile_detail.map((p) => [p.profile, p.via]), [["Library Web Clip", "direct"]]);
   const carol = recs.find((r) => r.serial === "E33LAB333");

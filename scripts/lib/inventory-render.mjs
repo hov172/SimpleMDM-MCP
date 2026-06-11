@@ -6,23 +6,34 @@ const join = (xs) => (xs ?? []).join(" | ");
 const short = (v) => (v ? String(v).slice(0, 10) : ""); // display dates as YYYY-MM-DD; full ISO stays in the CSVs
 
 export const DEVICE_COLUMNS = [
-  "name", "device_name", "serial", "udid", "imei", "wifi_mac", "ethernet_macs", "last_ip",
-  "model_id", "model_name", "release_year", "type", "arch", "os_version", "build_version",
-  "status", "dep", "enrolled_at", "seen_at", "storage_free_gb", "storage_total_gb", "battery_pct",
-  "filevault", "recoverykey", "sip", "firewall", "supervised",
+  "name", "device_name", "serial", "udid", "imei", "wifi_mac", "bluetooth_mac", "ethernet_macs", "last_ip",
+  "meid", "iccid", "time_zone",
+  "model_id", "model_name", "release_year", "type", "arch", "os_version", "build_version", "rsr",
+  "status", "dep", "uamdm", "ddm", "enrollment_channels", "enrolled_at", "seen_at",
+  "storage_free_gb", "storage_total_gb", "battery_pct",
+  "filevault", "recoverykey", "sip", "firewall", "supervised", "ard",
+  "activation_lock", "lost_mode", "firmware_lock", "recovery_lock", "passcode_present", "passcode_compliant",
+  "cloud_backup", "cloud_backup_at",
   "device_group", "assignment_groups", "custom_attributes", "match_reasons", "sections_failed",
 ];
 
 export function deviceRows(records) {
   return records.map((r) => ({
     name: r.name, device_name: r.device_name, serial: r.serial, udid: r.udid, imei: r.imei,
-    wifi_mac: r.wifi_mac, ethernet_macs: join(r.ethernet_macs), last_ip: r.last_ip,
+    wifi_mac: r.wifi_mac, bluetooth_mac: r.bluetooth_mac ?? "", ethernet_macs: join(r.ethernet_macs), last_ip: r.last_ip,
+    meid: r.meid ?? "", iccid: r.iccid ?? "", time_zone: r.time_zone ?? "",
     model_id: r.model_id, model_name: r.model_name, release_year: r.model_year, type: r.type, arch: r.arch,
-    os_version: r.os_version, build_version: r.build_version,
-    status: r.status, dep: onOff(r.dep), enrolled_at: r.enrolled_at ?? "", seen_at: r.seen_at ?? "",
+    os_version: r.os_version, build_version: r.build_version, rsr: r.rsr ?? "",
+    status: r.status, dep: onOff(r.dep), uamdm: onOff(r.uamdm), ddm: onOff(r.ddm),
+    enrollment_channels: join(r.enrollment_channels),
+    enrolled_at: r.enrolled_at ?? "", seen_at: r.seen_at ?? "",
     storage_free_gb: r.storage_free_gb ?? "", storage_total_gb: r.storage_total_gb ?? "", battery_pct: r.battery_pct ?? "",
     filevault: onOff(r.filevault), recoverykey: onOff(r.recoverykey), sip: onOff(r.sip),
-    firewall: onOff(r.firewall), supervised: onOff(r.supervised),
+    firewall: onOff(r.firewall), supervised: onOff(r.supervised), ard: onOff(r.ard),
+    activation_lock: onOff(r.activation_lock), lost_mode: onOff(r.lost_mode),
+    firmware_lock: onOff(r.firmware_lock), recovery_lock: onOff(r.recovery_lock),
+    passcode_present: onOff(r.passcode_present), passcode_compliant: onOff(r.passcode_compliant),
+    cloud_backup: onOff(r.cloud_backup), cloud_backup_at: r.cloud_backup_at ?? "",
     device_group: r.device_group, assignment_groups: join(r.assignment_groups),
     custom_attributes: Object.entries(r.attrs ?? {}).map(([k, v]) => `${k}=${v}`).join(" | "),
     match_reasons: r.match_reasons ?? "",
@@ -235,10 +246,13 @@ function renderFindingsSection(findings) {
   return out;
 }
 
-export function renderInventoryReport(records, { query, scopeLabel, dateStr, findings = [], detail = "summary", failures = [] } = {}) {
+export function renderInventoryReport(records, { query, scopeLabel, dateStr, findings = [], detail = "summary", failures = [], account = null } = {}) {
   const out = [];
   out.push(`# SimpleMDM Fleet Inventory — ${dateStr}\n`);
   out.push(`> **Confidential** — contains device identifiers and user names. Local-only; delete when no longer needed.\n`);
+  if (account) {
+    out.push(`Account: **${mdEsc(account.name)}**${account.total != null ? ` · licenses ${account.total - (account.available ?? 0)} used of ${account.total} (${account.available ?? "?"} available)` : ""}\n`);
+  }
   out.push(`Scope: ${scopeLabel}${query ? ` · Query: \`${query}\`` : ""} · Devices: **${records.length}**` +
     (failures.length ? ` · **PARTIAL** (${failures.length} failed section fetch(es))` : "") + "\n");
   const undetermined = records.filter((r) => r.match_status === "unknown");
@@ -269,9 +283,10 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
       ["Network", `WiFi \`${r.wifi_mac}\`${r.ethernet_macs?.length ? ` · Ethernet ${r.ethernet_macs.map((m) => `\`${m}\``).join(", ")}` : ""} · last IP \`${r.last_ip}\``],
       ["Hardware", `${r.model_name || r.model_id} (\`${r.model_id}\`${r.model_year ? `, ${r.model_year}` : ""}) · ${r.type} · ${r.arch}`],
       ["Storage / battery", `${r.storage_free_gb ?? "?"} / ${r.storage_total_gb ?? "?"} GB free${r.battery_pct != null ? ` · battery ${r.battery_pct}%` : ""}`],
-      ["OS", `${r.os_version} (${r.build_version})`],
-      ["Security", `FileVault ${onOff(r.filevault) || "n/a"} · recovery key ${onOff(r.recoverykey) || "n/a"} · SIP ${onOff(r.sip) || "n/a"} · firewall ${onOff(r.firewall) || "n/a"}`],
-      ["Enrollment", `${r.status || "?"} · supervised ${onOff(r.supervised) || "n/a"} · DEP ${onOff(r.dep) || "n/a"} · enrolled ${short(r.enrolled_at) || "?"}`],
+      ["OS", `${r.os_version} (${r.build_version})${r.rsr ? ` · RSR ${r.rsr}` : ""}`],
+      ["Security", `FileVault ${onOff(r.filevault) || "n/a"} · recovery key ${onOff(r.recoverykey) || "n/a"} · SIP ${onOff(r.sip) || "n/a"} · firewall ${onOff(r.firewall) || "n/a"} · ` +
+        `ARD ${onOff(r.ard) || "n/a"} · activation lock ${onOff(r.activation_lock) || "n/a"} · firmware lock ${onOff(r.firmware_lock) || "n/a"} · recovery lock ${onOff(r.recovery_lock) || "n/a"}`],
+      ["Enrollment", `${r.status || "?"} · supervised ${onOff(r.supervised) || "n/a"} · DEP ${onOff(r.dep) || "n/a"} · UAMDM ${onOff(r.uamdm) || "n/a"} · DDM ${onOff(r.ddm) || "n/a"} · enrolled ${short(r.enrolled_at) || "?"}`],
       ["Last seen", short(r.seen_at) || "?"],
       ["Device group", r.device_group || "(none)"],
       [`Assignment groups (${r.assignment_groups?.length ?? 0})`, (r.assignment_groups ?? []).join(", ") || "(none)"],

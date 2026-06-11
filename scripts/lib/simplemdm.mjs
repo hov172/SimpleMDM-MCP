@@ -139,8 +139,16 @@ export async function fetchAppCatalog(apiKey) {
   return map;
 }
 
-// Raw account profile records (with relationships.device_groups / devices —
-// profiles are assigned via device groups or directly, not assignment groups).
+// Raw account profile records (with relationships.device_groups / groups /
+// devices — profiles are assigned via device groups, assignment groups, or
+// directly to devices).
 export async function fetchProfilesRaw(apiKey) {
   return getAll(apiKey, `/profiles`);
+}
+
+// Account name + license counts: { name, total, available }.
+export async function fetchAccount(apiKey) {
+  const j = await getJson(apiKey, `/account`);
+  const a = j.data?.attributes ?? {};
+  return { name: a.name ?? "", total: a.subscription?.licenses?.total ?? null, available: a.subscription?.licenses?.available ?? null };
 }

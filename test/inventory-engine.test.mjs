@@ -31,6 +31,7 @@ globalThis.fetch = async (url) => {
     if (path === "/api/v1/assignment_groups") return AG;
     if (path === "/api/v1/apps") return APPCAT;
     if (path === "/api/v1/profiles") return PROFCAT;
+    if (path === "/api/v1/account") return { data: { type: "account", attributes: { name: "Test University", subscription: { licenses: { total: 500, available: 51 } } } } };
     const m = path.match(/^\/api\/v1\/devices\/(\d+)\/(installed_apps|profiles|users)$/);
     if (m) {
       if (m[2] === "installed_apps" && failApps) return null; // simulate failure
@@ -44,7 +45,8 @@ globalThis.fetch = async (url) => {
 };
 
 const { run } = await import("../scripts/inventory-report.mjs");
-const SECRET = "SECRETKEY-FVR-123";
+const SECRETS = ["SECRETKEY-FVR-123", "FWSECRET-999", "RLSECRET-888"];
+const SECRET = SECRETS[0];
 
 function allFiles(dir) {
   return readdirSync(dir, { recursive: true })
@@ -61,7 +63,8 @@ test("engine end-to-end: search run writes outputs and never leaks the recovery 
   assert.match(summary, /Devices: 2 matched/);             // Alice (Faculty) + Bob (Staff iMacs, seen 2026)
   assert.ok(!existsSync(join(dir, "raw")), "raw/ must be absent without --raw");
   for (const p of allFiles(dir)) {
-    assert.ok(!readFileSync(p, "utf8").includes(SECRET), `${p} must not contain the recovery key`);
+    const body = readFileSync(p, "utf8");
+    for (const s of SECRETS) assert.ok(!body.includes(s), `${p} must not contain secret ${s}`);
   }
   const manifest = readFileSync(join(dir, "manifest.sha256"), "utf8");
   assert.match(manifest, /^[0-9a-f]{64} {2}devices\.csv$/m);
@@ -78,8 +81,8 @@ test("engine: --raw writes redacted raw dumps", async () => {
   const code = await run(["--serial", "C02FAC111", "--format", "csv", "--raw", "--out", dir]);
   assert.equal(code, 0);
   const raw = readFileSync(join(dir, "raw", "devices.json"), "utf8");
-  assert.ok(!raw.includes(SECRET));
-  assert.match(raw, /\[REDACTED escrowed=yes\]/);
+  for (const s of SECRETS) assert.ok(!raw.includes(s), `raw dump must not contain secret ${s}`);
+  assert.equal((raw.match(/\[REDACTED set=yes\]/g) ?? []).length, 3, "fv key + firmware pw + recovery-lock pw all redacted");
 });
 
 test("engine: failed app fetches → exit 2, unknown findings, sections_failed; --allow-partial → exit 0", async () => {
