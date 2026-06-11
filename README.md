@@ -18,6 +18,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Examples](#examples)
 - [Fleet Audit (/audit)](#fleet-audit-audit)
 - [Device Logs Audit (/logs-audit)](#device-logs-audit-logs-audit)
+- [Fleet Inventory Reports (/inventory)](#fleet-inventory-reports-inventory)
 - [Tools](#tools)
 - [Resources](#resources)
 - [Prompts](#prompts)
@@ -56,6 +57,9 @@ see the [`/audit` command](#fleet-audit-audit) — it joins your live fleet agai
 [SOFA](https://sofa.macadmins.io) feed and writes CSV / Markdown / Word files. For a
 targeted, legal/forensic export of a device's **activity logs** (optionally combined with
 its security posture and software inventory), see [`/logs-audit`](#device-logs-audit-logs-audit).
+For a **searchable inventory** of devices, installed/assigned apps and profiles, and
+security posture — with a query language like `'type:laptop os:<15 filevault:off'` — see
+[`/inventory`](#fleet-inventory-reports-inventory).
 
 ---
 
@@ -626,17 +630,135 @@ defensibility.
 
 ## Fleet Inventory Reports (/inventory)
 
-A **searchable, structured inventory** of your entire fleet — devices, installed apps, profiles, and assigned users — enriched with SimpleMDM metadata and deployment metrics. Like `/audit` and `/logs-audit`, it talks **directly to the SimpleMDM API** (read-only) — no external service — and is a host-side script (`scripts/inventory-report.mjs`) plus an `/inventory` skill, not an MCP tool.
+A **searchable, structured inventory** of your fleet — devices (hardware, OS + RSR,
+security posture, enrollment), installed apps with managed state, assigned apps **and**
+assigned profiles with deployment-gap detection, local users, and groups — selected by a
+**multi-keyword + field-filter query language**. Where [`/audit`](#fleet-audit-audit)
+answers *"is the fleet secure?"* and [`/logs-audit`](#device-logs-audit-logs-audit)
+answers *"what happened on these machines?"*, `/inventory` answers *"which devices match
+these criteria, and what exactly is on them?"*
+
+Like its siblings, it talks **directly to the SimpleMDM API** (read-only) — no external
+service — and is a host-side script (`scripts/inventory-report.mjs`) plus an
+`/inventory` skill, not an MCP tool.
+
+> 📖 **Deep dive:** see [`docs/inventory.md`](docs/inventory.md) for the full query-language
+> grammar, every output column, findings semantics, and the partial-data completeness model.
+
+### Running it
 
 In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags):
 
-> "Give me an inventory of all faculty and staff devices seen since 2025"
+**Example prompts**
 
-> "Which MacBooks are still on macOS 14 or older, excluding loaners?"
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"inventory of all faculty and staff devices seen since 2025"* | `--search 'group:faculty,staff seen:>=2025-01-01'` |
+| *"which MacBooks are still on macOS 14 or older, excluding loaners?"* | `--search 'type:laptop os:<15 -group:loaners'` |
+| *"which devices are assigned Zoom but don't have it installed?"* | `--search 'assigned:zoom -app:zoom' --confirm-all` |
+| *"Intel Macs without FileVault, seen in the last 90 days"* | `--search 'arch:intel filevault:off seen:90d'` |
+| *"Macs with Remote Desktop enabled"* | `--search 'ard:on type:laptop,imac,desktop,mac'` |
+| *"devices with less than 20 GB free"* | `--search 'storage:<20'` |
+| *"inventory the Library group with full app detail as a PDF"* | `--group "Library" --report-detail full --format all` |
+| *"full inventory of the 5 most recently seen devices"* | `--last-seen 5 --report-detail full` |
 
-> "Which devices are assigned Zoom but don't have it installed?"
+Or run the engine directly — a selector, a `--search` query, or both:
 
-> "Inventory the Library group with full app detail as a PDF"
+```bash
+node scripts/inventory-report.mjs [selector] [--search '<query>'] [flags]
+```
+
+| Selector | Meaning |
+|------|---------|
+| `--serial A,B,C` | specific devices by serial number (comma-separated) |
+| `--last-seen N` | the **N** most recently seen devices |
+| `--group "Name"` | every device in a device/assignment group of that name |
+| `--all` | the whole fleet — **requires `--confirm-all`** (apps/profiles/users fetched per device) |
+| `--search '<query>'` | the query itself selects devices (combinable with any selector above) |
+
+**The query language** — bare keywords AND together across every field; `OR` between
+terms; `-term` excludes; `field:value` scopes. Values take comma-lists (OR), `*`
+wildcards, comparators (`>` `<` `>=` `<=` — version-aware for `os:`/app versions,
+date-aware for `seen:`/`enrolled:`), `..` ranges, and relative dates (`seen:90d`):
+
+| Fields | Examples |
+|--------|----------|
+| identity: `name` `devicename` `serial` `udid` `imei` `mac` `ip` | `serial:C02*`, `mac:a4:83:*`, `ip:10.42.*` |
+| hardware: `model` `type` `arch` `storage` `battery` | `model:"iMac (24-inch, M1, 2021)"`, `type:laptop`, `arch:intel`, `storage:<20`, `battery:<50` |
+| OS: `os` `build` | `os:<15.5`, `os:15.1..15.7` |
+| groups & apps: `group` `assignment` `assigned` `app` `profile` `user` | `group:faculty,staff`, `app:zoom<6.0.10`, `assigned:zoom -app:zoom` |
+| dates: `seen` `enrolled` | `seen:90d`, `enrolled:2025-01-01..2025-06-30` |
+| posture: `filevault` `recoverykey` `sip` `firewall` `supervised` `dep` `ard` `uamdm` `ddm` `activationlock` `lostmode` `firmwarelock` `recoverylock` `passcode` `status` | `filevault:off`, `recoverykey:no`, `ard:on`, `ddm:off`, `status:awaiting` |
+| custom attributes: `attr.<name>` | `attr.xprotect_version:<5305` |
+
+| Flag | Meaning |
+|------|---------|
+| `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
+| `--report-detail <lvl>` | per-device tables in the report: `summary` (counts + assigned tables, default) \| `table` (+ installed apps) \| `full` (+ profiles and users) |
+| `--no-apps` / `--no-profiles` / `--no-users` | skip per-device sections for speed |
+| `--no-findings` | suppress the auto-detected findings pass |
+| `--raw` | also write redacted raw device JSON (off by default) |
+| `--allow-partial` | exit 0 even if some per-device fetches failed (default: exit 2 so partial data is never silent) |
+| `--out <dir>` | output directory (default `reports/inventory-YYYY-MM-DD/`) |
+
+Device-level filters run **before** per-device fetches, so scoped searches stay fast — the
+engine prints its query plan. A fleet-wide search whose terms are all per-device (bare
+keywords / `app:` / `profile:` / `user:`) needs `--confirm-all`, same as `--all`.
+
+**Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).
+`pandoc` for `.docx`/`.html`/`.pdf`; the PDF prefers WeasyPrint, falling back to headless Chrome.
+
+### Examples
+
+```bash
+# The motivating report: faculty/staff devices seen since 2025, every format
+node scripts/inventory-report.mjs --search 'group:faculty,staff seen:>=2025-01-01' --format all
+
+# Outdated MacBooks, excluding loaners — CSVs only
+node scripts/inventory-report.mjs --search 'type:laptop os:<15 -group:loaners' --format csv
+
+# Deployment gaps: assigned Zoom but not installed (fleet-wide per-device scan)
+node scripts/inventory-report.mjs --search 'assigned:zoom -app:zoom' --confirm-all
+
+# Security sweep: unencrypted, recently active, with Remote Desktop on
+node scripts/inventory-report.mjs --search 'filevault:off ard:on seen:90d'
+
+# One group, everything, full per-device tables
+node scripts/inventory-report.mjs --group "Library" --report-detail full --format all
+
+# Old hardware by version-aware compare and wildcard serials
+node scripts/inventory-report.mjs --search 'serial:C02* OR serial:FVFG* os:13'
+```
+
+### Output
+
+Written to `reports/inventory-YYYY-MM-DD/` (which is **gitignored** — exports contain
+live tenant data and are never committed):
+
+| File | Contents |
+|------|----------|
+| `devices.csv` | one row per matched device: identity (serial, UDID, MACs incl. Bluetooth, last IP, MEID/ICCID), hardware (model + SOFA marketing name + release year + type + arch), OS/build/**RSR**, enrollment (status, DEP, UAMDM, DDM, channels), storage/battery, full security posture (FileVault, recovery-key escrow, SIP, firewall, ARD, activation lock, lost mode, firmware lock, Recovery Lock, passcode), groups, custom attributes, match reasons, `sections_failed` |
+| `apps.csv` | device × installed app (name, bundle id, version, **managed**, `matched` flag from the query) |
+| `assigned-apps.csv` | device × assigned app × assignment group, with `installed`, `managed`, and `installed_as` (the live app + version it matched) |
+| `assigned-profiles.csv` | device × assigned profile × via (device group / **assignment group** / direct), `installed` matched by exact profile identifier |
+| `profiles.csv` / `users.csv` | installed profiles and local users per device |
+| `app-catalog.csv` | fleet-wide app → version spread → device count |
+| `by-group.csv` `by-type.csv` `by-model.csv` `by-os.csv` | rollups (by-model carries marketing name + release year) |
+| `findings.csv` | always written — assigned-app-missing, assigned-profile-missing, low-storage, stale-device, recovery-key-missing, duplicate-name, os-outlier; status `flag` or `unknown` |
+| `raw/devices.json` | *(with `--raw`)* raw device records with **all secrets redacted** (FileVault key, firmware password, Recovery Lock password) |
+| `manifest.sha256` | SHA-256 of every output file, summary included |
+| `summary.txt` | account + license usage, query echo, matched counts, findings by type, partial-data details |
+| `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier**: account/license header, fleet rollups, findings rollup + per-type tables, per-device facts table + assigned apps/profiles tables (every detail level) + installed inventory (per `--report-detail`) |
+
+### Integrity & disclosures
+
+Search results are never silently wrong: if a per-device fetch fails, dependent query
+terms evaluate to **undetermined** (the device is included and flagged, not dropped),
+findings degrade to status `unknown` instead of asserting, and the run exits 2 unless you
+pass `--allow-partial`. Secrets (FileVault recovery keys, firmware/Recovery Lock
+passwords) never reach any output file — only set/escrowed yes-no facts. Assigned-vs-installed
+app matching is a name heuristic (pkg/script payloads may read `installed: no` because they
+never appear in app inventory by that name); profile matching uses exact identifiers.
 
 ---
 
