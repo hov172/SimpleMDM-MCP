@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.25.1] - 2026-06-11
+
+### Fixed
+- Logs-audit dossier disclosures no longer cite artifacts that `--report-only` intentionally skips: in report-only mode the intro and Authoritative-sources lines now state it is a report-only export and direct the reader to re-run without `--report-only` for the verbatim CSV/JSON records, instead of pointing at `status-snapshots/` and `raw-logs.json` that were not written.
+
 ## [0.25.0] - 2026-06-11
 
 ### Added
