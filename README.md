@@ -764,7 +764,7 @@ live tenant data and are never committed):
 
 | File | Contents |
 |------|----------|
-| `devices.csv` | one row per matched device: identity (serial, UDID, MACs incl. Bluetooth, last IP, MEID/ICCID), hardware (model + SOFA marketing name + release year + type + arch), OS/build/**RSR**, enrollment (status, DEP, UAMDM, DDM, channels), storage/battery, full security posture (FileVault, recovery-key escrow, SIP, firewall, ARD, activation lock, lost mode, firmware lock, Recovery Lock, passcode), groups, custom attributes, match reasons, `sections_failed` |
+| `devices.csv` | one row per matched device: identity (serial, UDID, MACs incl. Bluetooth, last IP, MEID/ICCID), hardware (model + marketing name + release year + type + arch — enriched from the SOFA feed plus a curated Apple legacy-model table for pre-SOFA Macs back to 2009, so even a 2013 iMac gets "iMac (21.5-inch, Late 2013) — 2013"), OS/build/**RSR**, enrollment (status, DEP, UAMDM, DDM, channels), storage/battery, full security posture (FileVault, recovery-key escrow, SIP, firewall, ARD, activation lock, lost mode, firmware lock, Recovery Lock, passcode), groups, custom attributes, match reasons, `sections_failed` |
 | `apps.csv` | device × installed app (name, bundle id, version, **managed**, `matched` flag from the query) |
 | `assigned-apps.csv` | device × assigned app × assignment group, with `installed`, `managed`, and `installed_as` (the live app + version it matched) |
 | `assigned-profiles.csv` | device × assigned profile × via (device group / **assignment group** / direct), `installed` matched by exact profile identifier |
