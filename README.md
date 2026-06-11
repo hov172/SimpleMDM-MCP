@@ -677,6 +677,12 @@ In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags)
 | *"devices with less than 20 GB free"* | `--search 'storage:<20'` |
 | *"inventory the Library group with full app detail as a PDF"* | `--group "Library" --report-detail full --format all` |
 | *"full inventory of the 5 most recently seen devices"* | `--last-seen 5 --report-detail full` |
+| *"which devices haven't checked in for 90 days?"* | `--search '-seen:90d'` |
+| *"FileVault on but recovery key not escrowed"* | `--search 'filevault:on recoverykey:no'` |
+| *"who owns MAC address a4:83:e7…?"* | `--search 'mac:a4:83:e7*'` |
+
+More phrasings (security/compliance, deployment gaps, lifecycle, targeted hunts) in the
+[prompt cookbook](docs/inventory.md#prompt-cookbook).
 
 Or run the engine directly — a selector, a `--search` query, or both:
 
