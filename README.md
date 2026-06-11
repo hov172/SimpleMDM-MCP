@@ -777,6 +777,7 @@ live tenant data and are never committed):
 | `app-catalog.csv` | fleet-wide app → version spread → device count |
 | `by-group.csv` `by-type.csv` `by-model.csv` `by-os.csv` | rollups (by-model carries marketing name + release year) |
 | `findings.csv` | always written — assigned-app-missing, assigned-profile-missing, low-storage, stale-device, recovery-key-missing, duplicate-name, os-outlier; status `flag` or `unknown` |
+| `report-table.csv` | *(with `--report-style flat` or `roster`)* CSV twin of the report's device table(s) — same columns (`model_id` … `last_seen`, users + assignment groups inline, `device_group` as a column), cells, and row order as the report; roster rows follow the report's section reading order |
 | `raw/devices.json` | *(with `--raw`)* raw device records with **all secrets redacted** (FileVault key, firmware password, Recovery Lock password) |
 | `manifest.sha256` | SHA-256 of every output file, summary included |
 | `summary.txt` | account + license usage, query echo, matched counts, findings by type, partial-data details |
