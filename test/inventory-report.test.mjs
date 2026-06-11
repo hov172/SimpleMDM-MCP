@@ -405,3 +405,36 @@ test("buildModelMap: legacy Apple models fill SOFA gaps; SOFA overlays when it k
   const empty = buildModelMap(null, null);
   assert.equal(empty.get("MacBookAir7,2").year, "2015", "legacy table works even with SOFA unavailable");
 });
+
+import { renderInventoryFlat, FLAT_COLUMNS, sortRecords } from "../scripts/lib/inventory-render.mjs";
+
+test("parseInvArgs: --report-style flat and --sort validation", () => {
+  assert.equal(parseInvArgs(["--search", "x", "--report-style", "flat"]).reportStyle, "flat");
+  assert.deepEqual(parseInvArgs(["--search", "x", "--sort", "seen:desc"]).sort, { field: "seen", dir: "desc" });
+  assert.deepEqual(parseInvArgs(["--search", "x", "--sort", "model"]).sort, { field: "model", dir: "asc" });
+  assert.equal(parseInvArgs(["--search", "x"]).sort, null);
+  assert.match(parseInvArgs(["--search", "x", "--sort", "bogus"]).error, /Invalid --sort/);
+  assert.match(parseInvArgs(["--search", "x", "--sort", "seen:sideways"]).error, /Invalid --sort/);
+});
+
+test("renderInventoryFlat: one table, device_group column, default sort = group then last seen", () => {
+  const recs = buildRecords();
+  const md = renderInventoryFlat(recs, { query: "devicegroup:faculty,staff", scopeLabel: "search (whole fleet)", dateStr: "2026-06-11", failures: [], account: { name: "Test U", total: 500, available: 51 } });
+  assert.match(md, /# SimpleMDM Device Inventory \(flat\) — 2026-06-11/);
+  assert.match(md, new RegExp("\\| " + FLAT_COLUMNS.join(" \\| ") + " \\|"));
+  assert.match(md, /\| MacBookPro18,1 \| MacBook Pro \(16-inch, M1 Pro, 2021\) \| 2021 \| Faculty \| Alice MBP \| C02FAC111 \| Alice Anderson \| Faculty Apps \| 15.5 \| 2026-06-09 \|/);
+  const order = [...md.matchAll(/\| ([A-Z0-9]{9,12}) \| [^|]+ \| [^|]+ \| [^|]+ \|\n/g)];
+  const serialOrder = md.split("\n").filter((l) => /^\| \S+ \| .*\| (C02FAC111|D25STA222|E33LAB333|F44PAD444) \|/.test(l) || /(C02FAC111|D25STA222|E33LAB333|F44PAD444)/.test(l) && l.startsWith("| ")).map((l) => (l.match(/C02FAC111|D25STA222|E33LAB333|F44PAD444/) ?? [])[0]).filter(Boolean);
+  assert.deepEqual(serialOrder, ["E33LAB333", "C02FAC111", "F44PAD444", "D25STA222"], "default order: (no group) Carol, Faculty Alice, Library iPad, Staff iMacs Bob");
+  assert.doesNotMatch(md, /## Summary/, "flat has no section structure — one table only");
+});
+
+test("renderInventoryFlat + sortRecords: --sort seen:desc puts most recently seen first; os sorts numerically", () => {
+  const recs = buildRecords();
+  const md = renderInventoryFlat(recs, { query: null, scopeLabel: "--all", dateStr: "2026-06-11", sort: { field: "seen", dir: "desc" } });
+  const serials = md.split("\n").filter((l) => l.startsWith("| ")).map((l) => (l.match(/C02FAC111|D25STA222|E33LAB333|F44PAD444/) ?? [])[0]).filter(Boolean);
+  assert.equal(serials[0], "C02FAC111", "Alice seen 2026-06-09 leads on seen:desc");
+  assert.equal(serials[serials.length - 1], "E33LAB333", "stale Carol (2024) last");
+  const byOs = sortRecords(buildRecords(), { field: "os", dir: "desc" });
+  assert.equal(byOs[0].serial, "F44PAD444", "18.5 outranks 15.5 numerically on os:desc");
+});

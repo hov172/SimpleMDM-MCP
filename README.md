@@ -718,7 +718,8 @@ date-aware for `seen:`/`enrolled:`), `..` ranges, and relative dates (`seen:90d`
 |------|---------|
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device tables in the report: `summary` (counts + assigned tables, default) \| `table` (+ installed apps) \| `full` (+ profiles and users) |
-| `--report-style <style>` | `dossier` (default — audit style: rollups, findings, per-device facts) \| `roster` (people-facing: by-group summary, type/model breakdowns, then one row per device with local users and assignment groups inline — the classic "hand this list to the department" export) |
+| `--report-style <style>` | `dossier` (default — audit style: rollups, findings, per-device facts) \| `roster` (people-facing: by-group summary, type/model breakdowns, then one row per device with local users and assignment groups inline — the classic "hand this list to the department" export) \| `flat` (one single table with `device_group` as a column — the spreadsheet view) |
+| `--sort <field[:asc\|desc]>` | row order for roster/flat: `seen` \| `name` \| `serial` \| `model` \| `os` \| `group` \| `year` — e.g. `--sort seen:desc` = most recently seen first (defaults: roster oldest-seen first per group; flat by group then last seen). Filtering by last seen is the `seen:` query field |
 | `--no-apps` / `--no-profiles` / `--no-users` | skip per-device sections for speed |
 | `--no-findings` | suppress the auto-detected findings pass |
 | `--raw` | also write redacted raw device JSON (off by default) |

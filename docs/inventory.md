@@ -37,7 +37,8 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 |---|---|
 | `--format csv\|md\|docx\|all` | `csv` → CSVs + summary only; `md` adds `report.md`; `docx` adds Word; `all` (default) adds HTML + PDF |
 | `--report-detail summary\|table\|full` | per-device dossier tables: `summary` = facts + assigned apps/profiles tables; `table` adds the installed-apps table; `full` adds installed profiles + local users |
-| `--report-style dossier\|roster` | `dossier` (default) = audit style (rollups → findings → per-device facts); `roster` = people-facing list — by-group summary with total, type/model breakdowns, then one section per device group with one row per device (model #, marketing name, year, device name, serial, **local users**, **assignment groups**, macOS, last seen), sorted oldest-seen first |
+| `--report-style dossier\|roster\|flat` | `dossier` (default) = audit style (rollups → findings → per-device facts); `roster` = people-facing list — by-group summary with total, type/model breakdowns, then one section per device group with one row per device (model #, marketing name, year, device name, serial, **local users**, **assignment groups**, macOS, last seen); `flat` = one single table with `device_group` as a column — the spreadsheet-like hand-off view |
+| `--sort <field[:asc\|desc]>` | row order for roster/flat: `seen` `name` `serial` `model` `os` `group` `year` — e.g. `--sort seen:desc` puts the most recently seen devices first. Defaults: roster = oldest-seen first within each group; flat = device group, then last seen. (`os` sorts numerically, so 15.10 > 15.9.) To *filter* by last seen instead, use the `seen:` query field |
 | `--no-apps` / `--no-profiles` / `--no-users` | skip a per-device section entirely (its CSV is skipped; a query referencing it errors) |
 | `--no-findings` | skip the findings pass |
 | `--raw` | write `raw/devices.json` (redacted — see Secrets) |
@@ -244,8 +245,11 @@ node scripts/inventory-report.mjs \
   --format <csv|md|docx|all> [--out reports/<name>]
 
 # COMMON ─────────────────────────────────────────────────────────────────────
-# Group roster (people-facing PDF/Word)
+# Group roster (people-facing PDF/Word, sectioned by device group)
 node scripts/inventory-report.mjs --search 'devicegroup:<groups>' --report-style roster --format all
+
+# Flat one-table export (device_group as a column), most recently seen first
+node scripts/inventory-report.mjs --search 'devicegroup:<groups>' --report-style flat --sort seen:desc --format all
 
 # Full audit dossier for one group
 node scripts/inventory-report.mjs --group "<Group>" --report-detail full --format all
