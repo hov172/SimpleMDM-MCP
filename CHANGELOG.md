@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.19.0] - 2026-06-10
 
 ### Added
 - `/inventory` deep-dive hardening: profiles assigned via assignment groups now resolved (previously invisible), firmware/Recovery-Lock password values defensively redacted from `--raw` dumps, new posture columns + query fields (ard, uamdm, ddm, activationlock, lostmode, firmwarelock, recoverylock, passcode), RSR supplemental OS version, identity columns (bluetooth_mac, meid, iccid, time_zone, cloud backup, enrollment channels), and account/license header from `/account`.
