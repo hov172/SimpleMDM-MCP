@@ -3,6 +3,7 @@
 
 const onOff = (v) => (v === true ? "on" : v === false ? "off" : "");
 const join = (xs) => (xs ?? []).join(" | ");
+const short = (v) => (v ? String(v).slice(0, 10) : ""); // display dates as YYYY-MM-DD; full ISO stays in the CSVs
 
 export const DEVICE_COLUMNS = [
   "name", "device_name", "serial", "udid", "imei", "wifi_mac", "ethernet_macs", "last_ip",
@@ -123,7 +124,9 @@ const MAC_TYPES = new Set(["imac", "laptop", "desktop", "mac"]);
 // failed for this device, so the finding is reported but never asserted.
 export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, now = Date.now() } = {}) {
   const out = [];
-  const add = (type, status, r, detail) => out.push({ type, status, serial: r.serial, name: r.name, detail });
+  // extra carries structured fields (item/via) for the dossier's per-type tables;
+  // findings.csv only emits FINDING_COLUMNS, so the CSV schema is unaffected.
+  const add = (type, status, r, detail, extra = {}) => out.push({ type, status, serial: r.serial, name: r.name, detail, ...extra });
 
   const byName = new Map();
   for (const r of records) {
@@ -131,7 +134,7 @@ export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, 
     byName.set(r.name, [...(byName.get(r.name) ?? []), r]);
   }
   for (const [name, rs] of byName) {
-    if (rs.length > 1) for (const r of rs) add("duplicate-name", "flag", r, `${rs.length} devices share the name "${name}"`);
+    if (rs.length > 1) for (const r of rs) add("duplicate-name", "flag", r, `${rs.length} devices share the name "${name}"`, { item: name });
   }
 
   const macs = records.filter((r) => MAC_TYPES.has(r.type) && r.os_version);
@@ -144,27 +147,29 @@ export function inventoryFindings(records, { lowStorageGb = 10, staleDays = 90, 
 
   for (const r of records) {
     if (r.storage_free_gb != null && r.storage_free_gb < lowStorageGb) {
-      add("low-storage", "flag", r, `${Number(r.storage_free_gb).toFixed(1)} GB free of ${r.storage_total_gb ?? "?"} GB`);
+      const free = `${Number(r.storage_free_gb).toFixed(1)} GB free`;
+      add("low-storage", "flag", r, `${free} of ${r.storage_total_gb ?? "?"} GB`, { item: free });
     }
     const t = r.seen_at ? Date.parse(r.seen_at) : NaN;
-    if (Number.isFinite(t) && now - t > staleDays * 86400000) add("stale-device", "flag", r, `last seen ${r.seen_at}`);
+    if (Number.isFinite(t) && now - t > staleDays * 86400000) add("stale-device", "flag", r, `last seen ${r.seen_at}`, { item: short(r.seen_at) });
     if (r.filevault === true && r.recoverykey === false) add("recovery-key-missing", "flag", r, "FileVault is on but no recovery key is escrowed");
     if (modal && MAC_TYPES.has(r.type) && r.os_version) {
       const mj = parseInt(r.os_version.split(".")[0], 10);
-      if (Number.isFinite(mj) && parseInt(modal, 10) - mj > 1) add("os-outlier", "flag", r, `macOS ${r.os_version} vs fleet modal ${modal}.x`);
+      if (Number.isFinite(mj) && parseInt(modal, 10) - mj > 1) add("os-outlier", "flag", r, `macOS ${r.os_version} vs fleet modal ${modal}.x`, { item: r.os_version });
     }
     for (const appName of r.assigned_apps ?? []) {
+      const via = (r.assigned_detail ?? []).filter((x) => x.app === appName).map((x) => x.group).join(", ");
       if (r.sections?.apps === "ok") {
-        if (!installedHas(r, appName)) add("assigned-app-missing", "flag", r, `"${appName}" is assigned via an assignment group but not installed`);
+        if (!installedHas(r, appName)) add("assigned-app-missing", "flag", r, `"${appName}" is assigned via an assignment group but not installed`, { item: appName, via });
       } else if (r.sections?.apps === "failed" || r.sections?.apps === "pending") {
-        add("assigned-app-missing", "unknown", r, `"${appName}" is assigned; installed-app inventory unavailable (fetch ${r.sections.apps})`);
+        add("assigned-app-missing", "unknown", r, `"${appName}" is assigned; installed-app inventory unavailable (fetch ${r.sections.apps})`, { item: appName, via });
       }
     }
     for (const ap of r.assigned_profile_detail ?? []) {
       if (r.sections?.profiles === "ok") {
-        if (!installedProfileHas(r, ap)) add("assigned-profile-missing", "flag", r, `"${ap.profile}" is assigned (via ${ap.via}) but not installed`);
+        if (!installedProfileHas(r, ap)) add("assigned-profile-missing", "flag", r, `"${ap.profile}" is assigned (via ${ap.via}) but not installed`, { item: ap.profile, via: ap.via });
       } else if (r.sections?.profiles === "failed" || r.sections?.profiles === "pending") {
-        add("assigned-profile-missing", "unknown", r, `"${ap.profile}" is assigned; installed-profile inventory unavailable (fetch ${r.sections.profiles})`);
+        add("assigned-profile-missing", "unknown", r, `"${ap.profile}" is assigned; installed-profile inventory unavailable (fetch ${r.sections.profiles})`, { item: ap.profile, via: ap.via });
       }
     }
   }
@@ -178,6 +183,49 @@ function mdTable(cols, rows) {
   const head = `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |`;
   const body = rows.map((r) => `| ${cols.map((c) => mdEsc(r[c])).join(" | ")} |`).join("\n");
   return `${head}\n${body}`;
+}
+
+// Per-type presentation for the dossier's Findings section: the boilerplate
+// lives in the heading, rows carry only what varies.
+const FINDING_TYPE_META = {
+  "assigned-app-missing":     { title: "Assigned apps missing",                 item: "app",         via: "via assignment group" },
+  "assigned-profile-missing": { title: "Assigned profiles missing",             item: "profile",     via: "via" },
+  "low-storage":              { title: "Low storage",                           item: "free space" },
+  "stale-device":             { title: "Stale devices",                         item: "last seen" },
+  "recovery-key-missing":     { title: "FileVault recovery key not escrowed" },
+  "duplicate-name":           { title: "Duplicate device names",                item: "shared name" },
+  "os-outlier":               { title: "OS outliers (>1 major behind fleet)",   item: "os" },
+};
+
+function renderFindingsSection(findings) {
+  const out = ["## 2. ⚠ Findings\n"];
+  if (!findings.length) {
+    out.push("_none_\n");
+    return out;
+  }
+  const byType = new Map();
+  for (const f of findings) byType.set(f.type, [...(byType.get(f.type) ?? []), f]);
+  out.push(mdTable(["finding", "devices", "items", "undetermined"], [...byType.entries()].map(([type, fs]) => ({
+    finding: type,
+    devices: new Set(fs.map((f) => f.serial)).size,
+    items: fs.length,
+    undetermined: fs.filter((f) => f.status === "unknown").length || "",
+  }))) + "\n");
+  for (const [type, fs] of byType) {
+    const meta = FINDING_TYPE_META[type] ?? { title: type };
+    out.push(`### ${meta.title} (${fs.length})\n`);
+    const itemCol = meta.item ?? "detail";
+    const cols = ["device", itemCol, ...(meta.via ? [meta.via] : [])];
+    const anyUnknown = fs.some((f) => f.status === "unknown");
+    if (anyUnknown) cols.push("status");
+    out.push(mdTable(cols, fs.map((f) => ({
+      device: `${f.name} (${f.serial})`,
+      [itemCol]: meta.item ? (f.item ?? f.detail) : f.detail,
+      ...(meta.via ? { [meta.via]: f.via ?? "" } : {}),
+      ...(anyUnknown ? { status: f.status } : {}),
+    }))) + "\n");
+  }
+  return out;
 }
 
 export function renderInventoryReport(records, { query, scopeLabel, dateStr, findings = [], detail = "summary", failures = [] } = {}) {
@@ -204,20 +252,25 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
   const appExcluded = records.filter((r) => r.sections?.apps !== "ok").length;
   if (appExcluded) out.push(`_App catalog and app-based rollups exclude ${appExcluded} device(s) whose installed-app inventory was unavailable._\n`);
 
-  out.push("## 2. ⚠ Findings\n");
-  out.push(mdTable(FINDING_COLUMNS, findings) + "\n");
+  out.push(...renderFindingsSection(findings));
 
   out.push("## 3. Per-Device Inventory\n");
   for (const r of records) {
     out.push(`### ${mdEsc(r.name)} (\`${r.serial}\`)\n`);
-    out.push(`**Identity** — Serial \`${r.serial}\` · UDID \`${r.udid}\` · WiFi MAC \`${r.wifi_mac}\` · Last IP \`${r.last_ip}\``);
-    out.push(`**Hardware** — ${mdEsc(r.model_name || r.model_id)} (\`${r.model_id}\`${r.model_year ? `, ${r.model_year}` : ""}) · ${r.type} · ${r.arch} · ` +
-      `${r.storage_free_gb ?? "?"}/${r.storage_total_gb ?? "?"} GB free${r.battery_pct != null ? ` · battery ${r.battery_pct}%` : ""}`);
-    out.push(`**OS** — ${r.os_version} (${r.build_version}) · **Posture** — FileVault ${onOff(r.filevault) || "n/a"}, recovery key ${onOff(r.recoverykey) || "n/a"}, ` +
-      `SIP ${onOff(r.sip) || "n/a"}, firewall ${onOff(r.firewall) || "n/a"}, supervised ${onOff(r.supervised) || "n/a"} · DEP ${onOff(r.dep) || "n/a"}`);
-    out.push(`**Groups** — device group: ${mdEsc(r.device_group || "(none)")} · assignment groups: ${mdEsc(join(r.assignment_groups) || "(none)")}`);
-    out.push(`**Dates** — enrolled ${r.enrolled_at ?? "?"} · last seen ${r.seen_at ?? "?"}`);
-    if (r.match_reasons) out.push(`**Match reasons** — ${mdEsc(r.match_reasons)}`);
+    const facts = [
+      ["Serial / UDID", `\`${r.serial}\` · \`${r.udid}\``],
+      ["Network", `WiFi \`${r.wifi_mac}\`${r.ethernet_macs?.length ? ` · Ethernet ${r.ethernet_macs.map((m) => `\`${m}\``).join(", ")}` : ""} · last IP \`${r.last_ip}\``],
+      ["Hardware", `${r.model_name || r.model_id} (\`${r.model_id}\`${r.model_year ? `, ${r.model_year}` : ""}) · ${r.type} · ${r.arch}`],
+      ["Storage / battery", `${r.storage_free_gb ?? "?"} / ${r.storage_total_gb ?? "?"} GB free${r.battery_pct != null ? ` · battery ${r.battery_pct}%` : ""}`],
+      ["OS", `${r.os_version} (${r.build_version})`],
+      ["Security", `FileVault ${onOff(r.filevault) || "n/a"} · recovery key ${onOff(r.recoverykey) || "n/a"} · SIP ${onOff(r.sip) || "n/a"} · firewall ${onOff(r.firewall) || "n/a"}`],
+      ["Enrollment", `${r.status || "?"} · supervised ${onOff(r.supervised) || "n/a"} · DEP ${onOff(r.dep) || "n/a"} · enrolled ${short(r.enrolled_at) || "?"}`],
+      ["Last seen", short(r.seen_at) || "?"],
+      ["Device group", r.device_group || "(none)"],
+      [`Assignment groups (${r.assignment_groups?.length ?? 0})`, (r.assignment_groups ?? []).join(", ") || "(none)"],
+    ];
+    if (r.match_reasons) facts.push(["Match reasons", r.match_reasons]);
+    out.push(mdTable(["field", "value"], facts.map(([field, value]) => ({ field, value }))) + "\n");
     const failed = Object.entries(r.sections ?? {}).filter(([, v]) => v === "failed").map(([k]) => k);
     if (failed.length) out.push(`> ⚠ **Incomplete:** ${failed.join(", ")} fetch failed — counts below exclude those sections.`);
     const nApps = r.apps?.length ?? "?", nProf = r.profiles?.length ?? "?", nUsers = r.users?.length ?? "?";
@@ -247,6 +300,8 @@ export function renderInventoryReport(records, { query, scopeLabel, dateStr, fin
   out.push("## 4. Methodology & Disclosures\n");
   out.push("- Inventory data reflects the device's last MDM check-in (`last_seen_at`), not a live poll.");
   out.push("- Assigned-vs-installed app matching is a case-insensitive substring heuristic (catalog name vs installed name/bundle id); profile matching uses the exact profile identifier when available, else name equality.");
+  out.push("- Assigned \"apps\" include installer packages and scripts; pkg-type payloads may never appear in the installed-app inventory under their catalog name, so `installed: no` can mean \"unmatchable\" rather than genuinely missing for those.");
+  out.push("- Dossier dates are shortened to YYYY-MM-DD for readability; full ISO timestamps are preserved in the CSVs.");
   out.push("- Assigned apps come from assignment groups; assigned profiles come from device-group and direct-device profile assignments.");
   out.push("- Findings with status `unknown` could not be decided because a per-device fetch failed; they are never asserted.");
   out.push("- FileVault recovery keys are never written to any output; only the escrowed yes/no fact is reported.");

@@ -234,9 +234,16 @@ test("renderInventoryReport: header, banner, rollups, findings, per-device secti
   assert.match(md, /### By Model/);
   assert.match(md, /iMac \(24-inch, M1, 2021, Four Ports\)/);
   assert.match(md, /## 2\. ⚠ Findings/);
-  assert.match(md, /assigned-app-missing/);
+  assert.match(md, /\| finding \| devices \| items \| undetermined \|/, "findings rollup table");
+  assert.match(md, /\| assigned-app-missing \| 1 \| 1 \|/, "rollup counts the Zoom gap");
+  assert.match(md, /### Assigned apps missing \(1\)/, "per-type subsection with count in heading");
+  assert.match(md, /\| Bob iMac \(D25STA222\) \| Zoom \| Faculty Apps \|/, "compact per-type row: device, app, via group");
+  assert.match(md, /### Assigned profiles missing \(2\)/);
+  assert.doesNotMatch(md, /is assigned via an assignment group but not installed/, "boilerplate sentence no longer repeated in the dossier");
   assert.match(md, /## 3\. Per-Device Inventory/);
-  assert.match(md, /Serial `C02FAC111`/);
+  assert.match(md, /\| Serial \/ UDID \| `C02FAC111` · `UDID-201` \|/, "facts table row");
+  assert.match(md, /\| Last seen \| 2026-06-09 \|/, "dates shortened in the facts table");
+  assert.match(md, /\| Assignment groups \(1\) \| Faculty Apps \|/);
   assert.match(md, /## 4\. Methodology & Disclosures/);
   assert.match(md, /last MDM check-in/);
 });
