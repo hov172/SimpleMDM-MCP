@@ -257,7 +257,7 @@ function captureLogs() {
     `${lr.length} events`);
   writeLogsFile("logs-status-snapshots.csv",
     toCsv([STATUS_COLUMNS], sr),
-    "status.changed snapshots; full status JSON externalized to status-snapshots/",
+    "status.changed snapshots; full status JSON externalized to status-snapshots/ (see status_json_file column)",
     `${sr.length} snapshots`);
   writeLogsFile("logs-summary.csv",
     toCsv([SUMMARY_COLUMNS], mr),
