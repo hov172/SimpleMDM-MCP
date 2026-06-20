@@ -13,11 +13,17 @@ function block(b: DocBlock): string {
     case "paragraph": return b.markdown;
     case "callout": return b.markdown.split("\n").map((l) => `> ${l}`).join("\n");
     case "table": return mdTable(b.columns, b.rows);
+    case "subheading": return `### ${b.heading}`;
   }
 }
 
-export function renderMarkdown(doc: ReportDocument): string {
-  const out: string[] = [`# ${doc.title}\n`];
+export function renderMarkdown(doc: ReportDocument, bodyParts?: string[]): string {
+  // If pre-rendered body parts are present, emit them verbatim (no auto-title)
+  if (bodyParts && bodyParts.length > 0) {
+    return bodyParts.join("");
+  }
+  const out: string[] = [];
+  if (doc.title) out.push(`# ${doc.title}\n`);
   for (const s of doc.sections) {
     out.push(`## ${s.heading}\n`);
     for (const b of s.blocks) out.push(block(b) + "\n");

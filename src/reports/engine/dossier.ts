@@ -1,11 +1,12 @@
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { Column, Row } from "./csv.js";
 import { toCsv, reportOnlyGate, type Format } from "./csv.js";
 import type { DocBlock, DocSection, PageStyle, ReportDocument } from "./document.js";
 import { renderMarkdown } from "./markdown.js";
 import { headHtml } from "./theme.js";
 import { renderReportPdf, mdToDocx } from "./pipeline.js";
-import { sha256 as _sha256, manifestRows, MANIFEST_COLUMNS } from "./manifest.js";
+import { sha256 as _sha256, manifestRows, MANIFEST_COLUMNS, type FileMeta } from "./manifest.js";
 import { writeArtifact, toFileMeta, type WrittenFile } from "./outdir.js";
 
 export interface WriteResult {
@@ -26,12 +27,19 @@ class SectionBuilder {
     this.section.blocks.push(block);
     return this;
   }
+  subsection(heading: string): this { this.section.blocks.push({ kind: "subheading", heading }); return this; }
 }
+
+interface DataFileEntry { name: string; content: string; description: string }
+interface ManifestNoteEntry { file: string; description: string }
 
 export class Dossier {
   private readonly doc: ReportDocument;
   private readonly footerTitle: string;
   private readonly mdName: string;
+  private readonly _bodyParts: string[] = [];
+  private readonly _dataFiles: DataFileEntry[] = [];
+  private readonly _manifestNotes: ManifestNoteEntry[] = [];
 
   constructor(opts: { title: string; pageStyle: PageStyle; footerTitle?: string; mdName?: string; baseName?: string }) {
     this.doc = { title: opts.title, pageStyle: opts.pageStyle, sections: [] };
@@ -43,6 +51,25 @@ export class Dossier {
     const s: DocSection = { heading, blocks: [] };
     this.doc.sections.push(s);
     return new SectionBuilder(s);
+  }
+
+  bodyMarkdown(md: string): this {
+    this._bodyParts.push(md);
+    return this;
+  }
+
+  dataFile(name: string, content: string, description?: string): this {
+    this._dataFiles.push({ name, content, description: description ?? name });
+    return this;
+  }
+
+  dataCsv(name: string, columns: Column[], rows: Row[], description?: string): this {
+    return this.dataFile(name, toCsv(columns, rows), description);
+  }
+
+  manifestNote(file: string, description: string): this {
+    this._manifestNotes.push({ file, description });
+    return this;
   }
 
   toDocument(): ReportDocument { return this.doc; }
@@ -68,9 +95,21 @@ export class Dossier {
       }
     }
 
+    // 1b. Registered data files (dataFile / dataCsv)
+    if (gate.writeData && (opts.format === "csv" || opts.format === "all")) {
+      for (const df of this._dataFiles) {
+        const fullPath = join(outDir, df.name);
+        mkdirSync(dirname(fullPath), { recursive: true });
+        writeFileSync(fullPath, df.content);
+        const bytes = Buffer.byteLength(df.content);
+        const hash = _sha256(df.content);
+        files.push({ name: df.name, description: df.description, rows: null, sha256: hash, bytes });
+      }
+    }
+
     // 2. Markdown + optional html/pdf/docx (skip for pure csv)
     if (opts.format !== "csv") {
-      const md = renderMarkdown(this.doc);
+      const md = renderMarkdown(this.doc, this._bodyParts.length > 0 ? this._bodyParts : undefined);
       files.push(writeArtifact(outDir, this.mdName, md, "Combined dossier (Markdown)", null));
 
       if (opts.format === "all") {
@@ -95,7 +134,18 @@ export class Dossier {
 
     // 3. Manifest
     const metas = files.map(toFileMeta);
-    const manifestCsv = toCsv(MANIFEST_COLUMNS, manifestRows(metas, opts.generatedIso ?? new Date().toISOString()));
+    // Append manifestNote rows (non-file disclosure rows)
+    const generatedIso = opts.generatedIso ?? new Date().toISOString();
+    const noteMetas: FileMeta[] = this._manifestNotes.map((n) => ({
+      file: n.file,
+      description: n.description,
+      record_scope: "",
+      data_row_count: "",
+      bytes: "",
+      sha256: "",
+    }));
+    const allMetas = [...metas, ...noteMetas];
+    const manifestCsv = toCsv(MANIFEST_COLUMNS, manifestRows(allMetas, generatedIso));
     const manifestFile = writeArtifact(outDir, "manifest.csv", manifestCsv, "SHA-256 integrity manifest", metas.length);
 
     return {
