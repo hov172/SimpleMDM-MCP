@@ -1,0 +1,4 @@
+name,serial,device_group,model,current,path,target,replace
+Mac-Behind,AAA1,,"Mac14,3",26.0,26.0 -> 26.5.1,26.5.1,false
+Mac-EOL,CCC3,,"iMac21,1",13.7.8,13.7.8 -> 14.8.7 -> 15.7.7 -> 26.5.1,26.5.1,false
+iPad-1,DDD4,,"iPad13,1",26.4.2,26.4.2 -> 26.5.1,26.5.1,false

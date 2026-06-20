@@ -1,0 +1,2 @@
+at_iso,at,device_id,serial_number,device_name,log_id,sc_channel,sc_filevault_enabled,sc_sw_install_state,sc_pending_os,sc_pending_build,sc_failure_count,sc_failure_reason,status_json_file
+2026-05-20T10:30:00,05/20/26 10:30:00,101,C02AAA111,Alice Mac - C02AAA111,L2,device,false,prepared,26.3.1,25D2128,2,BootPolicy failure,status-snapshots/C02AAA111__L2.json

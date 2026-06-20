@@ -1,0 +1,6 @@
+serial,device,app_name,assignment_group,installed,managed,installed_as
+C02FAC111,Alice MBP,Zoom,Faculty Apps,yes,yes,zoom.us 5.9.0
+C02FAC111,Alice MBP,Google Chrome,Faculty Apps,yes,yes,Google Chrome 137.0
+D25STA222,Bob iMac,Zoom,Faculty Apps,no,,
+D25STA222,Bob iMac,Google Chrome,Faculty Apps,yes,yes,Google Chrome 120.0
+F44PAD444,Library iPad,Pages,iPad Core,yes,yes,Pages 14.0
