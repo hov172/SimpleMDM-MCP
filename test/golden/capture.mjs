@@ -47,7 +47,7 @@ function writeGolden(dir, name, content) {
 // ── captureDir: copy text artifacts; record binaries in _binary-manifest.json ─
 // Used when writing to a tmpdir then promoting to golden. Also exported for
 // use by later parity-test tasks.
-const TEXT = /\.(md|html|csv)$/;
+const TEXT = /\.(md|html|csv|json)$/;
 const BIN  = /\.(pdf|docx)$/;
 
 export function captureDir(srcDir, goldenDir) {
@@ -110,14 +110,14 @@ function captureAudit() {
     cveRows(cveDetail)));
   W("vulnerability-check.csv", toCsv(
     [["version","track","date","cves_fixed","actively_exploited","devices_on_release","unfixed_to_latest","cves"]],
-    vulnerabilityRows(tables, ev)));
+    vulnerabilityRows(tables, ev, { scoped: false })));
   W("device-cves.csv", toCsv(
     [["name","serial","device_group","model","os","unfixed_count","exploited_count","cves"]],
     deviceCveRows(ev, tables)));
   W("cve-devices.csv", toCsv(
     [["cve_id","fixed_in_version","os_track","actively_exploited","devices_exposed","devices"]],
     cveDeviceRows(ev, tables)));
-  W("full-audit.md", renderMarkdown(ev, cveDetail, summary, tables, FIXED_DATE));
+  W("full-audit.md", renderMarkdown(ev, cveDetail, summary, tables, FIXED_DATE, { scoped: false }));
 
   // Binaries (docx, pdf) require running the full engine with pandoc/WeasyPrint;
   // not produced here — record empty manifest.
@@ -269,10 +269,16 @@ function captureLogs() {
       "Auto-detected per-device findings",
       `${fr.length} findings`);
   }
+  // raw-logs.json — driver writes this unconditionally (logs-audit.mjs:122).
+  // Pin generated_at to FIXED_NOW; selector is null for a whole-fleet run.
+  writeLogsFile("raw-logs.json",
+    JSON.stringify({ generated_at: FIXED_NOW, selector: null, devices: bundles.map((b) => ({ device: b.device, logs: b.logs })) }, null, 2),
+    "Verbatim per-device log records",
+    `${bundles.length} devices`);
 
-  // Dossier report — pin the date
+  // Dossier report — pin the date; pass explicit opts to match driver's default-path call.
   writeLogsFile("report.md",
-    renderDetailedReport(bundles, null, FIXED_DATE, {}),
+    renderDetailedReport(bundles, null, FIXED_DATE, {}, { detail: undefined, reportOnly: false }),
     "Detailed combined dossier",
     "1 document");
 

@@ -1,0 +1,276 @@
+{
+  "generated_at": "2026-01-01T00:00:00Z",
+  "selector": null,
+  "devices": [
+    {
+      "device": {
+        "type": "device",
+        "id": 101,
+        "attributes": {
+          "name": "Alice Mac - C02AAA111",
+          "device_name": "ALICE-MBP",
+          "serial_number": "C02AAA111",
+          "udid": "UDID-101",
+          "product_name": "MacBookPro18,1",
+          "model": "MacBookPro18,1",
+          "os_version": "15.6.1",
+          "last_seen_at": "2026-06-09T16:00:00.000-04:00",
+          "filevault_enabled": true,
+          "system_integrity_protection_enabled": true,
+          "firewall": {
+            "enabled": true
+          },
+          "time_zone": "America/New_York"
+        },
+        "relationships": {
+          "device_group": {
+            "data": {
+              "type": "device_group",
+              "id": 91899
+            }
+          },
+          "groups": {
+            "data": [
+              {
+                "type": "group",
+                "id": 7001
+              },
+              {
+                "type": "group",
+                "id": 7002
+              }
+            ],
+            "count": 2
+          },
+          "custom_attribute_values": {
+            "data": [],
+            "count": 0
+          }
+        }
+      },
+      "logs": [
+        {
+          "type": "log",
+          "id": "L3",
+          "attributes": {
+            "namespace": "device",
+            "event_type": "profile.installed",
+            "level": 0,
+            "source": "device",
+            "at": "06/02/26 09:00:00",
+            "metadata": {
+              "profile_name": "WiFi Profile"
+            },
+            "relationships": {
+              "account": {
+                "data": {
+                  "type": "account",
+                  "id": 25950
+                }
+              },
+              "device": {
+                "data": {
+                  "type": "device",
+                  "serial_number": "C02AAA111",
+                  "udid": "UDID-101"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "log",
+          "id": "L1",
+          "attributes": {
+            "namespace": "device",
+            "event_type": "app.installing",
+            "level": 0,
+            "source": "device",
+            "at": "05/12/26 18:09:21",
+            "metadata": {
+              "name": "Google Chrome",
+              "bundle_identifier": "com.google.Chrome",
+              "version": "149.0",
+              "via_munki": true
+            },
+            "relationships": {
+              "account": {
+                "data": {
+                  "type": "account",
+                  "id": 25950
+                }
+              },
+              "device": {
+                "data": {
+                  "type": "device",
+                  "serial_number": "C02AAA111",
+                  "udid": "UDID-101"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "log",
+          "id": "L2",
+          "attributes": {
+            "namespace": "device",
+            "event_type": "status.changed",
+            "level": 0,
+            "source": "device",
+            "at": "05/20/26 10:30:00",
+            "metadata": {
+              "channel": "device",
+              "status": {
+                "diskmanagement": {
+                  "filevault": {
+                    "enabled": false
+                  }
+                },
+                "softwareupdate": {
+                  "install_state": "prepared",
+                  "pending_version": {
+                    "os_version": "26.3.1",
+                    "build_version": "25D2128"
+                  },
+                  "failure_reason": {
+                    "count": 2,
+                    "reason": "BootPolicy failure"
+                  }
+                }
+              }
+            },
+            "relationships": {
+              "account": {
+                "data": {
+                  "type": "account",
+                  "id": 25950
+                }
+              },
+              "device": {
+                "data": {
+                  "type": "device",
+                  "serial_number": "C02AAA111",
+                  "udid": "UDID-101"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "device": {
+        "type": "device",
+        "id": 102,
+        "attributes": {
+          "name": "Bob iMac",
+          "device_name": "BOB-IMAC",
+          "serial_number": "D25BBB222",
+          "udid": "UDID-102",
+          "product_name": "iMac21,1",
+          "model": "iMac21,1",
+          "os_version": "14.7.1",
+          "last_seen_at": "2026-06-09T15:59:00.000-04:00",
+          "filevault_enabled": false,
+          "system_integrity_protection_enabled": true,
+          "firewall": {
+            "enabled": false
+          },
+          "time_zone": null
+        },
+        "relationships": {
+          "device_group": {
+            "data": {
+              "type": "device_group",
+              "id": null
+            }
+          },
+          "groups": {
+            "data": [
+              {
+                "type": "group",
+                "id": 7002
+              }
+            ],
+            "count": 1
+          },
+          "custom_attribute_values": {
+            "data": [],
+            "count": 0
+          }
+        }
+      },
+      "logs": [
+        {
+          "type": "log",
+          "id": "L4",
+          "attributes": {
+            "namespace": "device",
+            "event_type": "bootstrap_token.get",
+            "level": 0,
+            "source": "device",
+            "at": "06/01/26 08:00:00",
+            "metadata": {
+              "udid": "UDID-102"
+            },
+            "relationships": {
+              "account": {
+                "data": {
+                  "type": "account",
+                  "id": 25950
+                }
+              },
+              "device": {
+                "data": {
+                  "type": "device",
+                  "serial_number": "D25BBB222",
+                  "udid": "UDID-102"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "device": {
+        "type": "device",
+        "id": 103,
+        "attributes": {
+          "name": "Carol Mini",
+          "device_name": "CAROL",
+          "serial_number": "E33CCC333",
+          "udid": "UDID-103",
+          "product_name": "Macmini9,1",
+          "model": "Macmini9,1",
+          "os_version": "15.7.7",
+          "last_seen_at": "2026-06-09T15:58:00.000-04:00",
+          "filevault_enabled": true,
+          "system_integrity_protection_enabled": true,
+          "firewall": {
+            "enabled": true
+          },
+          "time_zone": null
+        },
+        "relationships": {
+          "device_group": {
+            "data": {
+              "type": "device_group",
+              "id": 91899
+            }
+          },
+          "groups": {
+            "data": [],
+            "count": 0
+          },
+          "custom_attribute_values": {
+            "data": [],
+            "count": 0
+          }
+        }
+      },
+      "logs": []
+    }
+  ]
+}
