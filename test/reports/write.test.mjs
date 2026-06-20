@@ -33,3 +33,31 @@ test("write honors report-only + csv as an error", async () => {
   const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
   await assert.rejects(() => d.write(out, { format: "csv", reportOnly: true }), /report-only/);
 });
+
+// Task 1.9: data CSVs must be written for md/docx formats (match legacy engines)
+test("format:md writes data CSVs alongside report md", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
+  d.dataCsv("d.csv", [{ key: "id", header: "ID" }], [{ id: "42" }], "test data");
+  const res = await d.write(out, { format: "md", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" });
+
+  // data CSV must exist on disk
+  assert.ok(existsSync(join(out, "d.csv")), "d.csv must exist for format:md");
+  // report md must exist
+  assert.ok(existsSync(join(out, "report.md")), "report.md must exist for format:md");
+  // manifest must contain a row for d.csv
+  const manifestContent = readFileSync(join(out, "manifest.csv"), "utf8");
+  assert.ok(manifestContent.includes("d.csv"), "manifest.csv must list d.csv");
+});
+
+test("format:md + reportOnly does NOT write data CSVs", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
+  d.dataCsv("d.csv", [{ key: "id", header: "ID" }], [{ id: "42" }], "test data");
+  await d.write(out, { format: "md", reportOnly: true, generatedIso: "2026-06-20T00:00:00Z" });
+
+  // data CSV must NOT exist for report-only
+  assert.ok(!existsSync(join(out, "d.csv")), "d.csv must NOT exist for format:md + reportOnly");
+  // report md still written
+  assert.ok(existsSync(join(out, "report.md")), "report.md must still exist for report-only:md");
+});
