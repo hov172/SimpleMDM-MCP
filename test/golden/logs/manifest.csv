@@ -1,0 +1,9 @@
+file,description,record_scope,data_row_count,bytes,sha256,generated_at
+logs.csv,"Activity events: one row per event, ISO+verbatim time, typed, sorted",4 events,,1196,1c2b2d311c1d969d93eb99ed6cf8a32e153c7d79abc1d229c33c2772693c336c,2026-01-01T00:00:00Z
+logs-status-snapshots.csv,status.changed snapshots; full status JSON externalized to status-snapshots/,1 snapshots,,359,6f1128dbee17f0491993dfc41da9130b88b1fef27601706a6739661ebb765ec6,2026-01-01T00:00:00Z
+logs-summary.csv,Per-device pivot + coverage window,3 devices,,373,8953ec398f71803c0fdbec22428104411ef95c6dfdddd2bbb7badc7d75705a99,2026-01-01T00:00:00Z
+report.md,Detailed combined dossier,1 document,,3259,d1a2a6ee22f253cdd5e7fad5290805f96c83e8b1e2a29760b7d23772e0195f96,2026-01-01T00:00:00Z
+status-snapshots/C02AAA111__L2.json,status.changed full snapshot,1 snapshot,,317,31a16a12b0a9050b3802a0cff547dca063ee8a535414a609522dad977539caa6,2026-01-01T00:00:00Z
+(disclosure: timezone),Log 'at' timestamps are returned by SimpleMDM /logs in the account's display timezone (devices report America/New_York). The API does NOT stamp a UTC offset and the account endpoint does not expose the zone. 'at' is verbatim; 'at_iso' is the same wall-clock reformatted to ISO 8601 with NO shift. Values are NOT UTC.,,,,,2026-01-01T00:00:00Z
+(disclosure: log retention),"The /logs feed is retention-bounded. The earliest event per device (see logs-summary first_event_at_iso) reflects the API's retention horizon, NOT the device's full lifetime history.",,,,,2026-01-01T00:00:00Z
+(disclosure: completeness),All collections returned has_more=false at export time. Records reproduced verbatim; derived columns are additive and clearly named.,,,,,2026-01-01T00:00:00Z

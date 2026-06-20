@@ -1,0 +1,4 @@
+device_id,serial_number,device_name,total_log_records,app_installing,profile_installed,status_changed,bootstrap_token_get,first_event_at_iso,last_event_at_iso,span_days
+101,C02AAA111,Alice Mac - C02AAA111,3,1,1,1,0,2026-05-12T18:09:21,2026-06-02T09:00:00,21
+102,D25BBB222,Bob iMac,1,0,0,0,1,2026-06-01T08:00:00,2026-06-01T08:00:00,0
+103,E33CCC333,Carol Mini,0,0,0,0,0,,,

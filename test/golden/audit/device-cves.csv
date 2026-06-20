@@ -1,0 +1,3 @@
+name,serial,device_group,model,os,unfixed_count,exploited_count,cves
+Mac-Behind,AAA1,,"Mac14,3",26.0,2,1,"CVE-2025-0001 (->26.5.1) [exploited]
+CVE-2025-0002 (->26.5.1)"

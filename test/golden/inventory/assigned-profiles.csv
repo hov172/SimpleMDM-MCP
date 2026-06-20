@@ -1,0 +1,7 @@
+serial,device,profile_name,profile_identifier,via,installed
+C02FAC111,Alice MBP,WiFi - Campus,edu.slc.wifi,Faculty,yes
+C02FAC111,Alice MBP,FileVault Escrow,edu.slc.fv,Faculty,no
+C02FAC111,Alice MBP,Zoom Settings,edu.slc.zoomcfg,Faculty Apps,no
+D25STA222,Bob iMac,FileVault Escrow,edu.slc.fv,Staff iMacs,yes
+D25STA222,Bob iMac,Zoom Settings,edu.slc.zoomcfg,Faculty Apps,no
+F44PAD444,Library iPad,Library Web Clip,edu.slc.webclip,direct,no

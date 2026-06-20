@@ -1,0 +1,5 @@
+model_id,model_name,release_year,type,devices
+"MacBookPro18,1","MacBook Pro (16-inch, M1 Pro, 2021)",2021,laptop,1
+"iMac21,1","iMac (24-inch, M1, 2021, Four Ports)",2021,imac,1
+"Macmini9,1","Mac mini (M1, 2020)",2020,desktop,1
+"iPad13,4","iPad Pro (11-inch, 3rd generation, 2021)",2021,ipad,1

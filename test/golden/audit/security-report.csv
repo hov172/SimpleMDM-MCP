@@ -1,0 +1,4 @@
+name,serial,device_group,model,os,findings,unfixed_cves,exploited,fail_count,last_seen
+Mac-Behind,AAA1,,"Mac14,3",26.0,"OS outdated (2 CVEs, 1 exploited); FileVault disabled; SIP disabled; Firewall disabled; XProtect outdated (5345 -> 5347)",2,1,5,
+Mac-EOL,CCC3,,"iMac21,1",13.7.8,OS end-of-life; FileVault disabled; Firewall disabled,0,0,3,
+iPad-1,DDD4,,"iPad13,1",26.4.2,OS outdated (0 CVEs),0,0,1,

@@ -1,0 +1,6 @@
+serial,device,app_name,identifier,version,managed,matched
+C02FAC111,Alice MBP,zoom.us,us.zoom.xos,5.9.0,yes,
+C02FAC111,Alice MBP,Google Chrome,com.google.Chrome,137.0,yes,
+C02FAC111,Alice MBP,Microsoft Word,com.microsoft.Word,16.95,no,
+D25STA222,Bob iMac,Google Chrome,com.google.Chrome,120.0,yes,
+F44PAD444,Library iPad,Pages,com.apple.Pages,14.0,yes,

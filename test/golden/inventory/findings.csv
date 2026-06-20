@@ -1,0 +1,9 @@
+type,status,serial,name,detail
+assigned-profile-missing,flag,C02FAC111,Alice MBP,"""FileVault Escrow"" is assigned (via Faculty) but not installed"
+assigned-profile-missing,flag,C02FAC111,Alice MBP,"""Zoom Settings"" is assigned (via Faculty Apps) but not installed"
+low-storage,flag,D25STA222,Bob iMac,8.2 GB free of 465.63 GB
+recovery-key-missing,flag,D25STA222,Bob iMac,FileVault is on but no recovery key is escrowed
+assigned-app-missing,flag,D25STA222,Bob iMac,"""Zoom"" is assigned via an assignment group but not installed"
+assigned-profile-missing,flag,D25STA222,Bob iMac,"""Zoom Settings"" is assigned (via Faculty Apps) but not installed"
+stale-device,flag,E33LAB333,Carol Mini,last seen 2024-11-01T09:00:00.000-04:00
+assigned-profile-missing,flag,F44PAD444,Library iPad,"""Library Web Clip"" is assigned (via direct) but not installed"
