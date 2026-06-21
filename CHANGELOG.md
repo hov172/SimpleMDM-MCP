@@ -6,6 +6,17 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-06-21
+
+### Added
+- Unified TypeScript report engine (`src/reports/`) — a single Dossier engine (typed CSV, declarative document model, theme/PDF/docx pipeline, SHA-256 manifest) backing all three reports (audit, inventory, logs).
+- `generate_report` MCP tool — generates any of the three reports in-process and returns `WriteResult` metadata (out_dir + per-file sha256). Supports both a catalog mode (`report` + `scope`) and a declarative dynamic-spec mode (`spec`) rendered in the house style over a chosen data adapter.
+- `--raw` (inventory, redacted device dump), `--with-security` (logs SOFA section), and `--with-inventory` (logs per-device inventory) are now supported on the unified CLI.
+
+### Changed
+- `run_fleet_audit`, `run_inventory_report`, and `run_device_logs_audit` now run the unified engine CLI (`node dist/reports/cli.js`) as a host-side subprocess instead of the legacy `.mjs` scripts — with full flag parity (`--no-network-cache`, report styles, partial-data exit code, fleet-search confirm guard).
+- The logs forensic export (`raw-logs.json`) now redacts secret device attributes (FileVault recovery key, firmware/recovery-lock passwords), matching the inventory `--raw` invariant.
+
 ### Removed
 - Retired the legacy `.mjs` report engines (`sofa-audit.mjs`, `inventory-report.mjs`, `logs-audit.mjs`) and their superseded libs (`scripts/lib/{render,evaluate,query,inventory,inventory-render,logs,report-pdf,docx,apple-legacy-models}.mjs`) and HTML style headers. All three reports plus `--raw`/`--with-security`/`--with-inventory` now run on the unified TypeScript engine via `dist/reports/cli.js` (host-side subprocess, invoked by the `run_fleet_audit`, `run_inventory_report`, and `run_device_logs_audit` MCP tools) and `generate_report` (in-process). Legacy test suites superseded by the unified `test/reports/` suite were also removed.
 

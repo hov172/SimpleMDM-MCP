@@ -12,6 +12,9 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
+# scripts/lib/*.d.mts provides the type declarations for the retained simplemdm.mjs /
+# sofa.mjs that src/reports/cli/inputs.ts imports — tsc needs them at build time.
+COPY scripts ./scripts
 RUN npm run build
 RUN npm prune --omit=dev
 
