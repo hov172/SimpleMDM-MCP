@@ -1,4 +1,4 @@
-// Verbatim port of renderMarkdown from scripts/lib/render.mjs.
+// Verbatim port of the legacy render lib's renderMarkdown function.
 // Exported as renderAuditMarkdown; produces the full-audit.md body.
 
 import {

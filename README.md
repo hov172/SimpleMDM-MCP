@@ -672,7 +672,7 @@ answers *"what happened on these machines?"*, `/inventory` answers *"which devic
 these criteria, and what exactly is on them?"*
 
 Like its siblings, it talks **directly to the SimpleMDM API** (read-only) — no external
-service — and is a host-side script (`scripts/inventory-report.mjs`) plus an
+service — and is a host-side script (`dist/reports/cli.js inventory`) plus an
 `/inventory` skill, not an MCP tool.
 
 > 📖 **Deep dive:** see [`docs/inventory.md`](docs/inventory.md) for the full query-language

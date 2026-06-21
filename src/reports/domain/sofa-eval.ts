@@ -1,4 +1,4 @@
-// Ported verbatim from scripts/lib/evaluate.mjs and audit row shapers from scripts/lib/render.mjs.
+// Ported verbatim from the legacy evaluate lib and audit row shapers from the legacy render lib.
 // Logic is behavior-identical; TypeScript types added, no functional changes.
 
 // ── Types ─────────────────────────────────────────────────────────────────────

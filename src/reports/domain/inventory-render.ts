@@ -1,6 +1,6 @@
 // CSV row builders, rollups, findings and the markdown dossier for the
 // inventory report. Pure functions over normalized records.
-// Port of scripts/lib/inventory-render.mjs — verbatim logic, TypeScript types.
+// Ported from the legacy inventory-render lib — verbatim logic, TypeScript types.
 
 import { compareVersions } from "./sofa-eval.js";
 import type { DeviceRecord, NormalizedApp, AssignedProfileInfo } from "./inventory.js";
