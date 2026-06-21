@@ -380,3 +380,102 @@ test("logs --with-inventory is accepted (no unknown-flag error)", async () => {
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ── §1: --no-network-cache threads via Ctx ────────────────────────────────────
+
+test("--no-network-cache → ctx.noNetworkCache === true", async () => {
+  let capturedCtx;
+  const tmp = mkdtempSync(join(tmpdir(), "nc-true-"));
+  try {
+    await runCli(
+      ["audit", "--serial", "ABC", "--format", "md", "--no-network-cache", "--out", tmp],
+      { fetchInput: async (_rep, _scope, ctx) => { capturedCtx = ctx; return buildAuditInput(); } },
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  assert.strictEqual(capturedCtx?.noNetworkCache, true, "noNetworkCache must be true when --no-network-cache passed");
+});
+
+test("--no-network-cache omitted → ctx.noNetworkCache falsy", async () => {
+  let capturedCtx;
+  const tmp = mkdtempSync(join(tmpdir(), "nc-omit-"));
+  try {
+    await runCli(
+      ["audit", "--serial", "ABC", "--format", "md", "--out", tmp],
+      { fetchInput: async (_rep, _scope, ctx) => { capturedCtx = ctx; return buildAuditInput(); } },
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  assert.ok(!capturedCtx?.noNetworkCache, "noNetworkCache must be falsy when --no-network-cache omitted");
+});
+
+// ── §4: partial result ────────────────────────────────────────────────────────
+
+test("inventory with failures and no --allow-partial → result.partial === true", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "partial-"));
+  try {
+    const input = { ...buildInventoryInput(), failures: [{ serial: "X", section: "apps", message: "err" }] };
+    const result = await runCli(
+      ["inventory", "--all", "--confirm-all", "--format", "md", "--out", tmp],
+      { fetchInput: async () => input },
+    );
+    assert.strictEqual(result.partial, true, "result.partial must be true when failures present and no --allow-partial");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inventory with failures and --allow-partial → result.partial falsy", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "partial-ap-"));
+  try {
+    const input = { ...buildInventoryInput(), failures: [{ serial: "X", section: "apps", message: "err" }] };
+    const result = await runCli(
+      ["inventory", "--all", "--confirm-all", "--allow-partial", "--format", "md", "--out", tmp],
+      { fetchInput: async () => input },
+    );
+    assert.ok(!result.partial, "result.partial must be falsy when --allow-partial is set");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── §8: fleet-wide search confirm guard ──────────────────────────────────────
+
+test("inventory --search <no-prefilter query> no selector no --confirm-all → rejects with /confirm-all/", async () => {
+  await assert.rejects(
+    () => runCli(
+      ["inventory", "--search", "app:zoom", "--format", "md"],
+      { fetchInput: async () => ({}) },
+    ),
+    /confirm.?all/i,
+    "fleet-wide search without device-scoped prefilter must require --confirm-all",
+  );
+});
+
+test("inventory --search <no-prefilter query> with --confirm-all → passes guard", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "fleet-search-ok-"));
+  try {
+    const result = await runCli(
+      ["inventory", "--search", "app:zoom", "--confirm-all", "--format", "md", "--out", tmp],
+      { fetchInput: async () => buildInventoryInput() },
+    );
+    assert.ok(result.files.length >= 0, "should complete without guard error");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("inventory --search with device-scoped prefilter no --confirm-all → passes guard", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "fleet-search-prefilter-"));
+  try {
+    const result = await runCli(
+      ["inventory", "--search", "serial:ABC", "--format", "md", "--out", tmp],
+      { fetchInput: async () => buildInventoryInput() },
+    );
+    assert.ok(result.files.length >= 0, "device-scoped search without confirm-all should pass guard");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
