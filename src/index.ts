@@ -38,6 +38,8 @@ import {
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
 import { runReport } from "./reports/cli.js";
+import { buildDynamicDossier, validateDynamicSpec, adapterRows, type DynamicReportSpec } from "./reports/specs/dynamic.js";
+import { ServerDataSource } from "./reports/data/server-source.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -1699,10 +1701,11 @@ export const TOOLS: Tool[] = [
   // UNIFIED REPORT ENGINE (in-process)
   // ══════════════════════════════════════════════════════════════════════════
   { name: "generate_report",
-    description: "Generate a fleet dossier (audit/inventory/logs) from live SimpleMDM data in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Reuses the same registry and bridge as the CLI. For large fleets prefer scoped selectors (serial/group/last_seen); whole-fleet (all) requires confirm_all:true in the scope object.",
-    inputSchema: { type: "object", required: ["report", "scope"], properties: {
-      report: { type: "string", enum: ["audit", "inventory", "logs"], description: "Report type: audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export)." },
-      scope: { type: "object", description: "Device selector — one of: {serials:[\"SN1\",...]}, {group:\"GroupName\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"query\"} (inventory only). Whole-fleet scope requires confirm_all:true to prevent accidental large fetches." },
+    description: "Generate a fleet dossier in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Two modes (provide exactly one): (1) catalog — set `report` (audit/inventory/logs) + `scope`; reuses the same registry and bridge as the CLI. (2) dynamic — set `spec`, a declarative report definition rendered in the house style over a chosen dataAdapter (devices/apps/profiles/users/logs/posture). For large fleets prefer scoped selectors; whole-fleet (all) requires confirm_all:true in the scope object.",
+    inputSchema: { type: "object", properties: {
+      report: { type: "string", enum: ["audit", "inventory", "logs"], description: "Catalog mode: report type — audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export). Mutually exclusive with `spec`." },
+      scope: { type: "object", description: "Catalog mode device selector — one of: {serials:[\"SN1\",...]}, {group:\"GroupName\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"query\"} (inventory only). Whole-fleet scope requires confirm_all:true to prevent accidental large fetches." },
+      spec: { type: "object", description: "Dynamic mode: a declarative report spec {title, pageStyle, footerTitle?, mdName?, dataAdapter, sections:[{heading, table:{columns:[{key,header}], from, csvName?}}]}. dataAdapter is one of devices|apps|profiles|users|logs|posture; each section's table.from selects rows from the adapter result (key \"rows\"). Mutually exclusive with `report`." },
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Output format(s). Default 'all'." },
       report_only: { type: "boolean", description: "Write only the rendered dossier; skip data CSV exports." },
     }}},
@@ -3680,6 +3683,37 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       // Validate format against the engine's enum (parity with the CLI's --format guard).
       if (!["csv", "md", "docx", "all"].includes(format)) {
         return { error: `Invalid format "${format}" (csv|md|docx|all)` };
+      }
+
+      // ── Mode dispatch: exactly one of `report` (catalog) or `spec` (dynamic) ──
+      const hasSpec = args.spec != null;
+      const hasReport = args.report != null;
+      if (hasSpec && hasReport) {
+        return { error: "Provide exactly one of `report` (catalog mode) or `spec` (dynamic mode), not both." };
+      }
+      if (!hasSpec && !hasReport) {
+        return { error: "Provide either `report` (catalog mode: audit/inventory/logs with a scope) or `spec` (dynamic mode)." };
+      }
+
+      // ── Dynamic mode: declarative spec over a dataAdapter ────────────────────
+      if (hasSpec) {
+        const specErr = validateDynamicSpec(args.spec);
+        if (specErr) return { error: specErr };
+        const spec = args.spec as unknown as DynamicReportSpec;
+
+        let rows: unknown[];
+        try {
+          const source = new ServerDataSource(simpleMDM);
+          rows = await adapterRows(source, spec.dataAdapter);
+        } catch (e) {
+          return { error: `dynamic report fetch failed: ${formatError(e)}` };
+        }
+
+        const ts = new Date();
+        const dDate = ts.toISOString().slice(0, 10).replace(/-/g, "");
+        const dTime = ts.toISOString().slice(11, 19).replace(/:/g, "");
+        const dynOutDir = `reports/dynamic-${dDate}-${dTime}`;
+        return buildDynamicDossier(spec, { rows }).write(dynOutDir, { format, reportOnly });
       }
 
       // Map scope object → LegacySelector; enforce confirm-all for whole-fleet.

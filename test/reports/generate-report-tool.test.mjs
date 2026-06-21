@@ -34,16 +34,19 @@ test("generate_report is registered in TOOLS", async () => {
   assert.ok(tool, "generate_report must be in the TOOLS array");
 });
 
-test("generate_report schema has required 'report' and 'scope' fields", async () => {
+test("generate_report schema exposes report, scope, and spec (two-mode contract)", async () => {
   await loadIndex();
   const tool = TOOLS.find((t) => t.name === "generate_report");
   assert.ok(tool, "generate_report must be registered");
   const props = tool.inputSchema?.properties ?? {};
-  assert.ok(props.report, "schema must have 'report' property");
-  assert.ok(props.scope, "schema must have 'scope' property");
+  assert.ok(props.report, "schema must have 'report' property (catalog mode)");
+  assert.ok(props.scope, "schema must have 'scope' property (catalog mode)");
+  assert.ok(props.spec, "schema must have 'spec' property (dynamic mode)");
+  // report/scope are no longer schema-required: catalog vs dynamic is mutually
+  // exclusive and enforced in the handler, not via a JSON Schema `required` list.
   const required = tool.inputSchema?.required ?? [];
-  assert.ok(required.includes("report"), "'report' must be required");
-  assert.ok(required.includes("scope"), "'scope' must be required");
+  assert.ok(!required.includes("report"), "'report' must NOT be schema-required (dynamic mode omits it)");
+  assert.ok(!required.includes("spec"), "'spec' must NOT be schema-required (catalog mode omits it)");
 });
 
 test("generate_report report enum includes audit, inventory, logs", async () => {
@@ -156,6 +159,60 @@ test("runReport writes nothing to process.stdout (MCP stdio-safety)", async () =
     "",
     `runReport must not write to stdout on the MCP path; captured: ${JSON.stringify(captured)}`,
   );
+});
+
+// ── 2c. Dynamic spec mode (Task 2.7) ─────────────────────────────────────────
+
+const VALID_SPEC = {
+  title: "Stale Devices",
+  pageStyle: "a3-landscape",
+  dataAdapter: "devices",
+  sections: [{ heading: "Stale", table: { columns: [{ key: "serial", header: "serial" }], from: "rows" } }],
+};
+
+test("generate_report tool: providing both report and spec returns error", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", { report: "audit", scope: null, spec: VALID_SPEC });
+  assert.ok(result && typeof result === "object" && "error" in result);
+  assert.match(String(result.error), /exactly one|report.*spec|spec.*report/i);
+});
+
+test("generate_report tool: providing neither report nor spec returns error", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", {});
+  assert.ok(result && typeof result === "object" && "error" in result);
+  assert.match(String(result.error), /report|spec/i);
+});
+
+test("generate_report tool: spec with unknown dataAdapter returns error", async () => {
+  await loadIndex();
+  const bad = { ...VALID_SPEC, dataAdapter: "bogus" };
+  const result = await handleTool("generate_report", { spec: bad });
+  assert.ok(result && typeof result === "object" && "error" in result);
+  assert.match(String(result.error), /adapter|bogus/i);
+});
+
+test("generate_report tool: spec missing title returns error", async () => {
+  await loadIndex();
+  const bad = { ...VALID_SPEC };
+  delete bad.title;
+  const result = await handleTool("generate_report", { spec: bad });
+  assert.ok(result && typeof result === "object" && "error" in result);
+  assert.match(String(result.error), /title|sections|spec/i);
+});
+
+test("generate_report tool: valid spec passes validation (no validation error before network)", async () => {
+  await loadIndex();
+  // A valid spec must not be rejected by the validation guard. It may fail downstream on
+  // the live fetch (no real network here), but must not return a spec-validation error.
+  let result, threw = false;
+  try {
+    result = await handleTool("generate_report", { spec: VALID_SPEC, format: "md" });
+  } catch { threw = true; }
+  if (!threw && result && typeof result === "object" && "error" in result) {
+    assert.doesNotMatch(String(result.error), /exactly one|unknown.*adapter|must have|spec must/i,
+      "a valid spec must not trigger a validation error");
+  }
 });
 
 // ── 3. Whole-fleet confirm-all guard ─────────────────────────────────────────
