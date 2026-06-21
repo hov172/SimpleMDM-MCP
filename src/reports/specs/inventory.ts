@@ -1,4 +1,5 @@
 import { Dossier } from "../engine/dossier.js";
+import { redactDeviceRaw } from "../domain/inventory.js";
 import {
   DEVICE_COLUMNS, deviceRows, APP_COLUMNS, appRows, APP_CATALOG_COLUMNS, appCatalogRows,
   ASSIGNED_COLUMNS, assignedAppRows, ASSIGNED_PROFILE_COLUMNS, assignedProfileRows,
@@ -18,13 +19,14 @@ export interface InventoryBuildOpts {
   sort?: { field: string; dir: string } | null;
   reportDetail?: string;
   search?: string | null;
+  raw?: boolean;
 }
 
 export function buildInventoryDossier(input: any, opts: InventoryBuildOpts = {}): Dossier {
   const { records, findings, dateStr } = input;
   const {
     noApps = false, noProfiles = false, noUsers = false,
-    reportStyle, sort = null, reportDetail, search,
+    reportStyle, sort = null, reportDetail, search, raw = false,
   } = opts;
 
   const d = new Dossier({
@@ -84,6 +86,12 @@ export function buildInventoryDossier(input: any, opts: InventoryBuildOpts = {})
     d.dataCsv("report-table.csv", cols(FLAT_COLUMNS), flatTableRows(records, sort ?? null));
   } else if (reportStyle === "roster") {
     d.dataCsv("report-table.csv", cols(FLAT_COLUMNS), rosterTableRows(records, sort ?? null));
+  }
+
+  // Raw device API dump — redacted, written only when opted in
+  if (raw) {
+    const redacted = records.map((r: any) => redactDeviceRaw(input.rawById?.get(r.id) ?? {}));
+    d.dataFile("raw/devices.json", JSON.stringify(redacted, null, 2), "Redacted raw device API records");
   }
 
   return d;

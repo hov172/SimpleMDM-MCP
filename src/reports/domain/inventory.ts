@@ -326,6 +326,18 @@ export function normalizeDevice(
   };
 }
 
+// raw API dumps must never carry secret values.
+export const SECRET_DEVICE_ATTRS = ["filevault_recovery_key", "firmware_password", "recovery_lock_password"];
+export function redactDeviceRaw(d: any): any {
+  const c = JSON.parse(JSON.stringify(d));
+  if (c.attributes) {
+    for (const k of SECRET_DEVICE_ATTRS) {
+      if (k in c.attributes) c.attributes[k] = c.attributes[k] ? "[REDACTED set=yes]" : null;
+    }
+  }
+  return c;
+}
+
 export const normalizeApps = (raw: any[]): NormalizedApp[] => (raw ?? []).map((x) => ({
   name: x.attributes?.name ?? "", identifier: x.attributes?.identifier ?? "",
   version: x.attributes?.version ?? "", managed: Boolean(x.attributes?.managed),
