@@ -53,11 +53,23 @@ export function applyFilter<T extends Record<string, any>>(rows: T[], conds?: Fi
 
 export interface DynamicReportSpec {
   title: string;
-  pageStyle: PageStyle;
+  pageStyle?: PageStyle;   // optional — auto-selected by table width when omitted (see autoPageStyle)
   footerTitle?: string;
   mdName?: string;
   dataAdapter: DataAdapter;
   sections: DynamicSection[];
+}
+
+// Pick page orientation from the widest table when the spec omits pageStyle.
+// Portrait reads best for narrow tables; landscape (compact A4, then roomy A3)
+// for wide ones — mirroring why the built-in audit report defaults to A3.
+// Thresholds: ≤6 cols → portrait, 7–12 → A4 landscape, ≥13 → A3 landscape.
+export function autoPageStyle(spec: { pageStyle?: PageStyle; sections: Array<{ table: { columns: unknown[] } }> }): PageStyle {
+  if (spec.pageStyle) return spec.pageStyle;
+  const maxCols = spec.sections.reduce((m, s) => Math.max(m, s.table.columns.length), 0);
+  if (maxCols >= 13) return "a3-landscape";
+  if (maxCols >= 7) return "a4-landscape";
+  return "letter-portrait";
 }
 
 // Maps a declarative spec onto the house-style Dossier. `data` is a bag keyed by the
@@ -65,7 +77,7 @@ export interface DynamicReportSpec {
 export function buildDynamicDossier(spec: DynamicReportSpec, data: Record<string, unknown>): Dossier {
   const dossier = new Dossier({
     title: spec.title,
-    pageStyle: spec.pageStyle,
+    pageStyle: autoPageStyle(spec),
     footerTitle: spec.footerTitle ?? spec.title,
     mdName: spec.mdName,
   });
@@ -95,7 +107,8 @@ export function validateDynamicSpec(spec: unknown): string | null {
   if (!DATA_ADAPTERS.includes(s.dataAdapter as DataAdapter)) {
     return `unknown dataAdapter "${String(s.dataAdapter)}"; valid: ${DATA_ADAPTERS.join(", ")}`;
   }
-  if (!PAGE_STYLES.includes(s.pageStyle as PageStyle)) {
+  // pageStyle is optional (auto-selected by table width when absent); validate only if present.
+  if (s.pageStyle != null && !PAGE_STYLES.includes(s.pageStyle as PageStyle)) {
     return `spec.pageStyle must be one of: ${PAGE_STYLES.join(", ")}`;
   }
   if (s.mdName != null && typeof s.mdName !== "string") return "spec.mdName must be a string when present";
