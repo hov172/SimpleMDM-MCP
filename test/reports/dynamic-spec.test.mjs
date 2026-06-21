@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { buildDynamicDossier, validateDynamicSpec, adapterRows, applyFilter } from "../../dist/reports/specs/dynamic.js";
+import { buildDynamicDossier, validateDynamicSpec, adapterRows, applyFilter, autoPageStyle } from "../../dist/reports/specs/dynamic.js";
 
 test("a dynamic spec renders the house-style dossier", async () => {
   const spec = {
@@ -91,13 +91,50 @@ test("validateDynamicSpec rejects empty or malformed columns", () => {
   assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "a3-landscape", dataAdapter: "devices", sections: [{ heading: "S", table: { columns: [{ key: "serial" }], from: "rows" } }] })), /column|key|header/i);
 });
 
-test("validateDynamicSpec accepts a spec that omits the optional mdName/footerTitle", () => {
-  // mdName/footerTitle are optional; absence is fine. pageStyle is required.
+test("validateDynamicSpec accepts a spec that omits the optional mdName/footerTitle/pageStyle", () => {
+  // mdName/footerTitle are optional. pageStyle is now ALSO optional — when absent it is
+  // auto-selected by table width (see autoPageStyle), so omission must validate clean.
   assert.strictEqual(validateDynamicSpec({ title: "X", pageStyle: "letter-portrait", dataAdapter: "devices", sections: [okSection] }), null);
+  assert.strictEqual(validateDynamicSpec({ title: "X", dataAdapter: "devices", sections: [okSection] }), null);
 });
 
-test("validateDynamicSpec rejects a missing pageStyle", () => {
-  assert.match(String(validateDynamicSpec({ title: "X", dataAdapter: "devices", sections: [okSection] })), /pageStyle/i);
+test("validateDynamicSpec still rejects an explicit invalid pageStyle value", () => {
+  // optional ≠ unvalidated: a present-but-bogus value is still an error.
+  assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "wallpaper", dataAdapter: "devices", sections: [okSection] })), /pageStyle/i);
+});
+
+// ── autoPageStyle — orientation auto-selected by the widest table's column count ──
+test("autoPageStyle honors an explicit pageStyle when present", () => {
+  assert.equal(autoPageStyle({ pageStyle: "letter-portrait", sections: [{ table: { columns: Array(20).fill({ key: "k", header: "h" }) } }] }), "letter-portrait");
+});
+
+test("autoPageStyle picks portrait for narrow tables, landscape for wide ones", () => {
+  const spec = (n) => ({ sections: [{ table: { columns: Array(n).fill({ key: "k", header: "h" }) } }] });
+  assert.equal(autoPageStyle(spec(3)),  "letter-portrait", "3 cols → portrait");
+  assert.equal(autoPageStyle(spec(6)),  "letter-portrait", "6 cols → portrait (boundary)");
+  assert.equal(autoPageStyle(spec(7)),  "a4-landscape",    "7 cols → A4 landscape");
+  assert.equal(autoPageStyle(spec(12)), "a4-landscape",    "12 cols → A4 landscape");
+  assert.equal(autoPageStyle(spec(13)), "a3-landscape",    "13+ cols → A3 landscape");
+});
+
+test("autoPageStyle uses the WIDEST section across a multi-section spec", () => {
+  const spec = { sections: [
+    { table: { columns: Array(2).fill({ key: "k", header: "h" }) } },
+    { table: { columns: Array(9).fill({ key: "k", header: "h" }) } },
+  ]};
+  assert.equal(autoPageStyle(spec), "a4-landscape");
+});
+
+test("buildDynamicDossier auto-selects landscape when pageStyle is omitted for a wide table", () => {
+  const spec = {
+    title: "Wide Report", dataAdapter: "devices",
+    sections: [{ heading: "Wide", table: {
+      columns: Array(8).fill(0).map((_, i) => ({ key: "c" + i, header: "C" + i })),
+      from: "rows",
+    }}],
+  };
+  const doc = buildDynamicDossier(spec, { rows: [] }).toDocument();
+  assert.equal(doc.pageStyle, "a4-landscape", "8-column table with no pageStyle → landscape");
 });
 
 // ── adapterRows (offline routing via a fake DataSource) ──────────────────────
