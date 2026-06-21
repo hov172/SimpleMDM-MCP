@@ -15,7 +15,9 @@ export interface LogsBuildOpts {
 
 export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier {
   const { bundles, dateStr, nowIso } = input;
-  const detail = opts.reportDetail as "summary" | "table" | "full" | undefined;
+  // Default to "summary" explicitly (renderDetailedReport's implicit default) so the
+  // verbosity level is self-documenting rather than relying on an undefined fall-through.
+  const detail = (opts.reportDetail as "summary" | "table" | "full" | undefined) ?? "summary";
 
   const lr = logRows(bundles), sr = statusSnapshotRows(bundles), mr = logSummaryRows(bundles);
   const fr = findingRows(bundles), snapFiles = statusSnapshotFiles(bundles);

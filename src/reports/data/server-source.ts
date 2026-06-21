@@ -36,6 +36,11 @@ export class ServerDataSource implements DataSource {
     throw new Error(`paginateAll(${path}): exceeded ${this.maxPages}-page cap`);
   }
 
+  // NOTE: scope filtering is DEVICE-RECORD shaped — it keys off serial / device_group /
+  // seen_at, which only exist on device records. apps()/profiles()/users()/logs() results
+  // do not carry those fields, so a non-"all" scope would filter them all out. Today every
+  // non-device caller passes scope "all"/undefined (dynamic mode fetches unscoped), so this
+  // is a no-op for them; narrowing those adapters by device scope needs a join, not added here.
   private applyScope(records: any[], scope?: Scope): any[] {
     if (!scope || scope.kind === "all") return records;
     if (scope.kind === "serials") {
@@ -94,14 +99,20 @@ export class ServerDataSource implements DataSource {
     const maxP = opts?.pages ?? this.maxPages;
     const out: any[] = [];
     let cursor: string | number | undefined;
+    let completed = false;
     for (let page = 0; page < maxP; page++) {
       const q = cursor != null ? `&starting_after=${encodeURIComponent(String(cursor))}` : "";
       const res = (await this.client(`/logs?limit=100${q}`)) as { data?: any[]; has_more?: boolean };
       const items = Array.isArray(res?.data) ? res.data : [];
       out.push(...items);
-      if (!res.has_more) break;
+      if (!res.has_more) { completed = true; break; }
       cursor = items.at(-1)?.id;
-      if (cursor == null) break;
+      if (cursor == null) { completed = true; break; }
+    }
+    // Forensic/legal export: never return a silently-truncated log set. If the cap is
+    // hit while the API still reports has_more, fail loudly (mirrors paginateAll).
+    if (!completed) {
+      throw new Error(`logs(): exceeded ${maxP}-page cap with more pages pending; narrow the scope or raise pages`);
     }
     return this.applyScope(out, scope);
   }
