@@ -5,12 +5,14 @@ import {
   logSummaryRows, SUMMARY_COLUMNS, findingRows, FINDINGS_COLUMNS,
   renderDetailedReport, manifestRows, MANIFEST_COLUMNS,
 } from "../domain/logs.js";
+import { allDeviceRows, deviceCveRows } from "../domain/sofa-eval.js";
 import { sha256 } from "../engine/manifest.js";
 
 const cols = (arr: string[]) => arr.map((n) => ({ key: n, header: n }));
 
 export interface LogsBuildOpts {
   reportDetail?: string;
+  withSecurity?: boolean;
 }
 
 export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier {
@@ -44,6 +46,16 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
   add("logs-summary.csv", toCsv(cols(SUMMARY_COLUMNS), mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
   if (fr.length) add("findings.csv", toCsv(cols(FINDINGS_COLUMNS), fr), "Auto-detected per-device findings", `${fr.length} findings`);
   add("raw-logs.json", JSON.stringify({ generated_at: nowIso, selector: null, devices: bundles.map((b: any) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
+
+  if (opts.withSecurity && input.security) {
+    const { tables, evald } = input.security;
+    add("security-posture.csv",
+      toCsv(cols(["name","device_name","serial","device_group","os_version","latest_minor","latest_major","unfixed_cves","product","fv","sip","fw","xp","last_seen"]), allDeviceRows(evald)),
+      "SOFA posture for selected devices", `${evald.length} devices`);
+    add("device-cves.csv",
+      toCsv(cols(["name","serial","device_group","model","os","unfixed_count","exploited_count","cves"]), deviceCveRows(evald, tables)),
+      "Per-device outstanding CVEs", `${evald.length} devices`);
+  }
 
   // report.md written by engine's bodyMarkdown path; manifest entry uses same rendered string.
   meta.push({ file: "report.md", description: "Detailed combined dossier", record_scope: "1 document", data_row_count: "", bytes: Buffer.byteLength(bodyMd), sha256: sha256(bodyMd) });
