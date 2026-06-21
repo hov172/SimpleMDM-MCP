@@ -38,6 +38,7 @@ import {
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
 import { runReport } from "./reports/cli.js";
+import { writeReportExtras } from "./reports/engine/extras.js";
 import { buildDynamicDossier, validateDynamicSpec, adapterRows, type DynamicReportSpec } from "./reports/specs/dynamic.js";
 import { ServerDataSource } from "./reports/data/server-source.js";
 
@@ -3684,7 +3685,14 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         const dDate = ts.toISOString().slice(0, 10).replace(/-/g, "");
         const dTime = ts.toISOString().slice(11, 19).replace(/:/g, "");
         const dynOutDir = `reports/dynamic-${dDate}-${dTime}`;
-        return buildDynamicDossier(spec, { rows }).write(dynOutDir, { format, reportOnly });
+        const dynResult = await buildDynamicDossier(spec, { rows }).write(dynOutDir, { format, reportOnly });
+        // Always-on bundle artifacts (manifest.sha256, <dir>.zip; xlsx if a report-table exists).
+        if (format === "all") {
+          const extras = writeReportExtras(dynOutDir);
+          dynResult.files.push(...extras.files.map((f) => ({ name: f.name, description: f.description, rows: null, sha256: "" })));
+          dynResult.skipped.push(...extras.skipped);
+        }
+        return dynResult;
       }
 
       // Map scope object → LegacySelector; enforce confirm-all for whole-fleet.
