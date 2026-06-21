@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-06-21
+
+### Added
+- `check_for_update` MCP tool (read-only) — compares the running server version against the latest GitHub release and returns `{current_version, latest_version, update_available, release_url, upgrade}`. The server cannot self-update (it runs in a pinned, read-only Docker container), so when an update is available it returns the host-side upgrade steps. Tool count 181 → 182.
+
 ## [0.29.0] - 2026-06-21
 
 ### Added
