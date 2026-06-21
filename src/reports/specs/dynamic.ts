@@ -40,7 +40,12 @@ export function buildDynamicDossier(spec: DynamicReportSpec, data: Record<string
   return dossier;
 }
 
+const PAGE_STYLES: PageStyle[] = ["a3-landscape", "letter-portrait"];
+
 // Validates a caller-supplied spec object. Returns an error string, or null if valid.
+// Type-checks every field a malformed caller could otherwise sneak through to
+// Dossier.write() / headHtml(), where it would throw a raw TypeError instead of a
+// clean {error} response.
 export function validateDynamicSpec(spec: unknown): string | null {
   if (!spec || typeof spec !== "object") return "spec must be an object";
   const s = spec as Record<string, unknown>;
@@ -51,11 +56,22 @@ export function validateDynamicSpec(spec: unknown): string | null {
   if (!DATA_ADAPTERS.includes(s.dataAdapter as DataAdapter)) {
     return `unknown dataAdapter "${String(s.dataAdapter)}"; valid: ${DATA_ADAPTERS.join(", ")}`;
   }
+  if (!PAGE_STYLES.includes(s.pageStyle as PageStyle)) {
+    return `spec.pageStyle must be one of: ${PAGE_STYLES.join(", ")}`;
+  }
+  if (s.mdName != null && typeof s.mdName !== "string") return "spec.mdName must be a string when present";
+  if (s.footerTitle != null && typeof s.footerTitle !== "string") return "spec.footerTitle must be a string when present";
   for (const sec of s.sections as Array<Record<string, unknown>>) {
     if (!sec || typeof sec.heading !== "string") return "each section needs a heading";
     const table = sec.table as Record<string, unknown> | undefined;
     if (!table || !Array.isArray(table.columns) || typeof table.from !== "string") {
       return "each section needs a table with { columns, from }";
+    }
+    if (table.columns.length === 0) return "each section table needs at least one column";
+    for (const col of table.columns as Array<Record<string, unknown>>) {
+      if (!col || typeof col.key !== "string" || typeof col.header !== "string") {
+        return "each table column needs string { key, header }";
+      }
     }
   }
   return null;
