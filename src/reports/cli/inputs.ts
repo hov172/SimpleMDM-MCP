@@ -50,6 +50,19 @@ export function loadEnvKey(): string | null {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const nowIsoFn = () => new Date().toISOString();
 
+// Account name + license counts for the report header. Best-effort: a failure here
+// must never abort a report, so it degrades to null (the header simply omits the line).
+export interface AccountInfo { name: string; total: number | null; available: number | null }
+async function fetchAccountSafe(apiKey: string): Promise<AccountInfo | null> {
+  try {
+    const { fetchAccount } = await import("../../../scripts/lib/simplemdm.mjs");
+    return await fetchAccount(apiKey);
+  } catch (e) {
+    console.warn(`report: account info unavailable (${(e as Error).message})`);
+    return null;
+  }
+}
+
 // ── Audit ─────────────────────────────────────────────────────────────────────
 
 export async function auditInputLive(scope: LegacySelector, ctx: Ctx): Promise<any> {
@@ -86,7 +99,7 @@ export async function auditInputLive(scope: LegacySelector, ctx: Ctx): Promise<a
   const cveDetail = aggregateCveDetail(ev, tables);
   const summary = summarize(ev, cveDetail);
 
-  return { ev, tables, cveDetail, summary, dateStr: todayStr(), scoped: scope !== null };
+  return { ev, tables, cveDetail, summary, dateStr: todayStr(), scoped: scope !== null, account: await fetchAccountSafe(apiKey) };
 }
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
@@ -171,7 +184,7 @@ export async function inventoryInputLive(
   }
 
   const findings = inventoryFindings(records);
-  return { records, findings, dateStr: todayStr(), failures, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])), fleetCount: rawDevices.length };
+  return { records, findings, dateStr: todayStr(), failures, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])), fleetCount: rawDevices.length, account: await fetchAccountSafe(apiKey) };
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
@@ -234,5 +247,5 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
     const tables = buildMajorTables(macFeed, iosFeed);
     security = { tables, evald: bundles.map((b: any) => evaluateDevice(flatten(b.device), tables)) };
   }
-  return { bundles, dateStr: todayStr(), nowIso: nowIsoFn(), security };
+  return { bundles, dateStr: todayStr(), nowIso: nowIsoFn(), security, account: await fetchAccountSafe(apiKey) };
 }

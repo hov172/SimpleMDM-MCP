@@ -13,6 +13,7 @@ export interface AuditInput {
   summary: AuditSummary;
   dateStr: string;
   scoped: boolean;
+  account?: { name: string; total: number | null; available: number | null } | null;
 }
 
 const C = (...names: string[]) => names.map((n) => ({ key: n, header: n }));
@@ -34,7 +35,7 @@ export function buildAuditDossier(input: AuditInput, opts: AuditBuildOpts = {}):
   const { ev, tables, cveDetail, summary, dateStr, scoped } = input;
   const pageStyle = opts.pageStyle === "a4-landscape" ? "a4-landscape" : "a3-landscape";
   const d = new Dossier({ title: "", pageStyle, footerTitle: "SOFA Fleet Security Audit", mdName: "full-audit.md" });
-  d.bodyMarkdown(renderAuditMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped }));
+  d.bodyMarkdown(renderAuditMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped, account: input.account ?? null }));
   d.dataCsv("security-report.csv",     SEC_COLS,         securityRows(ev));
   d.dataCsv("need-updates.csv",        NEED_COLS,        needUpdateRows(ev));
   d.dataCsv("all-devices.csv",         ALL_COLS,         allDeviceRows(ev));

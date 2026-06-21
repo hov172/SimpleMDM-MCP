@@ -321,6 +321,10 @@ export function renderDetailedReport(bundles: any[], securityEval: any[] | null,
   const totalFindings = bundles.reduce((n, b) => n + (deviceFinds.get(b) as any[]).length, 0);
 
   P(`# SimpleMDM Device Activity & Security Dossier — ${dateStr}`); P("");
+  const account = opts.account ?? null;
+  if (account) {
+    P(`Account: **${cell(account.name)}**${account.total != null ? ` • licenses ${account.total - (account.available ?? 0)} used of ${account.total}` : ""}`); P("");
+  }
   P(`Devices: **${bundles.length}** • Total log events: **${comma(totalEvents)}** • FileVault disabled: **${fvOff}/${bundles.length}**`); P("");
   const parts = ["the SimpleMDM /logs activity record"];
   if (securityEval) parts.push("the SOFA-evaluated security posture");

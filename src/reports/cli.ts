@@ -8,6 +8,18 @@ import { writeReportExtras } from "./engine/extras.js";
 import type { LegacySelector, Ctx } from "./cli/inputs.js";
 import { loadEnvKey } from "./cli/inputs.js";
 
+// Human-readable scope label for the report header (e.g. "--all", "--serial C02…",
+// "search (whole fleet)"). Mirrors the legacy inventory header wording.
+export function scopeLabelOf(scope: LegacySelector, search?: string | null): string {
+  const sel = !scope ? "whole fleet"
+    : scope.kind === "all" ? "--all"
+    : scope.kind === "serial" ? `--serial ${(scope.value as string[]).join(",")}`
+    : scope.kind === "group" ? `--group ${scope.value}`
+    : `--last-seen ${scope.value}`;
+  if (search) return scope ? `search (${sel})` : "search (whole fleet)";
+  return sel;
+}
+
 function defaultOutDir(report: string): string {
   const now = new Date();
   const date = now.toISOString().slice(0, 10).replace(/-/g, "");
@@ -97,6 +109,12 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
     const { inventoryFindings } = await import("./domain/inventory-render.js");
     const findings = inventoryFindings(kept);
     input = { ...rawInput, records: kept, findings };
+  }
+
+  // Thread the human scope label into the dossier header (account is fetched in the
+  // live input builders). Both are consumed by the report renderers' header block.
+  if (input && typeof input === "object") {
+    input.scopeLabel = scopeLabelOf(opts.scope, opts.search);
   }
 
   const dossier = entry.build(input, entryOpts);

@@ -29,7 +29,7 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
   const fr = findingRows(bundles), snapFiles = statusSnapshotFiles(bundles);
 
   // Render body; thread --report-detail to control per-device log verbosity.
-  const bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail, reportOnly: false });
+  const bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail, reportOnly: false, account: input.account ?? null });
 
   const d = new Dossier({
     title: "",

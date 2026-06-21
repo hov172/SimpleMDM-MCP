@@ -29,6 +29,14 @@ export function buildInventoryDossier(input: any, opts: InventoryBuildOpts = {})
     reportStyle, sort = null, reportDetail, search, raw = false,
   } = opts;
 
+  // Account + scope label are threaded from the live layer: account is fetched in
+  // cli/inputs.ts and the human scope label is computed in cli.ts (runReport). When
+  // absent — e.g. fixture-driven golden capture — fall back to no account line and the
+  // historical "--all" label so existing goldens stay byte-identical.
+  const account = input.account ?? null;
+  const scopeLabel: string = input.scopeLabel ?? "--all";
+  const failures = input.failures ?? [];
+
   const d = new Dossier({
     title: "",
     pageStyle: "a3-landscape",
@@ -39,21 +47,21 @@ export function buildInventoryDossier(input: any, opts: InventoryBuildOpts = {})
   // Choose renderer based on --report-style
   if (reportStyle === "roster") {
     d.bodyMarkdown(renderInventoryRoster(records, {
-      query: search ?? null, scopeLabel: "--all", dateStr, sort: sort ?? null,
+      query: search ?? null, scopeLabel, dateStr, sort: sort ?? null, failures, account,
     }));
   } else if (reportStyle === "flat") {
     d.bodyMarkdown(renderInventoryFlat(records, {
-      query: search ?? null, scopeLabel: "--all", dateStr, sort: sort ?? null,
+      query: search ?? null, scopeLabel, dateStr, sort: sort ?? null, failures, account,
     }));
   } else {
     d.bodyMarkdown(renderInventoryReport(records, {
       query: search ?? null,
-      scopeLabel: "--all",
+      scopeLabel,
       dateStr,
       findings,
       detail: reportDetail ?? "full",
-      failures: [],
-      account: null,
+      failures,
+      account,
     }));
   }
 
