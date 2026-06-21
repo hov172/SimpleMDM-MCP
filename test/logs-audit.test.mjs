@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toIso } from "../scripts/lib/logs.mjs";
+import { toIso } from "../dist/reports/domain/logs.js";
 
 test("toIso reformats MM/DD/YY HH:MM:SS to ISO 8601 with no TZ shift", () => {
   assert.equal(toIso("05/12/26 18:09:21"), "2026-05-12T18:09:21");
@@ -13,7 +13,7 @@ test("toIso returns empty string for unparseable input", () => {
   assert.equal(toIso(null), "");
 });
 
-import { parseArgs } from "../scripts/lib/logs.mjs";
+import { parseArgs } from "../dist/reports/domain/logs.js";
 
 test("parseArgs reads a single selector and flags", () => {
   const o = parseArgs(["--last-seen", "10", "--with-security", "--format", "csv"]);
@@ -43,7 +43,7 @@ test("parseArgs requires --confirm-all for --all", () => {
   assert.equal(parseArgs(["--all", "--confirm-all"]).error, null);
 });
 
-import { selectDevices } from "../scripts/lib/logs.mjs";
+import { selectDevices } from "../dist/reports/domain/logs.js";
 import { readFileSync } from "node:fs";
 const RAW = JSON.parse(readFileSync(new URL("./fixtures/devices-sample.json", import.meta.url))).data;
 
@@ -67,7 +67,7 @@ test("selectDevices --group matches device_group id or assignment-group ids", ()
   assert.deepEqual(r.map((d) => d.id).sort(), [101, 102]);
 });
 
-import { logRows, LOG_COLUMNS } from "../scripts/lib/logs.mjs";
+import { logRows, LOG_COLUMNS } from "../dist/reports/domain/logs.js";
 const LOGS = JSON.parse(readFileSync(new URL("./fixtures/logs-sample.json", import.meta.url))).data;
 
 test("logRows are chronologically sorted, typed, and exclude the status blob", () => {
@@ -88,7 +88,7 @@ test("logRows are chronologically sorted, typed, and exclude the status blob", (
   assert.ok(LOG_COLUMNS.includes("at_iso") && !LOG_COLUMNS.includes("status_pretty"));
 });
 
-import { statusSnapshotRows, STATUS_COLUMNS, statusSnapshotFile, statusSnapshotFiles } from "../scripts/lib/logs.mjs";
+import { statusSnapshotRows, STATUS_COLUMNS, statusSnapshotFile, statusSnapshotFiles } from "../dist/reports/domain/logs.js";
 
 test("statusSnapshotRows isolate status.changed and reference an external snapshot file (no giant inline cell)", () => {
   const bundle = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
@@ -113,7 +113,7 @@ test("statusSnapshotFiles emits one sidecar per status.changed log with the full
   assert.ok(files[0].json.softwareupdate, "sidecar carries the full status object");
 });
 
-import { logSummaryRows, SUMMARY_COLUMNS } from "../scripts/lib/logs.mjs";
+import { logSummaryRows, SUMMARY_COLUMNS } from "../dist/reports/domain/logs.js";
 
 test("logSummaryRows pivot event types and compute the coverage window", () => {
   const b1 = { device: RAW[0], logs: LOGS.filter((l) => l.attributes.relationships.device.data.serial_number === "C02AAA111") };
@@ -130,7 +130,7 @@ test("logSummaryRows pivot event types and compute the coverage window", () => {
   assert.ok(SUMMARY_COLUMNS.includes("span_days"));
 });
 
-import { manifestRows, MANIFEST_COLUMNS, DISCLOSURES } from "../scripts/lib/logs.mjs";
+import { manifestRows, MANIFEST_COLUMNS, DISCLOSURES } from "../dist/reports/domain/logs.js";
 
 test("manifestRows pass files through and append disclosures", () => {
   const files = [{ file: "logs.csv", description: "events", record_scope: "3 events", data_row_count: 3, bytes: 100, sha256: "abc" }];
@@ -226,7 +226,7 @@ test("flatten exposes the evaluateDevice-compatible shape", () => {
   assert.equal(d.device_group_id, null);
 });
 
-import { noisyDevices } from "../scripts/lib/logs.mjs";
+import { noisyDevices } from "../dist/reports/domain/logs.js";
 
 const mkBundle = (id, serial, n, name) => ({
   device: { id, attributes: { serial_number: serial, name: name ?? serial } },
@@ -262,7 +262,7 @@ test("renderDetailedReport omits the noisy callout when volume is balanced", () 
   assert.doesNotMatch(md, /Noisy device/);
 });
 
-import { renderDetailedReport } from "../scripts/lib/logs.mjs";
+import { renderDetailedReport } from "../dist/reports/domain/logs.js";
 
 test("renderDetailedReport builds a per-device dossier with roll-up, identity, activity and disclosures", () => {
   const bundle = {
@@ -293,7 +293,7 @@ test("renderDetailedReport includes per-device CVE findings when securityEval is
   assert.match(md, /\n\n> Findings:/, "findings must be a real blockquote (blank line before >), not inline text");
 });
 
-import { deviceFindings, topInstalledApps } from "../scripts/lib/logs.mjs";
+import { deviceFindings, topInstalledApps } from "../dist/reports/domain/logs.js";
 
 const appLog = (name, id, ver) => ({ attributes: { event_type: "app.installing", at: "05/01/26 00:00:00", metadata: { name, bundle_identifier: id, version: ver } } });
 const statusFail = () => ({ attributes: { event_type: "status.changed", at: "05/01/26 00:00:00", metadata: { status: { softwareupdate: { failure_reason: { count: 5, reason: "boom" } } } } } });
@@ -335,7 +335,7 @@ test("deviceFindings returns [] for a healthy device", () => {
   assert.deepEqual(deviceFindings({ logs: [appLog("Firefox", "org.mozilla.firefox", "150"), profLog("WiFi"), statusFail()] }), []);
 });
 
-import { findingRows, FINDINGS_COLUMNS } from "../scripts/lib/logs.mjs";
+import { findingRows, FINDINGS_COLUMNS } from "../dist/reports/domain/logs.js";
 
 test("parseArgs accepts --report-detail summary|table|full and rejects others", () => {
   assert.equal(parseArgs(["--last-seen", "5"]).reportDetail, "summary");

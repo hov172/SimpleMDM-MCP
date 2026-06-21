@@ -234,14 +234,9 @@ import {
   findingRows, FINDINGS_COLUMNS,
 } from "../../scripts/lib/logs.mjs";
 
-function captureLogs() {
-  console.log("Capturing logs golden…");
-  const dir = ensureGolden("logs");
-
+export function buildLogsInput() {
   const RAW  = fix("devices-sample.json").data;
   const LOGS = fix("logs-sample.json").data;
-
-  // Build per-device bundles (match logs by serial number, same as engine does)
   const bundles = RAW.map((device) => ({
     device,
     logs: LOGS.filter(
@@ -249,6 +244,14 @@ function captureLogs() {
              === device.attributes.serial_number,
     ),
   }));
+  return { bundles, dateStr: FIXED_DATE, nowIso: FIXED_NOW };
+}
+
+function captureLogs() {
+  console.log("Capturing logs golden…");
+  const dir = ensureGolden("logs");
+
+  const { bundles } = buildLogsInput();
 
   const lr        = logRows(bundles);
   const sr        = statusSnapshotRows(bundles);
