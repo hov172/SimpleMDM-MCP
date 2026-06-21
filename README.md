@@ -392,6 +392,17 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 ---
 
+## Two report surfaces
+
+All three report types (audit / inventory / logs) share a unified engine (`dist/reports/cli.js`):
+
+- **`run_fleet_audit` / `run_device_logs_audit` / `run_inventory_report` MCP tools** — spawn the unified CLI as a **host-side subprocess**. Files are written to disk under `reports/` and the tool response returns a text summary + report preview. Use these when you want on-disk output (CSVs, dossier PDFs, manifests).
+- **`generate_report` MCP tool** — runs the same engine **in-process**, returns only `WriteResult` metadata (out_dir, file list with sha256). Also supports **declarative dynamic specs** for ad-hoc tables without writing a spec file. Use this for metadata-only generation, scripted pipelines, and custom one-off reports.
+
+The skills (`/audit`, `/logs-audit`, `/inventory`) invoke the run_* tools under the hood, so they also write on-disk output.
+
+---
+
 ## Fleet Audit (/audit)
 
 A self-contained command that generates a full macOS fleet **security audit** by joining your live
@@ -429,7 +440,7 @@ OS versions those devices are on.
 Or run the engine directly:
 
 ```bash
-node scripts/sofa-audit.mjs --format all   # csv | md | docx | all  (default: all)
+node dist/reports/cli.js audit --format all   # csv | md | docx | all  (default: all)
 ```
 
 | Flag | Meaning |
@@ -453,23 +464,23 @@ devices are on (drops the iOS/iPadOS table and unrelated macOS majors).
 
 ```bash
 # Whole fleet, every format (CSV + md/html/docx/pdf) — the default
-node scripts/sofa-audit.mjs --format all
+node dist/reports/cli.js audit --format all
 
 # Whole fleet, data files only (just the CSVs)
-node scripts/sofa-audit.mjs --format csv
+node dist/reports/cli.js audit --format csv
 
 # One device (or several) by serial
-node scripts/sofa-audit.mjs --serial C02ABC123XYZ
-node scripts/sofa-audit.mjs --serial ABC123,DEF456 --format md
+node dist/reports/cli.js audit --serial C02ABC123XYZ
+node dist/reports/cli.js audit --serial ABC123,DEF456 --format md
 
 # A device or assignment group by name (matches both kinds)
-node scripts/sofa-audit.mjs --group "Faculty" --format all
+node dist/reports/cli.js audit --group "Faculty" --format all
 
 # The 25 most recently seen devices, into a named directory
-node scripts/sofa-audit.mjs --last-seen 25 --out reports/recent-25 --format all
+node dist/reports/cli.js audit --last-seen 25 --out reports/recent-25 --format all
 
 # Force a fresh SOFA feed (ignore the on-disk cache)
-node scripts/sofa-audit.mjs --no-network-cache --format all
+node dist/reports/cli.js audit --no-network-cache --format all
 ```
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient — the audit never
@@ -549,7 +560,7 @@ the result to CSV, raw JSON, a SHA-256 integrity manifest, and a detailed combin
 report (Markdown / HTML / Word / PDF).
 
 Like `/audit`, it talks **directly to the SimpleMDM API** (read-only) — no external app
-or service — and is a host-side script (`scripts/logs-audit.mjs`) plus a `/logs-audit`
+or service — and is driven by the unified report engine CLI (`node dist/reports/cli.js logs`) plus a `/logs-audit`
 skill, not an MCP tool.
 
 > 📖 **Deep dive:** see [`docs/logs-audit.md`](docs/logs-audit.md) for the full output
@@ -573,7 +584,7 @@ In Claude Code, ask for it (the **`/logs-audit`** skill maps your words to flags
 Or run the engine directly — **exactly one selector** is required:
 
 ```bash
-node scripts/logs-audit.mjs <selector> [flags]
+node dist/reports/cli.js logs <selector> [flags]
 ```
 
 | Selector | Meaning |
@@ -601,22 +612,22 @@ and falls back to headless Chrome.
 
 ```bash
 # One device, every artifact (CSV + JSON + manifest + md/html/docx/pdf report)
-node scripts/logs-audit.mjs --serial C02ABC123XYZ --format all
+node dist/reports/cli.js logs --serial C02ABC123XYZ --format all
 
 # The 10 most recently active devices, with security posture, full report
-node scripts/logs-audit.mjs --last-seen 10 --with-security --format all
+node dist/reports/cli.js logs --last-seen 10 --with-security --format all
 
 # A whole group, with inventory + security, data files only
-node scripts/logs-audit.mjs --group "Faculty" --with-inventory --with-security --format csv
+node dist/reports/cli.js logs --group "Faculty" --with-inventory --with-security --format csv
 
 # Two specific devices into a named directory
-node scripts/logs-audit.mjs --serial ABC123,DEF456 --out reports/case-2026-06 --format all
+node dist/reports/cli.js logs --serial ABC123,DEF456 --out reports/case-2026-06 --format all
 
 # Whole fleet (heavy — explicit acknowledgement required)
-node scripts/logs-audit.mjs --all --confirm-all --format csv
+node dist/reports/cli.js logs --all --confirm-all --format csv
 
 # Full per-device event tables embedded in the report (vs. the default summary)
-node scripts/logs-audit.mjs --group "Faculty" --report-detail full --format all
+node dist/reports/cli.js logs --group "Faculty" --report-detail full --format all
 ```
 
 ### Output
@@ -694,7 +705,7 @@ ready-to-paste command templates in the [prompt cookbook](docs/inventory.md#prom
 Or run the engine directly — a selector, a `--search` query, or both:
 
 ```bash
-node scripts/inventory-report.mjs [selector] [--search '<query>'] [flags]
+node dist/reports/cli.js inventory [selector] [--search '<query>'] [flags]
 ```
 
 | Selector | Meaning |
@@ -744,25 +755,25 @@ keywords / `app:` / `profile:` / `user:`) needs `--confirm-all`, same as `--all`
 
 ```bash
 # The motivating report: faculty/staff devices seen since 2025, every format
-node scripts/inventory-report.mjs --search 'group:faculty,staff seen:>=2025-01-01' --format all
+node dist/reports/cli.js inventory --search 'group:faculty,staff seen:>=2025-01-01' --format all
 
 # Outdated MacBooks, excluding loaners — CSVs only
-node scripts/inventory-report.mjs --search 'type:laptop os:<15 -group:loaners' --format csv
+node dist/reports/cli.js inventory --search 'type:laptop os:<15 -group:loaners' --format csv
 
 # Deployment gaps: assigned Zoom but not installed (fleet-wide per-device scan)
-node scripts/inventory-report.mjs --search 'assigned:zoom -app:zoom' --confirm-all
+node dist/reports/cli.js inventory --search 'assigned:zoom -app:zoom' --confirm-all
 
 # Security sweep: unencrypted, recently active, with Remote Desktop on
-node scripts/inventory-report.mjs --search 'filevault:off ard:on seen:90d'
+node dist/reports/cli.js inventory --search 'filevault:off ard:on seen:90d'
 
 # One group, everything, full per-device tables
-node scripts/inventory-report.mjs --group "Library" --report-detail full --format all
+node dist/reports/cli.js inventory --group "Library" --report-detail full --format all
 
 # Old hardware by version-aware compare and wildcard serials
-node scripts/inventory-report.mjs --search 'serial:C02* OR serial:FVFG* os:13'
+node dist/reports/cli.js inventory --search 'serial:C02* OR serial:FVFG* os:13'
 
 # People-facing roster: faculty/staff device groups, one row per device with users
-node scripts/inventory-report.mjs --search 'devicegroup:faculty,staff' --report-style roster --format all
+node dist/reports/cli.js inventory --search 'devicegroup:faculty,staff' --report-style roster --format all
 ```
 
 ### Output
