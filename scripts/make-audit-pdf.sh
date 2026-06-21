@@ -3,20 +3,30 @@
 # Generate full-audit.pdf from full-audit.md using pandoc + WeasyPrint (preferred,
 # for real "Page X of Y" footers) or a headless Chromium-based browser (fallback).
 # Produces an A3-landscape, full-width report with the shared report styling
-# (see scripts/audit-report.head.html). `node scripts/sofa-audit.mjs --format all`
+# (generated from dist/reports/engine/theme.js). Running:
+#   node dist/reports/cli.js audit --format all
 # already produces this PDF automatically; this script regenerates it standalone.
 #
 # Usage:
 #   scripts/make-audit-pdf.sh [audit-dir]
 #     audit-dir  Optional. Defaults to the newest reports/audit-*/ directory.
 #
-# Requirements: pandoc, and WeasyPrint (brew install weasyprint) or Chrome/Chromium/Edge.
+# Requirements: node (for theme generation), pandoc, and WeasyPrint
+#   (brew install weasyprint) or Chrome/Chromium/Edge.
 #
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-STYLE="$HERE/audit-report.head.html"
-[ -f "$STYLE" ] || { echo "Missing stylesheet: $STYLE" >&2; exit 1; }
+ROOT="$(cd "$HERE/.." && pwd)"
+
+# Generate the HTML style header from the unified TS theme engine.
+STYLE="$(mktemp /tmp/audit-head-XXXXXX.html)"
+trap 'rm -f "$STYLE"' EXIT
+node --input-type=module <<JS >"$STYLE"
+import { headHtml } from '$ROOT/dist/reports/engine/theme.js';
+process.stdout.write(headHtml('a3-landscape', 'SOFA Fleet Security Audit'));
+JS
+[ -s "$STYLE" ] || { echo "Failed to generate stylesheet from dist/reports/engine/theme.js" >&2; exit 1; }
 
 # Resolve the audit directory (argument, else newest reports/audit-*/).
 DIR="${1:-}"
@@ -27,7 +37,7 @@ fi
 DIR="$(cd "$DIR" && pwd)"
 
 MD="$DIR/full-audit.md"
-[ -f "$MD" ] || { echo "No full-audit.md in $DIR — run: node scripts/sofa-audit.mjs --format md (or all)" >&2; exit 1; }
+[ -f "$MD" ] || { echo "No full-audit.md in $DIR — run: node dist/reports/cli.js audit --format md (or all)" >&2; exit 1; }
 
 command -v pandoc >/dev/null 2>&1 || { echo "pandoc not found. Install it (e.g. 'brew install pandoc')." >&2; exit 1; }
 

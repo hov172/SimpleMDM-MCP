@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Removed
+- Retired the legacy `.mjs` report engines (`sofa-audit.mjs`, `inventory-report.mjs`, `logs-audit.mjs`) and their superseded libs (`scripts/lib/{render,evaluate,query,inventory,inventory-render,logs,report-pdf,docx,apple-legacy-models}.mjs`) and HTML style headers. All three reports plus `--raw`/`--with-security`/`--with-inventory` now run on the unified TypeScript engine via `dist/reports/cli.js` (host-side subprocess, invoked by the `run_fleet_audit`, `run_inventory_report`, and `run_device_logs_audit` MCP tools) and `generate_report` (in-process). Legacy test suites superseded by the unified `test/reports/` suite were also removed.
+
 ## [0.25.1] - 2026-06-11
 
 ### Fixed

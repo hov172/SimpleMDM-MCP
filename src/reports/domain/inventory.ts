@@ -1,5 +1,5 @@
 // Fetch-side normalization for the inventory report.
-// Port of scripts/lib/inventory.mjs — logic-identical, adds TypeScript types.
+// Ported from the legacy inventory lib — logic-identical, adds TypeScript types.
 
 const LEGACY_MODELS: Record<string, { marketing: string; year: string }> = {
   // iMac
