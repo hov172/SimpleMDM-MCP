@@ -6,11 +6,20 @@ import { buildMajorTables, evaluateDevice } from "../domain/sofa-eval.js";
 
 export type ClientFn = (path: string, opts?: RequestInit) => Promise<unknown>;
 
+export type FetchJsonFn = (url: string) => Promise<unknown>;
+
+const defaultFetchJson: FetchJsonFn = (url) => fetch(url).then((r) => r.json());
+
 export class ServerDataSource implements DataSource {
+  private readonly fetchJson: FetchJsonFn;
+
   constructor(
     private readonly client: ClientFn,
     private readonly maxPages = 200,
-  ) {}
+    fetchJson?: FetchJsonFn,
+  ) {
+    this.fetchJson = fetchJson ?? defaultFetchJson;
+  }
 
   private async paginateAll(path: string): Promise<any[]> {
     const out: any[] = [];
@@ -101,8 +110,8 @@ export class ServerDataSource implements DataSource {
     const SOFA_MAC = "https://sofafeed.macadmins.io/v1/macos_data_feed.json";
     const SOFA_IOS = "https://sofafeed.macadmins.io/v1/ios_data_feed.json";
     const [macFeed, iosFeed] = await Promise.all([
-      fetch(SOFA_MAC).then((r) => r.json()),
-      fetch(SOFA_IOS).then((r) => r.json()),
+      this.fetchJson(SOFA_MAC),
+      this.fetchJson(SOFA_IOS),
     ]);
     const tables = buildMajorTables(macFeed as any, iosFeed as any);
     const devs = await this.devices(scope);

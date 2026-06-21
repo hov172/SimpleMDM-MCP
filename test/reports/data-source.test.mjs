@@ -12,6 +12,13 @@ const sampleRaw = JSON.parse(
 // devices-sample.json is wrapped: { data: [...], has_more: false }
 const rawDevices = sampleRaw.data ?? sampleRaw;
 
+const sofaMacos = JSON.parse(
+  readFileSync(resolve(__dirname, "../fixtures/sofa-macos.json"), "utf8"),
+);
+const sofaIos = JSON.parse(
+  readFileSync(resolve(__dirname, "../fixtures/sofa-ios.json"), "utf8"),
+);
+
 function makeMockClient(devicesData) {
   return async (path) => {
     if (path.startsWith("/devices")) {
@@ -24,6 +31,12 @@ function makeMockClient(devicesData) {
 function makeSpyClient(calls) {
   return async (path) => {
     calls.push(path);
+    // Return minimal mock data so each method resolves without error
+    if (path.startsWith("/devices")) return { data: rawDevices, has_more: false };
+    if (path.startsWith("/apps")) return { data: [{ id: 1, attributes: { name: "TestApp" } }], has_more: false };
+    if (path.startsWith("/profiles")) return { data: [{ id: 2, attributes: { name: "TestProfile" } }], has_more: false };
+    if (path.startsWith("/users")) return { data: [{ id: 3, attributes: { email: "test@example.com" } }], has_more: false };
+    if (path.startsWith("/logs")) return { data: [{ id: 4, attributes: { type: "device.enrolled" } }], has_more: false };
     return { data: [], has_more: false };
   };
 }
@@ -43,13 +56,45 @@ test("ServerDataSource.devices with all scope returns all devices", async () => 
   assert.ok(devs.length > 0);
 });
 
-test("no report fetch path calls a mutating client method", async () => {
+test("no report fetch path calls a mutating client method — all 5 methods", async () => {
   const calls = [];
-  const ds = new ServerDataSource(makeSpyClient(calls));
-  await ds.devices({ kind: "all" }).catch(() => {});
+  const spy = makeSpyClient(calls);
+  const ds = new ServerDataSource(spy);
+  const scope = { kind: "all" };
+  await Promise.all([
+    ds.devices(scope).catch(() => {}),
+    ds.apps(scope).catch(() => {}),
+    ds.profiles(scope).catch(() => {}),
+    ds.users(scope).catch(() => {}),
+    ds.logs(scope).catch(() => {}),
+  ]);
+  assert.ok(calls.length > 0, "spy should have been called");
   assert.equal(
     calls.some((m) => /create|update|delete|push|wipe|lock|post|put|patch/i.test(m)),
     false,
     `Mutating call detected: ${calls.join(", ")}`,
+  );
+});
+
+test("securityPosture uses injected fetchJson — no live network", async () => {
+  let fetchCalled = false;
+  const stubFetchJson = async (url) => {
+    fetchCalled = true;
+    if (url.includes("macos")) return sofaMacos;
+    if (url.includes("ios")) return sofaIos;
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const mockClient = makeMockClient(rawDevices);
+  const ds = new ServerDataSource(mockClient, 200, stubFetchJson);
+  const results = await ds.securityPosture({ kind: "all" });
+
+  assert.ok(fetchCalled, "injected fetchJson should have been called");
+  assert.ok(Array.isArray(results), "should return an array");
+  assert.ok(results.length > 0, "should return evaluated devices");
+  // Each result should have a serial field (from DeviceRecord / EvaluatedDevice)
+  assert.ok(
+    results.every((r) => typeof r.serial === "string"),
+    "each result should have a serial field",
   );
 });
