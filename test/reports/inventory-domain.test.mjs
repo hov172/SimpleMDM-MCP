@@ -8,9 +8,12 @@
 // flat/roster/dossier renderers across detail levels, edge inputs and sort orders.
 // parseInvArgs is intentionally omitted: it has no TS-domain export and its
 // validation is covered by test/reports/cli.test.mjs (the unified CLI bridge).
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { buildInventoryDossier } from "../../dist/reports/specs/inventory.js";
 import {
   buildModelMap, deriveType, normalizeDevice, assignmentAppMap, profileAssignmentMap,
   normalizeApps, normalizeProfiles, normalizeUsers,
@@ -373,4 +376,33 @@ test("renderInventoryFlat + sortRecords: --sort seen:desc puts most recently see
   assert.equal(serials[serials.length - 1], "E33LAB333");
   const byOs = sortRecords(buildRecords(), { field: "os", dir: "desc" });
   assert.equal(byOs[0].serial, "F44PAD444");
+});
+
+// ── Finding 2: empty-fleet write behavior ────────────────────────────────────
+// Backfill of inventory-engine.test.mjs:175-183: a zero-match run must NOT
+// crash and must still write all structural CSV artifacts + manifest.
+// The legacy test called the CLI driver and checked exit 0; here we call the
+// unified buildInventoryDossier().write() directly.
+test("buildInventoryDossier: zero-record run writes structural CSVs and manifest without throwing", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "inv-empty-"));
+  const emptyInput = { records: [], findings: [], dateStr: "2026-01-01" };
+  // Must not throw even with no devices
+  await assert.doesNotReject(() =>
+    buildInventoryDossier(emptyInput).write(tmpDir, { format: "md", reportOnly: false }),
+  );
+  // Core artifacts the spec always emits regardless of record count
+  for (const f of ["devices.csv", "findings.csv", "by-group.csv", "manifest.csv"]) {
+    assert.ok(existsSync(join(tmpDir, f)), `${f} must exist on a zero-match run`);
+  }
+});
+
+// ── Finding 3: sections_failed VALUE ─────────────────────────────────────────
+// Backfill of inventory-engine.test.mjs:99: when apps fetch fails the
+// sections_failed cell in devices.csv must equal "apps", not just be present.
+// Logic lives in dist/reports/domain/inventory-render.js:39.
+test("deviceRows: sections_failed is 'apps' (exact) when only apps section failed", () => {
+  const recs = buildRecords();
+  recs[0].sections = { apps: "failed", profiles: "ok", users: "ok" };
+  const row = deviceRows(recs)[0];
+  assert.equal(row.sections_failed, "apps");
 });
