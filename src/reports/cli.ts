@@ -38,6 +38,42 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   };
   const has = (name: string): boolean => flags.includes(name);
 
+  // ── Per-report flag validation ────────────────────────────────────────────────
+  // Define allowed flags per report
+  const COMMON_FLAGS = new Set([
+    "--serial", "--group", "--last-seen", "--all", "--confirm-all",
+    "--format", "--out", "--report-only",
+    "--report-detail",
+  ]);
+  const INVENTORY_ONLY_FLAGS = new Set([
+    "--search", "--no-apps", "--no-profiles", "--no-users",
+    "--report-style", "--sort", "--allow-partial",
+  ]);
+  const DEFERRED_FLAGS = new Set([
+    "--raw", "--with-security", "--with-inventory",
+  ]);
+
+  // Build the set of allowed flags for this report
+  const allowedForReport = new Set([...COMMON_FLAGS, ...DEFERRED_FLAGS]);
+  if (reportName === "inventory") {
+    INVENTORY_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
+  }
+
+  // Validate flags: must be either unknown OR allowed for this report
+  for (const f of flags) {
+    if (f.startsWith("--")) {
+      if (!allowedForReport.has(f)) {
+        // Is it an inventory-only flag used on non-inventory report?
+        if (INVENTORY_ONLY_FLAGS.has(f)) {
+          throw new Error(`${f} is only supported for the inventory report`);
+        } else {
+          throw new Error(`unknown flag: ${f}`);
+        }
+      }
+    }
+  }
+
+
   // ── Scope selectors ────────────────────────────────────────────────────────
   const selectorArgs: LegacySelector[] = [];
   if (val("--serial") !== null) {
@@ -134,22 +170,6 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     sort = { field, dir };
   }
 
-  // ── Unknown flag detection ─────────────────────────────────────────────────
-  // Every --flag token must be in this whitelist; value tokens (non-dashes) are skipped.
-  const KNOWN_FLAGS = new Set([
-    "--serial", "--group", "--last-seen", "--all", "--confirm-all",
-    "--format", "--out", "--report-only",
-    // inventory wired
-    "--search", "--no-apps", "--no-profiles", "--no-users", "--allow-partial",
-    "--report-detail", "--report-style", "--sort",
-    // deferred (fail-fast above, but must be known so they don't double-error)
-    "--raw", "--with-security", "--with-inventory",
-  ]);
-  for (const f of flags) {
-    if (f.startsWith("--") && !KNOWN_FLAGS.has(f)) {
-      throw new Error(`unknown flag: ${f}`);
-    }
-  }
 
   const apiKey = loadEnvKey() ?? "";
   const ctx: Ctx = { apiKey };

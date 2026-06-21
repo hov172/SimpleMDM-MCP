@@ -194,3 +194,129 @@ test("logs --report-detail full is accepted and writes report.md", async () => {
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ── Part C: Per-report flag validation (inventory-only flags rejected on audit/logs) ──
+
+test("--search on audit rejects with clear error naming inventory", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--search", "serial:ABC"], { fetchInput: async () => ({}) }),
+    /--search.*inventory|inventory.*--search/i,
+  );
+});
+
+test("--search on logs rejects with clear error naming inventory", async () => {
+  await assert.rejects(
+    () => runCli(["logs", "--serial", "ABC", "--search", "serial:ABC"], { fetchInput: async () => ({}) }),
+    /--search.*inventory|inventory.*--search/i,
+  );
+});
+
+test("--no-apps on audit rejects with clear error naming inventory", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--no-apps"], { fetchInput: async () => ({}) }),
+    /--no-apps.*inventory|inventory.*--no-apps/i,
+  );
+});
+
+test("--no-apps on logs rejects with clear error naming inventory", async () => {
+  await assert.rejects(
+    () => runCli(["logs", "--serial", "ABC", "--no-apps"], { fetchInput: async () => ({}) }),
+    /--no-apps.*inventory|inventory.*--no-apps/i,
+  );
+});
+
+test("--no-profiles on audit rejects", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--no-profiles"], { fetchInput: async () => ({}) }),
+    /--no-profiles.*inventory|inventory.*--no-profiles/i,
+  );
+});
+
+test("--no-users on logs rejects", async () => {
+  await assert.rejects(
+    () => runCli(["logs", "--serial", "ABC", "--no-users"], { fetchInput: async () => ({}) }),
+    /--no-users.*inventory|inventory.*--no-users/i,
+  );
+});
+
+test("--report-style on audit rejects", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--report-style", "flat"], { fetchInput: async () => ({}) }),
+    /--report-style.*inventory|inventory.*--report-style/i,
+  );
+});
+
+test("--sort on logs rejects", async () => {
+  await assert.rejects(
+    () => runCli(["logs", "--serial", "ABC", "--sort", "seen"], { fetchInput: async () => ({}) }),
+    /--sort.*inventory|inventory.*--sort/i,
+  );
+});
+
+test("--allow-partial on audit rejects", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--allow-partial"], { fetchInput: async () => ({}) }),
+    /--allow-partial.*inventory|inventory.*--allow-partial/i,
+  );
+});
+
+// ── Regression: inventory-only flags still work on inventory ──────────────────────
+
+test("--search on inventory still works (regression)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-test-inv-search-regress-"));
+  try {
+    const input = buildInventoryInput();
+    const result = await runCli(
+      ["inventory", "--all", "--confirm-all", "--format", "md", "--out", tmp, "--search", "serial:C02FAC111"],
+      { fetchInput: async () => input },
+    );
+    assert.ok(existsSync(join(tmp, "report.md")), "report.md must be written");
+    assert.ok(result.files.some((f) => f.name === "report.md"), "result must include report.md");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── Regression: common flags still work on all reports ────────────────────────────
+
+test("--format md on audit still works (regression)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-test-audit-format-regress-"));
+  try {
+    const input = buildAuditInput();
+    const result = await runCli(
+      ["audit", "--serial", "ABC", "--format", "md", "--out", tmp],
+      { fetchInput: async () => input },
+    );
+    assert.ok(existsSync(join(tmp, "full-audit.md")), "full-audit.md must be written");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("--format csv on inventory still works (regression)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-test-inv-format-regress-"));
+  try {
+    const input = buildInventoryInput();
+    const result = await runCli(
+      ["inventory", "--serial", "ABC123", "--format", "csv", "--out", tmp],
+      { fetchInput: async () => input },
+    );
+    assert.ok(existsSync(join(tmp, "devices.csv")), "devices.csv must be written");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("--format docx on logs still works (regression)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-test-logs-format-regress-"));
+  try {
+    const input = buildLogsInput();
+    const result = await runCli(
+      ["logs", "--serial", "ABC", "--format", "docx", "--out", tmp],
+      { fetchInput: async () => input },
+    );
+    assert.ok(result.files.length > 0, "result must include at least one file");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
