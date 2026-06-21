@@ -117,26 +117,47 @@ test("unknown flag rejects even for inventory", async () => {
   );
 });
 
-// ── Part A: deferred flags give specific guidance ─────────────────────────────
+// ── Part A: cross-report flag rejections ─────────────────────────────────────
 
-test("--raw rejects with not-yet-supported message", async () => {
+test("--raw on logs rejects naming inventory", async () => {
   await assert.rejects(
-    () => runCli(["inventory", "--serial", "ABC", "--raw"], { fetchInput: async () => ({}) }),
-    /not yet supported.*unified CLI|use node scripts/i,
+    () => runCli(["logs", "--serial", "ABC", "--raw"], { fetchInput: async () => ({}) }),
+    /--raw.*inventory|inventory.*--raw/i,
   );
 });
 
-test("--with-security rejects with not-yet-supported message", async () => {
+test("--raw on audit rejects naming inventory", async () => {
   await assert.rejects(
-    () => runCli(["logs", "--serial", "ABC", "--with-security"], { fetchInput: async () => ({}) }),
-    /not yet supported.*unified CLI|use node scripts/i,
+    () => runCli(["audit", "--serial", "ABC", "--raw"], { fetchInput: async () => ({}) }),
+    /--raw.*inventory|inventory.*--raw/i,
   );
 });
 
-test("--with-inventory rejects with not-yet-supported message", async () => {
+test("--with-security on inventory rejects naming logs", async () => {
   await assert.rejects(
-    () => runCli(["logs", "--serial", "ABC", "--with-inventory"], { fetchInput: async () => ({}) }),
-    /not yet supported.*unified CLI|use node scripts/i,
+    () => runCli(["inventory", "--serial", "ABC", "--with-security"], { fetchInput: async () => ({}) }),
+    /--with-security.*logs|logs.*--with-security/i,
+  );
+});
+
+test("--with-security on audit rejects naming logs", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--with-security"], { fetchInput: async () => ({}) }),
+    /--with-security.*logs|logs.*--with-security/i,
+  );
+});
+
+test("--with-inventory on inventory rejects naming logs", async () => {
+  await assert.rejects(
+    () => runCli(["inventory", "--serial", "ABC", "--with-inventory"], { fetchInput: async () => ({}) }),
+    /--with-inventory.*logs|logs.*--with-inventory/i,
+  );
+});
+
+test("--with-inventory on audit rejects naming logs", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--with-inventory"], { fetchInput: async () => ({}) }),
+    /--with-inventory.*logs|logs.*--with-inventory/i,
   );
 });
 
@@ -316,6 +337,45 @@ test("--format docx on logs still works (regression)", async () => {
       { fetchInput: async () => input },
     );
     assert.ok(result.files.length > 0, "result must include at least one file");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── Task 4: --raw / --with-security / --with-inventory wired through the unified CLI ──
+
+test("inventory --raw is accepted and writes raw/devices.json", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-raw-"));
+  try {
+    await runCli(
+      ["inventory", "--all", "--confirm-all", "--raw", "--format", "md", "--out", tmp],
+      { fetchInput: async () => buildInventoryInput() },
+    );
+    assert.ok(existsSync(join(tmp, "raw", "devices.json")), "raw/devices.json must be written with --raw");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("logs --with-security is accepted (no unknown-flag error)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-sec-"));
+  try {
+    await runCli(
+      ["logs", "--serial", "C02", "--with-security", "--format", "csv", "--out", tmp],
+      { fetchInput: async () => ({ ...buildLogsInput(), security: { tables: {}, evald: [] } }) },
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("logs --with-inventory is accepted (no unknown-flag error)", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "cli-inv-"));
+  try {
+    await runCli(
+      ["logs", "--serial", "C02", "--with-inventory", "--format", "csv", "--out", tmp],
+      { fetchInput: async () => buildLogsInput() },
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

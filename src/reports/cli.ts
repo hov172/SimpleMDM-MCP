@@ -38,6 +38,10 @@ export interface RunReportOpts {
   reportStyle?: "flat" | "roster" | undefined;
   sort?: { field: string; dir: string } | null;
   search?: string | null;
+  raw?: boolean;
+  // logs-specific opts
+  withSecurity?: boolean;
+  withInventory?: boolean;
 }
 
 export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<WriteResult> {
@@ -62,6 +66,9 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
     reportStyle: opts.reportStyle,
     sort: opts.sort ?? null,
     search: opts.search ?? null,
+    raw: opts.raw,
+    withSecurity: opts.withSecurity,
+    withInventory: opts.withInventory,
   };
 
   const fetchFn = deps?.fetchInput ?? ((_rep: string, sc: LegacySelector, c: Ctx) => entry.buildInput(sc, c, entryOpts));
@@ -134,25 +141,29 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   ]);
   const INVENTORY_ONLY_FLAGS = new Set([
     "--search", "--no-apps", "--no-profiles", "--no-users",
-    "--report-style", "--sort", "--allow-partial",
+    "--report-style", "--sort", "--allow-partial", "--raw",
   ]);
-  const DEFERRED_FLAGS = new Set([
-    "--raw", "--with-security", "--with-inventory",
+  const LOGS_ONLY_FLAGS = new Set([
+    "--with-security", "--with-inventory",
   ]);
 
   // Build the set of allowed flags for this report
-  const allowedForReport = new Set([...COMMON_FLAGS, ...DEFERRED_FLAGS]);
+  const allowedForReport = new Set([...COMMON_FLAGS]);
   if (reportName === "inventory") {
     INVENTORY_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
   }
+  if (reportName === "logs") {
+    LOGS_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
+  }
 
-  // Validate flags: must be either unknown OR allowed for this report
+  // Validate flags: must be either known and allowed for this report, or rejected with guidance
   for (const f of flags) {
     if (f.startsWith("--")) {
       if (!allowedForReport.has(f)) {
-        // Is it an inventory-only flag used on non-inventory report?
         if (INVENTORY_ONLY_FLAGS.has(f)) {
           throw new Error(`${f} is only supported for the inventory report`);
+        } else if (LOGS_ONLY_FLAGS.has(f)) {
+          throw new Error(`${f} is only supported for the logs report`);
         } else {
           throw new Error(`unknown flag: ${f}`);
         }
@@ -211,27 +222,10 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const reportDetailRaw = val("--report-detail");
   const reportStyleRaw = val("--report-style");
   const sortRaw = val("--sort");
-  // Inventory/Logs: deferred (fail-fast)
-  const rawFlag = has("--raw");
+  // Inventory-only: --raw; Logs-only: --with-security, --with-inventory
+  const raw = has("--raw");
   const withSecurity = has("--with-security");
   const withInventory = has("--with-inventory");
-
-  // ── Fail-fast for deferred flags (before any network fetch) ───────────────
-  if (rawFlag) {
-    throw new Error(
-      "--raw is not yet supported by the unified CLI; use node scripts/inventory-report.mjs",
-    );
-  }
-  if (withSecurity) {
-    throw new Error(
-      "--with-security is not yet supported by the unified CLI; use node scripts/logs-audit.mjs",
-    );
-  }
-  if (withInventory) {
-    throw new Error(
-      "--with-inventory is not yet supported by the unified CLI; use node scripts/logs-audit.mjs",
-    );
-  }
 
   // ── Validate wired flags ───────────────────────────────────────────────────
   if (reportStyleRaw !== null && reportStyleRaw !== undefined && !["flat", "roster"].includes(reportStyleRaw)) {
@@ -269,6 +263,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     reportStyle: (reportStyleRaw as "flat" | "roster" | undefined) ?? undefined,
     sort,
     search: searchQuery,
+    raw, withSecurity, withInventory,
   }, { ...deps, log: deps?.log ?? console.log });
 }
 
