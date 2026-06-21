@@ -104,7 +104,7 @@ Drafted but removed before merge — would have produced misleading or empty out
 
 ### Caching
 - All list endpoints, `collectDevices()` fleet iterations, and per-device `collectInstalledApps()` calls are cached in-memory with a configurable TTL (default 5 min, `SIMPLEMDM_CACHE_TTL_MS`). Repeated calls within the TTL window return instantly from cache — zero API calls, minimal token usage.
-- Write operations automatically invalidate affected cache entries (all 78 write tools are mapped to cache key prefixes). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
+- Write operations automatically invalidate affected cache entries (80 of the 81 write tools are mapped to cache key prefixes in `INVALIDATION_MAP`; the lone exception is `set_managed_app_config_schema`). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
 - Concurrent identical requests are deduplicated (stampede protection) so only one fetch runs.
 - Set `SIMPLEMDM_CACHE_TTL_MS=0` to disable caching entirely.
 
