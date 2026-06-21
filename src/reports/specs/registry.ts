@@ -5,6 +5,7 @@ import { auditInputLive, inventoryInputLive, logsInputLive } from "../cli/inputs
 import { buildAuditDossier } from "./audit.js";
 import { buildInventoryDossier } from "./inventory.js";
 import { buildLogsDossier } from "./logs.js";
+import { findingRows } from "../domain/logs.js";
 
 export interface RegistryEntry {
   buildInput(scope: LegacySelector, ctx: Ctx, opts?: Record<string, any>): Promise<any>;
@@ -59,16 +60,20 @@ export const REGISTRY: Record<string, RegistryEntry> = {
           : `last-seen ${sel.value}`
         : "whole fleet";
       const undetermined = records.filter((r: any) => r.match_status === "unknown").length;
+      const fleetCount: number | undefined = input.fleetCount;
+      const unknownFindings = findings.filter((f: any) => f.status === "unknown").length;
+      const appsExcluded = records.filter((r: any) => r.sections?.apps !== "ok").length;
       const lines: (string | null)[] = [
         `Inventory Report ${dateStr}`,
         opts?.search ? `Query: ${opts.search}` : null,
         `Scope: ${scopeLabel}`,
-        `Devices: ${records.length} matched (of ${rawById?.size ?? "?"} selected)`,
+        `Devices: ${records.length} matched (of ${rawById?.size ?? "?"} selected${fleetCount != null ? `, fleet ${fleetCount}` : ""})`,
         undetermined ? `Undetermined matches (included, flagged): ${undetermined}` : null,
-        `Findings: ${findings.length}`,
+        `Findings: ${findings.length}${unknownFindings ? ` (${unknownFindings} unknown)` : ""}`,
         findings.length
           ? `Findings by type: ${[...findings.reduce((m: Map<string, number>, f: any) => m.set(f.type, (m.get(f.type) ?? 0) + 1), new Map<string, number>())].map(([t, n]) => `${t} ${n}`).join(" | ")}`
           : null,
+        appsExcluded ? `App catalog/rollups exclude ${appsExcluded} device(s) with unavailable app inventory` : null,
         failures.length
           ? `Failed section fetches: ${failures.length} — export is PARTIAL`
           : "Failed section fetches: 0",
@@ -113,6 +118,12 @@ export const REGISTRY: Record<string, RegistryEntry> = {
         noisy.length
           ? `Noisy devices (>=25% of events): ${noisy.map((d: any) => `${d.serial} (${Math.round((d.n / totalEvents) * 100)}%)`).join(", ")}`
           : null,
+        (() => {
+          const fr = findingRows(bundles as any[]);
+          return fr.length
+            ? `Findings: ${fr.length} across ${new Set(fr.map((r: any) => r.serial_number)).size} device(s)${opts?.reportOnly ? "" : " — see findings.csv"}`
+            : null;
+        })(),
         `Failed devices: 0`,
         opts?.outDir ? `Output: ${opts.outDir}` : null,
       ];

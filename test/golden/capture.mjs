@@ -203,7 +203,7 @@ export function buildInventoryInput() {
 
   const rawById = new Map(DEVICES.map((d) => [d.id, d]));
 
-  return { records, findings, dateStr: FIXED_DATE, rawById };
+  return { records, findings, dateStr: FIXED_DATE, rawById, fleetCount: DEVICES.length };
 }
 
 function captureInventory() {
