@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { buildDynamicDossier, validateDynamicSpec, adapterRows } from "../../dist/reports/specs/dynamic.js";
+import { buildDynamicDossier, validateDynamicSpec, adapterRows, applyFilter } from "../../dist/reports/specs/dynamic.js";
 
 test("a dynamic spec renders the house-style dossier", async () => {
   const spec = {
@@ -119,4 +119,68 @@ test("adapterRows routes each adapter to its DataSource method", async () => {
   await adapterRows(fake, "posture");
   await adapterRows(fake, "logs");
   assert.deepStrictEqual(calls, ["devices", "apps", "profiles", "users", "posture", "logs"]);
+});
+
+// ── applyFilter (generic row filtering for dynamic specs over any adapter) ────
+
+const ROWS = [
+  { serial: "A1", os_version: "13.7.8", filevault_enabled: false, last_seen_at: "2025-02-01", attributes: { name: "Old iMac" } },
+  { serial: "B2", os_version: "15.7.4", filevault_enabled: true,  last_seen_at: "2026-06-01", attributes: { name: "New iMac" } },
+  { serial: "C3", os_version: "14.6.1", filevault_enabled: false, last_seen_at: "2026-05-15", attributes: { name: "Laptop" } },
+];
+
+test("applyFilter eq / ne match flat fields", () => {
+  assert.deepEqual(applyFilter(ROWS, [{ field: "serial", op: "eq", value: "B2" }]).map(r => r.serial), ["B2"]);
+  assert.deepEqual(applyFilter(ROWS, [{ field: "serial", op: "ne", value: "B2" }]).map(r => r.serial), ["A1", "C3"]);
+});
+
+test("applyFilter boolean and exists/absent", () => {
+  assert.deepEqual(applyFilter(ROWS, [{ field: "filevault_enabled", op: "eq", value: false }]).map(r => r.serial), ["A1", "C3"]);
+  assert.deepEqual(applyFilter(ROWS, [{ field: "attributes.name", op: "exists" }]).length, 3);
+  assert.deepEqual(applyFilter(ROWS, [{ field: "nope", op: "absent" }]).length, 3);
+});
+
+test("applyFilter dot-path into nested objects (works for raw adapter rows)", () => {
+  assert.deepEqual(applyFilter(ROWS, [{ field: "attributes.name", op: "icontains", value: "imac" }]).map(r => r.serial), ["A1", "B2"]);
+});
+
+test("applyFilter comparators (string/version + lexical date)", () => {
+  // lexical comparison works for ISO dates: stale = last_seen before a cutoff
+  assert.deepEqual(applyFilter(ROWS, [{ field: "last_seen_at", op: "lt", value: "2026-01-01" }]).map(r => r.serial), ["A1"]);
+});
+
+test("applyFilter conditions are ANDed", () => {
+  const r = applyFilter(ROWS, [
+    { field: "filevault_enabled", op: "eq", value: false },
+    { field: "last_seen_at", op: "gte", value: "2026-01-01" },
+  ]);
+  assert.deepEqual(r.map(x => x.serial), ["C3"]);
+});
+
+test("applyFilter 'in' membership", () => {
+  assert.deepEqual(applyFilter(ROWS, [{ field: "serial", op: "in", value: ["A1", "C3"] }]).map(r => r.serial), ["A1", "C3"]);
+});
+
+test("buildDynamicDossier applies a section's table.filter before rendering", () => {
+  const spec = {
+    title: "Stale Devices", pageStyle: "a4-landscape", dataAdapter: "devices",
+    sections: [{ heading: "Stale", table: {
+      columns: [{ key: "serial", header: "serial" }],
+      from: "rows",
+      filter: [{ field: "last_seen_at", op: "lt", value: "2026-01-01" }],
+    }}],
+  };
+  const doc = buildDynamicDossier(spec, { rows: ROWS }).toDocument();
+  const tableBlock = doc.sections[0].blocks.find(b => b.kind === "table");
+  assert.deepEqual(tableBlock.rows.map(r => r.serial), ["A1"], "only the filtered row reaches the table");
+});
+
+test("validateDynamicSpec accepts a4-landscape and a valid filter; rejects a bad op", () => {
+  const base = { title: "X", pageStyle: "a4-landscape", dataAdapter: "devices",
+    sections: [{ heading: "S", table: { columns: [{ key: "serial", header: "serial" }], from: "rows",
+      filter: [{ field: "serial", op: "eq", value: "A1" }] } }] };
+  assert.strictEqual(validateDynamicSpec(base), null, "a4-landscape + valid filter should pass");
+  const bad = JSON.parse(JSON.stringify(base));
+  bad.sections[0].table.filter[0].op = "regex";
+  assert.match(String(validateDynamicSpec(bad)), /filter|op/i);
 });
