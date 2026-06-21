@@ -25,9 +25,15 @@ const VULN_COLS        = C("version","track","date","cves_fixed","actively_explo
 const DEVICE_CVES_COLS = C("name","serial","device_group","model","os","unfixed_count","exploited_count","cves");
 const CVE_DEVICES_COLS = C("cve_id","fixed_in_version","os_track","actively_exploited","devices_exposed","devices");
 
-export function buildAuditDossier(input: AuditInput): Dossier {
+export interface AuditBuildOpts {
+  // "a3-landscape" (default, roomy) or "a4-landscape" (compact, shrink-to-fit).
+  pageStyle?: "a3-landscape" | "a4-landscape";
+}
+
+export function buildAuditDossier(input: AuditInput, opts: AuditBuildOpts = {}): Dossier {
   const { ev, tables, cveDetail, summary, dateStr, scoped } = input;
-  const d = new Dossier({ title: "", pageStyle: "a3-landscape", footerTitle: "SOFA Fleet Security Audit", mdName: "full-audit.md" });
+  const pageStyle = opts.pageStyle === "a4-landscape" ? "a4-landscape" : "a3-landscape";
+  const d = new Dossier({ title: "", pageStyle, footerTitle: "SOFA Fleet Security Audit", mdName: "full-audit.md" });
   d.bodyMarkdown(renderAuditMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped }));
   d.dataCsv("security-report.csv",     SEC_COLS,         securityRows(ev));
   d.dataCsv("need-updates.csv",        NEED_COLS,        needUpdateRows(ev));

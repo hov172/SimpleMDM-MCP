@@ -12,6 +12,7 @@ export function buildAuditCliArgs(args: Args, outDir: string): string[] {
   if (args.last_seen != null) argv.push("--last-seen", String(args.last_seen));
   if (args.no_network_cache === true) argv.push("--no-network-cache");
   if (args.report_only === true) argv.push("--report-only");
+  if (args.page_size) argv.push("--page-size", String(args.page_size));
   return argv;
 }
 

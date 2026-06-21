@@ -28,6 +28,16 @@ test("buildAuditCliArgs no_network_cache:false → NOT --no-network-cache", () =
   const r = buildAuditCliArgs({ no_network_cache: false }, "/out");
   assert.ok(!r.includes("--no-network-cache"), "must NOT include --no-network-cache");
 });
+test("buildAuditCliArgs page_size:a4 → contains --page-size a4", () => {
+  const r = buildAuditCliArgs({ page_size: "a4" }, "/out");
+  const i = r.indexOf("--page-size");
+  assert.ok(i >= 0, "must include --page-size");
+  assert.strictEqual(r[i + 1], "a4", "value must follow the flag");
+});
+test("buildAuditCliArgs without page_size → NOT --page-size (A3 default)", () => {
+  const r = buildAuditCliArgs({}, "/out");
+  assert.ok(!r.includes("--page-size"), "default omits --page-size (engine defaults to A3)");
+});
 
 test("buildAuditCliArgs no_network_cache absent → NOT --no-network-cache", () => {
   const r = buildAuditCliArgs({}, "/out");

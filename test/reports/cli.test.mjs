@@ -147,6 +147,20 @@ test("--with-security on audit rejects naming logs", async () => {
   );
 });
 
+test("--page-size on inventory rejects naming audit", async () => {
+  await assert.rejects(
+    () => runCli(["inventory", "--serial", "ABC", "--page-size", "a4"], { fetchInput: async () => ({}) }),
+    /--page-size.*audit|audit.*--page-size/i,
+  );
+});
+
+test("--page-size with an invalid value rejects", async () => {
+  await assert.rejects(
+    () => runCli(["audit", "--serial", "ABC", "--page-size", "tabloid"], { fetchInput: async () => ({}) }),
+    /--page-size.*a3.*a4|a3\|a4/i,
+  );
+});
+
 test("--with-inventory on inventory rejects naming logs", async () => {
   await assert.rejects(
     () => runCli(["inventory", "--serial", "ABC", "--with-inventory"], { fetchInput: async () => ({}) }),

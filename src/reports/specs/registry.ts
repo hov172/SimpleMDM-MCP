@@ -18,7 +18,7 @@ export interface RegistryEntry {
 export const REGISTRY: Record<string, RegistryEntry> = {
   audit: {
     buildInput: (scope, ctx) => auditInputLive(scope, ctx),
-    build: (input) => buildAuditDossier(input),
+    build: (input, opts) => buildAuditDossier(input, { pageStyle: opts?.pageStyle }),
     defaultFormat: "all",
     writeOpts: {},
     summaryText(input: any, opts: any): string {
