@@ -78,12 +78,29 @@ export class ServerDataSource implements DataSource {
     return records;
   }
 
+  // Build an id→name map from a group list endpoint. Best-effort: a failed fetch
+  // yields an empty map (blank group names) rather than failing the whole report.
+  private async groupNameMap(path: string): Promise<Map<number | string, string>> {
+    try {
+      const rows = await this.paginateAll(path);
+      return new Map(rows.map((g: any) => [g.id, g.attributes?.name ?? String(g.id)]));
+    } catch {
+      return new Map();
+    }
+  }
+
   async devices(scope?: Scope): Promise<DeviceRecord[]> {
     const raw = this.deviceFetcher ? await this.deviceFetcher() : await this.paginateAll("/devices");
+    // Resolve group ids → names so device_group / assignment_groups render real names
+    // (e.g. "HLAB_Faculty") instead of blanks — parity with the inventory bridge.
+    const [dgMap, agNames] = await Promise.all([
+      this.groupNameMap("/device_groups"),
+      this.groupNameMap("/assignment_groups"),
+    ]);
     const filtered = this.applyScope(raw, scope);
     // Attach the original raw API object so dynamic-report filters can reach any
     // SimpleMDM device field via `raw.attributes.<field>`, not just normalized keys.
-    return filtered.map((d: any) => ({ ...normalizeDevice(d), raw: d }));
+    return filtered.map((d: any) => ({ ...normalizeDevice(d, { dgMap, agNames }), raw: d }));
   }
 
   async apps(scope?: Scope): Promise<any[]> {
