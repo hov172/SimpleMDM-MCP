@@ -17,7 +17,7 @@ Targeted sibling to the SOFA `/audit`. Runs the engine and reports where files l
 2. Map optional combines: "with security/posture/CVEs" → `--with-security`; "with apps/profiles/inventory" → `--with-inventory`.
 3. Map format words: "csv" → `--format csv`, "word"/"docx" → `--format docx`, "markdown"/"md" → `--format md`, else `--format all`. "just the report"/"no data exports" → add `--report-only` (report + manifest + summary only; not valid with `--format csv`).
    - Detail level: "full logs"/"every log"/"full event table" → `--report-detail full` (or `table`); default is `summary`.
-4. Run: `node scripts/logs-audit.mjs <flags>`
+4. Run: `node dist/reports/cli.js logs <flags>`
 5. Read `<outDir>/summary.txt` and relay the headline (devices, total events, failed devices).
 6. List the generated files. Remind the user the output is local-only (gitignored) and not committed.
 
