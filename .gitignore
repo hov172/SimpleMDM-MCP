@@ -24,5 +24,6 @@ docs/superpowers/
 
 # Session scratch logs (Claude Code output-capture workaround) — root dotfile logs only
 /.*.log
+/test-result.log
 /.codex-adversarial-review.out
 .gstack/
