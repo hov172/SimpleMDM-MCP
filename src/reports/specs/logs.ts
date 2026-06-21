@@ -9,15 +9,26 @@ import { sha256 } from "../engine/manifest.js";
 
 const cols = (arr: string[]) => arr.map((n) => ({ key: n, header: n }));
 
-export function buildLogsDossier(input: any): Dossier {
+export interface LogsBuildOpts {
+  reportDetail?: string;
+}
+
+export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier {
   const { bundles, dateStr, nowIso } = input;
+  const detail = opts.reportDetail as "summary" | "table" | "full" | undefined;
+
   const lr = logRows(bundles), sr = statusSnapshotRows(bundles), mr = logSummaryRows(bundles);
   const fr = findingRows(bundles), snapFiles = statusSnapshotFiles(bundles);
 
-  // Render body once; reuse string for both bodyMarkdown and manifest sha256.
-  const bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail: undefined, reportOnly: false });
+  // Render body; thread --report-detail to control per-device log verbosity.
+  const bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail, reportOnly: false });
 
-  const d = new Dossier({ title: "", pageStyle: "letter-portrait", footerTitle: "SimpleMDM Device Activity & Security Dossier", mdName: "report.md" });
+  const d = new Dossier({
+    title: "",
+    pageStyle: "letter-portrait",
+    footerTitle: "SimpleMDM Device Activity & Security Dossier",
+    mdName: "report.md",
+  });
   d.bodyMarkdown(bodyMd);
 
   const meta: any[] = [];

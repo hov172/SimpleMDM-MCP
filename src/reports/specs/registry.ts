@@ -7,8 +7,8 @@ import { buildInventoryDossier } from "./inventory.js";
 import { buildLogsDossier } from "./logs.js";
 
 export interface RegistryEntry {
-  buildInput(scope: LegacySelector, ctx: Ctx): Promise<any>;
-  build(input: any): Dossier;
+  buildInput(scope: LegacySelector, ctx: Ctx, opts?: Record<string, any>): Promise<any>;
+  build(input: any, opts?: Record<string, any>): Dossier;
   defaultFormat: Format;
   needsConfirmAll: boolean;
   writeOpts: { manifest?: boolean };
@@ -16,22 +16,22 @@ export interface RegistryEntry {
 
 export const REGISTRY: Record<string, RegistryEntry> = {
   audit: {
-    buildInput: auditInputLive,
-    build: buildAuditDossier,
+    buildInput: (scope, ctx) => auditInputLive(scope, ctx),
+    build: (input) => buildAuditDossier(input),
     defaultFormat: "all",
     needsConfirmAll: false,
     writeOpts: {},
   },
   inventory: {
-    buildInput: inventoryInputLive,
-    build: buildInventoryDossier,
+    buildInput: (scope, ctx, opts) => inventoryInputLive(scope, ctx, opts),
+    build: (input, opts) => buildInventoryDossier(input, opts),
     defaultFormat: "all",
     needsConfirmAll: true,
     writeOpts: {},
   },
   logs: {
-    buildInput: logsInputLive,
-    build: buildLogsDossier,
+    buildInput: (scope, ctx) => logsInputLive(scope, ctx),
+    build: (input, opts) => buildLogsDossier(input, opts),
     defaultFormat: "all",
     needsConfirmAll: true,
     writeOpts: { manifest: false },

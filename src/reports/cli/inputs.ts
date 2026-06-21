@@ -90,7 +90,18 @@ export async function auditInputLive(scope: LegacySelector, ctx: Ctx): Promise<a
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
-export async function inventoryInputLive(scope: LegacySelector, ctx: Ctx): Promise<any> {
+export interface InventoryInputOpts {
+  noApps?: boolean;
+  noProfiles?: boolean;
+  noUsers?: boolean;
+  allowPartial?: boolean;
+}
+
+export async function inventoryInputLive(
+  scope: LegacySelector,
+  ctx: Ctx,
+  opts: InventoryInputOpts = {},
+): Promise<any> {
   const {
     fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroupsRaw, fetchAppCatalog,
     fetchProfilesRaw, fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers,
@@ -132,20 +143,34 @@ export async function inventoryInputLive(scope: LegacySelector, ctx: Ctx): Promi
   const records: any[] = selectedRaw.map((d: any) =>
     normalizeDevice(d, { dgMap, agNames, agAppsByDevice: agApps, models, profileAssign }));
 
+  // Per-device section fetches: skip sections requested via opts, track failures.
+  const failures: Array<{ serial: string; section: string; message: string }> = [];
   for (const r of records) {
-    try { r.apps = normalizeApps(await fetchDeviceApps(apiKey, r.id)); r.sections.apps = "ok"; }
-    catch { r.sections.apps = "failed"; }
-    try { r.profiles = normalizeProfiles(await fetchDeviceProfiles(apiKey, r.id)); r.sections.profiles = "ok"; }
-    catch { r.sections.profiles = "failed"; }
-    try { r.users = normalizeUsers(await fetchDeviceUsers(apiKey, r.id)); r.sections.users = "ok"; }
-    catch { r.sections.users = "failed"; }
+    if (opts.noApps) {
+      r.sections.apps = "skipped";
+    } else {
+      try { r.apps = normalizeApps(await fetchDeviceApps(apiKey, r.id)); r.sections.apps = "ok"; }
+      catch (e) { r.sections.apps = "failed"; failures.push({ serial: r.serial, section: "apps", message: (e as Error).message ?? String(e) }); }
+    }
+    if (opts.noProfiles) {
+      r.sections.profiles = "skipped";
+    } else {
+      try { r.profiles = normalizeProfiles(await fetchDeviceProfiles(apiKey, r.id)); r.sections.profiles = "ok"; }
+      catch (e) { r.sections.profiles = "failed"; failures.push({ serial: r.serial, section: "profiles", message: (e as Error).message ?? String(e) }); }
+    }
+    if (opts.noUsers) {
+      r.sections.users = "skipped";
+    } else {
+      try { r.users = normalizeUsers(await fetchDeviceUsers(apiKey, r.id)); r.sections.users = "ok"; }
+      catch (e) { r.sections.users = "failed"; failures.push({ serial: r.serial, section: "users", message: (e as Error).message ?? String(e) }); }
+    }
     r.match_reasons = "";
     r.match_status = "matched";
     r.hits = { apps: new Set(), profiles: new Set(), users: new Set() };
   }
 
   const findings = inventoryFindings(records);
-  return { records, findings, dateStr: todayStr() };
+  return { records, findings, dateStr: todayStr(), failures };
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────

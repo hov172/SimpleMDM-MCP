@@ -263,7 +263,7 @@ function renderFindingsSection(findings: FindingRow[]): string[] {
 export function renderInventoryReport(
   records: DeviceRecord[],
   {
-    query = null,
+    query = null as string | null,
     scopeLabel = "",
     dateStr = "",
     findings = [] as FindingRow[],
