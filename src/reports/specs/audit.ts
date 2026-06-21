@@ -3,7 +3,17 @@ import {
   securityRows, needUpdateRows, allDeviceRows, groupBreakdownRows,
   cveRows, vulnerabilityRows, deviceCveRows, cveDeviceRows,
 } from "../domain/sofa-eval.js";
+import type { EvaluatedDevice, SofaTables, CveDetailRow, AuditSummary } from "../domain/sofa-eval.js";
 import { renderAuditMarkdown } from "../domain/audit-render.js";
+
+export interface AuditInput {
+  ev: EvaluatedDevice[];
+  tables: SofaTables;
+  cveDetail: CveDetailRow[];
+  summary: AuditSummary;
+  dateStr: string;
+  scoped: boolean;
+}
 
 const C = (...names: string[]) => names.map((n) => ({ key: n, header: n }));
 const SEC_COLS         = C("name","serial","device_group","model","os","findings","unfixed_cves","exploited","fail_count","last_seen");
@@ -15,7 +25,7 @@ const VULN_COLS        = C("version","track","date","cves_fixed","actively_explo
 const DEVICE_CVES_COLS = C("name","serial","device_group","model","os","unfixed_count","exploited_count","cves");
 const CVE_DEVICES_COLS = C("cve_id","fixed_in_version","os_track","actively_exploited","devices_exposed","devices");
 
-export function buildAuditDossier(input: any): Dossier {
+export function buildAuditDossier(input: AuditInput): Dossier {
   const { ev, tables, cveDetail, summary, dateStr, scoped } = input;
   const d = new Dossier({ title: "", pageStyle: "a3-landscape", footerTitle: "SOFA Fleet Security Audit", mdName: "full-audit.md" });
   d.bodyMarkdown(renderAuditMarkdown(ev, cveDetail, summary, tables, dateStr, { scoped }));

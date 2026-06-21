@@ -25,7 +25,7 @@ test("audit dossier byte-identical to golden (full set)", async () => {
 test("inventory dossier byte-identical to golden (full set)", async () => {
   const out = mkdtempSync(join(tmpdir(), "inventory-"));
   await buildInventoryDossier(buildInventoryInput()).write(out, { format: "md", reportOnly: false, generatedIso: "2026-01-01T00:00:00Z" });
-  for (const f of readdirSync(new URL("./golden/inventory", import.meta.url)).filter((f) => f !== "_binary-manifest.json" && f !== "manifest.csv"))
+  for (const f of readdirSync(new URL("./golden/inventory", import.meta.url)).filter((f) => f !== "_binary-manifest.json"))
     assert.equal(readFileSync(join(out, f), "utf8"), readGolden("inventory", f), `${f} drifted`);
 });
 

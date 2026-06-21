@@ -98,3 +98,19 @@ test("securityPosture uses injected fetchJson — no live network", async () => 
     "each result should have a serial field",
   );
 });
+
+// 2.4c: logs() must not silently drop data when it hits the page cap while the API
+// still reports has_more — a forensic/legal export should error, not truncate quietly.
+test("logs() throws (not silently truncates) when the page cap is hit with has_more", async () => {
+  let n = 0;
+  const neverEnding = async (path) => {
+    if (path.startsWith("/logs")) return { data: [{ id: ++n }], has_more: true };
+    return { data: [], has_more: false };
+  };
+  const ds = new ServerDataSource(neverEnding, 3); // small cap to hit quickly
+  await assert.rejects(
+    () => ds.logs({ kind: "all" }),
+    /cap|page|truncat|has_more/i,
+    "logs() must throw when the page cap is exhausted with more data pending",
+  );
+});

@@ -5,6 +5,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Dossier } from "../../dist/reports/engine/dossier.js";
 
+// Quote-aware CSV field split for a single line (handles "" escaping inside quoted fields).
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else inQuotes = false;
+      } else cur += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
 test("write emits md + per-section csv + manifest with hashes", async () => {
   const out = mkdtempSync(join(tmpdir(), "out-"));
   const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
@@ -19,12 +38,14 @@ test("write emits md + per-section csv + manifest with hashes", async () => {
   // Guard: manifest bytes column must be the REAL byte length of the written CSV (not 0 or empty)
   const manifestContent = readFileSync(join(out, "manifest.csv"), "utf8");
   const lines = manifestContent.split("\r\n");
-  const headers = lines[0].split(",");
+  const headers = parseCsvLine(lines[0]);
   const bytesIdx = headers.indexOf("bytes");
   assert.ok(bytesIdx >= 0, "manifest must have a bytes column");
   const devicesRow = lines.find((l) => l.startsWith("devices.csv"));
   assert.ok(devicesRow, "manifest must contain a row for devices.csv");
-  const bytesVal = Number(devicesRow.split(",")[bytesIdx]);
+  // Quote-aware parse: a description field may legitimately contain commas, so a naive
+  // split(",") would mis-index the bytes column.
+  const bytesVal = Number(parseCsvLine(devicesRow)[bytesIdx]);
   assert.ok(bytesVal > 0, `manifest bytes for devices.csv must be real (got ${bytesVal})`);
 });
 

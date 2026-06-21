@@ -390,8 +390,8 @@ export function deviceCveRows(evaluatedDevices: EvaluatedDevice[], tables: SofaT
 }
 
 // Headline counts.
-export function summarize(evaluatedDevices: EvaluatedDevice[], cveDetail: CveDetailRow[] = []): AuditSummary {
-  void cveDetail; // accepted for API compatibility, not used in body
+export function summarize(evaluatedDevices: EvaluatedDevice[], _cveDetail: CveDetailRow[] = []): AuditSummary {
+  // _cveDetail accepted for call-site API compatibility; not used in the summary body.
   const macs = evaluatedDevices.filter((d) => d.platform === "macOS");
   return {
     total: evaluatedDevices.length,
