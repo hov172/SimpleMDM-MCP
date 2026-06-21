@@ -15,6 +15,93 @@ function defaultOutDir(report: string): string {
 
 export interface CliDeps {
   fetchInput?: (report: string, scope: LegacySelector, ctx: Ctx) => Promise<any>;
+  // Sink for human-readable progress lines. Defaults to stderr (console.error) so
+  // runReport is safe to call from the MCP stdio transport, where stdout is the
+  // JSON-RPC channel. The CLI overrides this with console.log to keep its stdout UX.
+  log?: (msg: string) => void;
+}
+
+// ── RunReport: post-parse core shared by CLI and the MCP tool ─────────────────
+
+export interface RunReportOpts {
+  report: string;
+  scope: LegacySelector;
+  format: Format;
+  reportOnly?: boolean;
+  outDir: string;
+  // inventory-specific opts
+  noApps?: boolean;
+  noProfiles?: boolean;
+  noUsers?: boolean;
+  allowPartial?: boolean;
+  reportDetail?: string;
+  reportStyle?: "flat" | "roster" | undefined;
+  sort?: { field: string; dir: string } | null;
+  search?: string | null;
+}
+
+export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<WriteResult> {
+  // Default to stderr: stdout is the MCP JSON-RPC channel and must stay clean.
+  const log = deps?.log ?? console.error;
+  const entry = REGISTRY[opts.report];
+  if (!entry) {
+    throw new Error(
+      `Unknown report "${opts.report}". Valid reports: ${Object.keys(REGISTRY).join(", ")}`,
+    );
+  }
+
+  const apiKey = loadEnvKey() ?? "";
+  const ctx: Ctx = { apiKey };
+
+  const entryOpts = {
+    noApps: opts.noApps,
+    noProfiles: opts.noProfiles,
+    noUsers: opts.noUsers,
+    allowPartial: opts.allowPartial,
+    reportDetail: opts.reportDetail,
+    reportStyle: opts.reportStyle,
+    sort: opts.sort ?? null,
+    search: opts.search ?? null,
+  };
+
+  const fetchFn = deps?.fetchInput ?? ((_rep: string, sc: LegacySelector, c: Ctx) => entry.buildInput(sc, c, entryOpts));
+  const rawInput = await fetchFn(opts.report, opts.scope, ctx);
+
+  // ── Apply --search filter for inventory (post-fetch bridge) ───────────────
+  let input = rawInput;
+  if (opts.report === "inventory" && opts.search) {
+    const { parseQuery, evaluate } = await import("./domain/query.js");
+    const ast = parseQuery(opts.search);
+    const now = Date.now();
+    const kept = (rawInput.records as any[]).filter((r: any) => {
+      const res = evaluate(ast, r, { now });
+      r.match_reasons = res.reasons.join("; ");
+      r.match_status = res.matched === true ? "matched" : res.matched === "unknown" ? "unknown" : "no";
+      r.hits = res.hits;
+      return res.matched === true || res.matched === "unknown";
+    });
+    const { inventoryFindings } = await import("./domain/inventory-render.js");
+    const findings = inventoryFindings(kept);
+    input = { ...rawInput, records: kept, findings };
+  }
+
+  const dossier = entry.build(input, entryOpts);
+  mkdirSync(opts.outDir, { recursive: true });
+  const result = await dossier.write(opts.outDir, { format: opts.format, reportOnly: opts.reportOnly, ...entry.writeOpts });
+
+  // Surface partial-fetch failures (mirrors legacy --allow-partial / exit-2 behavior)
+  if (!opts.allowPartial && (input.failures as any[] | undefined)?.length) {
+    console.warn(
+      `inventory: ${(input.failures as any[]).length} per-device section fetch(es) failed` +
+      ` (use --allow-partial to suppress this warning)`,
+    );
+  }
+
+  for (const f of result.files) log(`  ${f.name}`);
+  log(`Output: ${opts.outDir}`);
+  log("Output is local-only (reports/ is gitignored) and NOT committed.");
+
+  return result;
 }
 
 export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResult> {
@@ -171,57 +258,18 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   }
 
 
-  const apiKey = loadEnvKey() ?? "";
-  const ctx: Ctx = { apiKey };
-
-  const opts = {
+  return runReport({
+    report: reportName,
+    scope,
+    format,
+    reportOnly,
+    outDir,
     noApps, noProfiles, noUsers, allowPartial,
     reportDetail: reportDetailRaw ?? undefined,
     reportStyle: (reportStyleRaw as "flat" | "roster" | undefined) ?? undefined,
     sort,
     search: searchQuery,
-  };
-
-  const fetchFn = deps?.fetchInput ?? ((_rep: string, sc: LegacySelector, c: Ctx) => entry.buildInput(sc, c, opts));
-  const rawInput = await fetchFn(reportName, scope, ctx);
-
-  // ── Apply --search filter for inventory (post-fetch bridge) ───────────────
-  // Mirrors legacy inventory-report.mjs: evaluate(ast, record) → keep matched/unknown.
-  // Recompute findings on the filtered set.
-  let input = rawInput;
-  if (reportName === "inventory" && searchQuery) {
-    const { parseQuery, evaluate } = await import("./domain/query.js");
-    const ast = parseQuery(searchQuery);
-    const now = Date.now();
-    const kept = (rawInput.records as any[]).filter((r: any) => {
-      const res = evaluate(ast, r, { now });
-      r.match_reasons = res.reasons.join("; ");
-      r.match_status = res.matched === true ? "matched" : res.matched === "unknown" ? "unknown" : "no";
-      r.hits = res.hits;
-      return res.matched === true || res.matched === "unknown";
-    });
-    const { inventoryFindings } = await import("./domain/inventory-render.js");
-    const findings = inventoryFindings(kept);
-    input = { ...rawInput, records: kept, findings };
-  }
-
-  const dossier = entry.build(input, opts);
-  mkdirSync(outDir, { recursive: true });
-  const result = await dossier.write(outDir, { format, reportOnly, ...entry.writeOpts });
-
-  // Surface partial-fetch failures (mirrors legacy --allow-partial / exit-2 behavior)
-  if (!allowPartial && (input.failures as any[] | undefined)?.length) {
-    console.warn(
-      `inventory: ${(input.failures as any[]).length} per-device section fetch(es) failed` +
-      ` (use --allow-partial to suppress this warning)`,
-    );
-  }
-
-  for (const f of result.files) console.log(`  ${f.name}`);
-  console.log(`Output: ${outDir}`);
-  console.log("Output is local-only (reports/ is gitignored) and NOT committed.");
-
-  return result;
+  }, { ...deps, log: deps?.log ?? console.log });
 }
 
 export async function main(): Promise<void> {

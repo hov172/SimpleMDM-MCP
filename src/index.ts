@@ -37,6 +37,7 @@ import {
   validateApplePayload,
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
+import { runReport } from "./reports/cli.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -1693,6 +1694,18 @@ export const TOOLS: Tool[] = [
   { name: "get_managed_app_config_templates",
     description: "Retrieve pre-defined managed configuration dictionary templates for common enterprise apps (Chrome, Zoom, Teams).",
     inputSchema: { type: "object", properties: {} } },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // UNIFIED REPORT ENGINE (in-process)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "generate_report",
+    description: "Generate a fleet dossier (audit/inventory/logs) from live SimpleMDM data in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Reuses the same registry and bridge as the CLI. For large fleets prefer scoped selectors (serial/group/last_seen); whole-fleet (all) requires confirm_all:true in the scope object.",
+    inputSchema: { type: "object", required: ["report", "scope"], properties: {
+      report: { type: "string", enum: ["audit", "inventory", "logs"], description: "Report type: audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export)." },
+      scope: { type: "object", description: "Device selector — one of: {serials:[\"SN1\",...]}, {group:\"GroupName\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"query\"} (inventory only). Whole-fleet scope requires confirm_all:true to prevent accidental large fetches." },
+      format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Output format(s). Default 'all'." },
+      report_only: { type: "boolean", description: "Write only the rendered dossier; skip data CSV exports." },
+    }}},
 ];
 
 // ─── Tool handlers ────────────────────────────────────────────────────────────
@@ -3655,6 +3668,59 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         coverage_by_area: counts,
         note: "Static coverage derived from registered tools; does not probe the live SimpleMDM API.",
       };
+    }
+
+    // ── Unified Report Engine (in-process) ──────────────────────────────────
+    case "generate_report": {
+      const report = String(args.report ?? "");
+      const scopeArg = (args.scope ?? {}) as Record<string, unknown>;
+      const format = String(args.format ?? "all") as "csv" | "md" | "docx" | "all";
+      const reportOnly = args.report_only === true;
+
+      // Map scope object → LegacySelector; enforce confirm-all for whole-fleet
+      type LegacySelector =
+        | { kind: "serial"; value: string[] }
+        | { kind: "group"; value: string }
+        | { kind: "last-seen"; value: number }
+        | { kind: "all"; value: true }
+        | null;
+      let scope: LegacySelector;
+      let search: string | null = null;
+
+      if (scopeArg.serials != null) {
+        const serials = Array.isArray(scopeArg.serials)
+          ? (scopeArg.serials as unknown[]).map(String)
+          : [String(scopeArg.serials)];
+        scope = { kind: "serial", value: serials };
+      } else if (scopeArg.group != null) {
+        scope = { kind: "group", value: String(scopeArg.group) };
+      } else if (scopeArg.last_seen != null) {
+        scope = { kind: "last-seen", value: Number(scopeArg.last_seen) };
+      } else if (scopeArg.all === true) {
+        if (scopeArg.confirm_all !== true) {
+          return {
+            error: "Whole-fleet report requires confirm_all: true in the scope object. " +
+              "This fetches per-device data for every enrolled device — potentially hundreds of API calls. " +
+              "Pass scope: {all: true, confirm_all: true} to proceed.",
+          };
+        }
+        scope = { kind: "all", value: true };
+      } else if (scopeArg.search != null) {
+        // inventory search: no scope selector; filter applied post-fetch
+        scope = null;
+        search = String(scopeArg.search);
+      } else {
+        return {
+          error: "scope must be one of: {serials:[...]}, {group:\"...\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"...\"}",
+        };
+      }
+
+      const now = new Date();
+      const date = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const time = now.toISOString().slice(11, 19).replace(/:/g, "");
+      const outDir = `reports/${report}-${date}-${time}`;
+
+      return runReport({ report, scope, format, reportOnly, outDir, search });
     }
 
     default: throw new Error(`Unknown tool: ${name}`);
