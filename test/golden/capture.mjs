@@ -349,9 +349,15 @@ function captureLogs() {
   console.log(`  ✓ logs: ${readdirSync(dir).length} files written to ${dir}`);
 }
 
-// ── Run all three captures ────────────────────────────────────────────────────
-captureAudit();
-captureInventory();
-captureLogs();
-console.log("\nAll goldens captured successfully.");
-console.log("Re-run: node test/golden/capture.mjs");
+// ── Run all three captures — ONLY when executed directly ──────────────────────
+// Importing this module (for the buildXInput fixtures) must NOT rewrite the golden
+// tree: otherwise golden-parity.test.mjs would compare the engine output against
+// goldens just re-derived from current code, masking any domain-logic regression.
+// Guard on the repo's standard main-module check (cf. src/reports/cli.ts:306).
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  captureAudit();
+  captureInventory();
+  captureLogs();
+  console.log("\nAll goldens captured successfully.");
+  console.log("Re-run: node test/golden/capture.mjs");
+}
