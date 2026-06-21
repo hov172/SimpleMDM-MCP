@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-06-21
+
+### Changed
+- `generate_report` (dynamic mode) now routes its `devices` fetch through the cached, write-invalidated `collectDevices()` — the same fleet collection the regular tools use — instead of re-paginating `/devices` on every run. Back-to-back reports within `SIMPLEMDM_CACHE_TTL_MS` (default 5 min) make zero extra device API calls, reducing load against the SimpleMDM API. `ServerDataSource` gained an optional `deviceFetcher` constructor arg (falls back to direct pagination when absent). The client-side row filter is unchanged.
+
 ## [0.29.1] - 2026-06-21
 
 ### Added
