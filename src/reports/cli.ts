@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { WriteResult } from "./engine/dossier.js";
 import type { Format } from "./engine/csv.js";
 import { REGISTRY } from "./specs/registry.js";
+import { writeReportExtras } from "./engine/extras.js";
 import type { LegacySelector, Ctx } from "./cli/inputs.js";
 import { loadEnvKey } from "./cli/inputs.js";
 
@@ -106,6 +107,14 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   if (entry.summaryText) {
     const summaryOpts = { ...entryOpts, scope: opts.scope, search: opts.search, outDir: opts.outDir };
     writeFileSync(join(opts.outDir, "summary.txt"), entry.summaryText(input, summaryOpts));
+  }
+
+  // Always-on bundle artifacts (manifest.sha256, report-table.xlsx, <dir>.zip) on the
+  // full-output format. Best-effort; runs after every deliverable is on disk.
+  if (opts.format === "all") {
+    const extras = writeReportExtras(opts.outDir);
+    result.files.push(...extras.files.map((f) => ({ name: f.name, description: f.description, rows: null, sha256: "" })));
+    result.skipped.push(...extras.skipped);
   }
 
   // Surface partial-fetch failures (mirrors legacy --allow-partial / exit-2 behavior)
