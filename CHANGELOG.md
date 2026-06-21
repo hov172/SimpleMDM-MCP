@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-06-21
+
+### Added
+- Dynamic `generate_report` specs auto-select page orientation when `pageStyle` is omitted (now optional). Orientation is chosen from the widest table's column count: ≤6 columns → `letter-portrait`, 7-12 → `a4-landscape`, ≥13 → `a3-landscape`. A wide custom report no longer renders cramped in portrait just because the caller didn't set `pageStyle`. An explicit `pageStyle` still takes precedence (and a present-but-invalid value is still rejected). Built-in audit/inventory (landscape) and logs (portrait) defaults are unchanged.
+
 ## [0.29.2] - 2026-06-21
 
 ### Changed
