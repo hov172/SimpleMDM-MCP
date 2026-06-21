@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-06-21
+
+### Added
+- Row filtering for dynamic `generate_report` specs: each section's `table` takes an optional `filter` — an array of `{field, op, value?}` conditions (ANDed). Ops: `eq|ne|contains|icontains|gt|lt|gte|lte|exists|absent|in`; `field` supports dot-paths (`attributes.name`). Generic (independent of the device-specific inventory query engine), so it applies uniformly across all six data adapters — enabling custom topic reports like "stale devices" or "devices missing FileVault".
+- The `devices` adapter now attaches the original raw `/devices` API object under `.raw`, so dynamic filters can target any SimpleMDM device attribute (`{field: "raw.attributes.<field>", …}`), not just the ~47 normalized keys.
+- Dynamic specs may now use `pageStyle: "a4-landscape"` (0.27.0 added it to the engine but not to the dynamic-spec validator).
+
 ## [0.28.0] - 2026-06-21
 
 ### Added
