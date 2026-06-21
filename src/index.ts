@@ -36,6 +36,7 @@ import {
   listAppleSchemas,
   validateApplePayload,
 } from "./appleSchemas.js";
+import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
 
 // Resolved at startup from the sibling package.json so the server's reported
 // version stays in sync with package.json automatically. Works in both the
@@ -53,10 +54,8 @@ const PKG_VERSION: string = (() => {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_KEY        = process.env.SIMPLEMDM_API_KEY ?? "";
 const ALLOW_WRITES   = process.env.SIMPLEMDM_ALLOW_WRITES === "true";
 const USE_LOCAL_APP  = process.env.LOCAL_APP_MODE === "true";
-const BASE           = "https://a.simplemdm.com/api/v1";
 
 const MR_BASE    = process.env.MUNKIREPORT_BASE_URL ?? "";
 const MR_PREFIX  = process.env.MUNKIREPORT_MODULE_PREFIX ?? "/module/simplemdm";
@@ -64,8 +63,6 @@ const MR_HNAME   = process.env.MUNKIREPORT_AUTH_HEADER_NAME ?? "";
 const MR_HVALUE  = process.env.MUNKIREPORT_AUTH_HEADER_VALUE ?? "";
 const MR_COOKIE  = process.env.MUNKIREPORT_COOKIE ?? "";
 
-const REQUEST_TIMEOUT_MS = Number(process.env.SIMPLEMDM_TIMEOUT_MS ?? 30_000);
-const MAX_RETRIES        = Number(process.env.SIMPLEMDM_MAX_RETRIES ?? 3);
 const MAX_PAGES          = Number(process.env.SIMPLEMDM_MAX_PAGES ?? 200);
 const CACHE_TTL_MS       = Number(process.env.SIMPLEMDM_CACHE_TTL_MS ?? 300_000); // 5 min default
 
@@ -155,62 +152,6 @@ function maxMacOSMajorFor(model: string | undefined): number | null {
 // rate limit (1 req/sec sustained, with bursts) tolerates 8 well; raise via
 // env if your tenant has a higher limit, lower it if you see 429s.
 const DEFAULT_FLEET_CONCURRENCY = Number(process.env.SIMPLEMDM_FLEET_CONCURRENCY ?? 8);
-
-// Pre-computed auth header — avoids re-encoding on every request.
-const AUTH_HEADER = API_KEY ? `Basic ${Buffer.from(`${API_KEY}:`).toString("base64")}` : "";
-
-// ─── HTTP helpers ─────────────────────────────────────────────────────────────
-
-class HttpError extends Error {
-  constructor(readonly upstream: string, readonly status: number, readonly bodyExcerpt: string) {
-    super(`${upstream} ${status}`);
-  }
-}
-
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-async function fetchWithRetry(upstream: string, url: string, init: RequestInit): Promise<Response> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-      // Retry 429 and 5xx with Retry-After / exponential backoff.
-      if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
-        const retryAfter = Number(res.headers.get("retry-after"));
-        const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
-          ? retryAfter * 1000
-          : Math.min(1000 * 2 ** attempt, 10_000);
-        await sleep(delayMs);
-        continue;
-      }
-      return res;
-    } catch (err) {
-      lastErr = err;
-      if (attempt >= MAX_RETRIES) break;
-      await sleep(Math.min(1000 * 2 ** attempt, 10_000));
-    }
-  }
-  throw new Error(`${upstream} request failed after ${MAX_RETRIES + 1} attempts: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`);
-}
-
-async function throwForStatus(upstream: string, res: Response): Promise<never> {
-  const body = await res.text().catch(() => "");
-  // Cap body excerpt to avoid leaking large upstream payloads into client errors.
-  const excerpt = body.slice(0, 500);
-  throw new HttpError(upstream, res.status, excerpt);
-}
-
-async function simpleMDM(path: string, opts: RequestInit = {}): Promise<unknown> {
-  const headers: Record<string, string> = {
-    Authorization: AUTH_HEADER,
-    ...(opts.headers as Record<string, string> ?? {}),
-  };
-  if (opts.body != null) headers["Content-Type"] = "application/json";
-  const res = await fetchWithRetry("SimpleMDM", `${BASE}${path}`, { ...opts, headers });
-  if (!res.ok) await throwForStatus("SimpleMDM", res);
-  if (res.status === 204) return { success: true };
-  return res.json();
-}
 
 async function munkiReport(route: string): Promise<unknown> {
   if (!MR_BASE) throw new Error("MunkiReport not configured — set MUNKIREPORT_BASE_URL.");
