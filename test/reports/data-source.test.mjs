@@ -56,6 +56,16 @@ test("ServerDataSource.devices with all scope returns all devices", async () => 
   assert.ok(devs.length > 0);
 });
 
+test("ServerDataSource.devices carries the raw API object (.raw) for dynamic filtering", async () => {
+  const ds = new ServerDataSource(makeMockClient(rawDevices));
+  const devs = await ds.devices({ kind: "all" });
+  const d = devs[0];
+  assert.ok(d.raw && typeof d.raw === "object", "each device must carry its raw API object");
+  // raw must be the original SimpleMDM shape (id + attributes), enabling raw.attributes.<field> filters
+  assert.ok("attributes" in d.raw, "raw must expose the full attributes object");
+  assert.equal(String(d.raw.id), String(rawDevices[0].id), "raw must be the original device, untouched");
+});
+
 test("no report fetch path calls a mutating client method — all 5 methods", async () => {
   const calls = [];
   const spy = makeSpyClient(calls);
