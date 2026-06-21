@@ -50,6 +50,37 @@ test("format:md writes data CSVs alongside report md", async () => {
   assert.ok(manifestContent.includes("d.csv"), "manifest.csv must list d.csv");
 });
 
+// Task 1.10: manifest:false suppresses auto-manifest
+test("manifest:false suppresses manifest.csv and omits it from files", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
+  d.dataCsv("d.csv", [{ key: "id", header: "ID" }], [{ id: "1" }], "data");
+  const res = await d.write(out, { format: "md", reportOnly: false, manifest: false });
+
+  // body md still written
+  assert.ok(existsSync(join(out, "report.md")), "report.md must still exist");
+  // data file still written
+  assert.ok(existsSync(join(out, "d.csv")), "d.csv must still exist");
+  // manifest.csv must NOT be on disk
+  assert.ok(!existsSync(join(out, "manifest.csv")), "manifest.csv must NOT exist when manifest:false");
+  // files array must not contain manifest.csv
+  assert.ok(!res.files.find((f) => f.name === "manifest.csv"), "files must not include manifest.csv entry");
+  // manifestSha256 must be empty string
+  assert.strictEqual(res.manifestSha256, "", "manifestSha256 must be empty string when suppressed");
+});
+
+// Task 1.10: omitting manifest (default true) still writes manifest.csv — backward-compat guard
+test("manifest default (omitted) still writes manifest.csv", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });
+  d.dataCsv("d.csv", [{ key: "id", header: "ID" }], [{ id: "1" }], "data");
+  const res = await d.write(out, { format: "md", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" });
+
+  assert.ok(existsSync(join(out, "manifest.csv")), "manifest.csv must exist when manifest is omitted (default true)");
+  assert.ok(res.files.find((f) => f.name === "manifest.csv"), "files must include manifest.csv when default");
+  assert.ok(res.manifestSha256.length === 64, "manifestSha256 must be a valid sha256 hash when default");
+});
+
 test("format:md + reportOnly does NOT write data CSVs", async () => {
   const out = mkdtempSync(join(tmpdir(), "out-"));
   const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });

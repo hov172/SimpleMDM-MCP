@@ -76,7 +76,7 @@ export class Dossier {
 
   async write(
     outDir: string,
-    opts: { format: Format; reportOnly?: boolean; generatedIso?: string },
+    opts: { format: Format; reportOnly?: boolean; generatedIso?: string; manifest?: boolean },
   ): Promise<WriteResult> {
     const gate = reportOnlyGate(opts.format, !!opts.reportOnly);
     if (gate.error) throw new Error(gate.error);
@@ -133,26 +133,36 @@ export class Dossier {
       }
     }
 
-    // 3. Manifest
-    const metas = files.map(toFileMeta);
-    // Append manifestNote rows (non-file disclosure rows)
-    const generatedIso = opts.generatedIso ?? new Date().toISOString();
-    const noteMetas: FileMeta[] = this._manifestNotes.map((n) => ({
-      file: n.file,
-      description: n.description,
-      record_scope: "",
-      data_row_count: "",
-      bytes: "",
-      sha256: "",
-    }));
-    const allMetas = [...metas, ...noteMetas];
-    const manifestCsv = toCsv(MANIFEST_COLUMNS, manifestRows(allMetas, generatedIso));
-    const manifestFile = writeArtifact(outDir, "manifest.csv", manifestCsv, "SHA-256 integrity manifest", metas.length);
+    // 3. Manifest (skip when manifest:false — caller owns its own manifest)
+    const writeManifest = opts.manifest !== false;
+    if (writeManifest) {
+      const metas = files.map(toFileMeta);
+      // Append manifestNote rows (non-file disclosure rows)
+      const generatedIso = opts.generatedIso ?? new Date().toISOString();
+      const noteMetas: FileMeta[] = this._manifestNotes.map((n) => ({
+        file: n.file,
+        description: n.description,
+        record_scope: "",
+        data_row_count: "",
+        bytes: "",
+        sha256: "",
+      }));
+      const allMetas = [...metas, ...noteMetas];
+      const manifestCsv = toCsv(MANIFEST_COLUMNS, manifestRows(allMetas, generatedIso));
+      const manifestFile = writeArtifact(outDir, "manifest.csv", manifestCsv, "SHA-256 integrity manifest", metas.length);
+
+      return {
+        outDir,
+        files: [...files, manifestFile],
+        manifestSha256: manifestFile.sha256,
+        skipped,
+      };
+    }
 
     return {
       outDir,
-      files: [...files, manifestFile],
-      manifestSha256: manifestFile.sha256,
+      files,
+      manifestSha256: "",
       skipped,
     };
   }
