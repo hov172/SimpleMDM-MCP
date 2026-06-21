@@ -75,12 +75,55 @@ export class Dossier {
 
   toDocument(): ReportDocument { return this.doc; }
 
+  // Enumerate every filename this write() would emit, in the same conditions the
+  // write paths use, and throw if any two collide. A malformed spec (e.g. a csvName
+  // equal to mdName, or an mdName missing its `.md` extension so the derived html/pdf
+  // names fold onto it) would otherwise silently clobber outputs — the last writer
+  // wins and the manifest hashes no longer match disk. Fail loud, before any write.
+  private assertNoNameCollisions(format: Format, writeData: boolean, writeManifest: boolean): void {
+    const planned: { name: string; producer: string }[] = [];
+    if (writeData) {
+      for (const s of this.doc.sections) {
+        for (const b of s.blocks) {
+          if (b.kind === "table" && b.csvName) planned.push({ name: b.csvName, producer: `table "${s.heading}"` });
+        }
+      }
+      for (const df of this._dataFiles) planned.push({ name: df.name, producer: "data file" });
+    }
+    if (format !== "csv") {
+      planned.push({ name: this.mdName, producer: "markdown dossier" });
+      if (format === "all") {
+        planned.push({ name: this.mdName.replace(/\.md$/, ".html"), producer: "html render" });
+        planned.push({ name: this.mdName.replace(/\.md$/, ".pdf"), producer: "pdf render" });
+      }
+      if (format === "docx" || format === "all") {
+        planned.push({ name: this.mdName.replace(/\.md$/, ".docx"), producer: "docx render" });
+      }
+    }
+    if (writeManifest) planned.push({ name: "manifest.csv", producer: "integrity manifest" });
+
+    const seen = new Map<string, string>();
+    for (const { name, producer } of planned) {
+      const prev = seen.get(name);
+      if (prev) {
+        throw new Error(
+          `report artifact name collision: "${name}" would be written by both ${prev} and ${producer}. ` +
+            `Give each csvName/mdName a unique name that includes its file extension ` +
+            `(e.g. "devices.csv", "report.md").`,
+        );
+      }
+      seen.set(name, producer);
+    }
+  }
+
   async write(
     outDir: string,
     opts: { format: Format; reportOnly?: boolean; generatedIso?: string; manifest?: boolean },
   ): Promise<WriteResult> {
     const gate = reportOnlyGate(opts.format, !!opts.reportOnly);
     if (gate.error) throw new Error(gate.error);
+
+    this.assertNoNameCollisions(opts.format, gate.writeData, opts.manifest !== false);
 
     const files: WrittenFile[] = [];
     const skipped: { artifact: string; reason: string }[] = [];
