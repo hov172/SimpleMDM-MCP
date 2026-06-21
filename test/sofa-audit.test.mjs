@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseVersion, compareVersions } from "../scripts/lib/evaluate.mjs";
+import { parseVersion, compareVersions } from "../dist/reports/domain/sofa-eval.js";
 
 test("parseVersion splits dotted version into integers", () => {
   assert.deepEqual(parseVersion("15.6.1"), [15, 6, 1]);
@@ -15,7 +15,7 @@ test("compareVersions orders versions", () => {
   assert.equal(compareVersions("15.7", "15.7.1"), -1);
 });
 
-import { detectPlatform } from "../scripts/lib/evaluate.mjs";
+import { detectPlatform } from "../dist/reports/domain/sofa-eval.js";
 
 test("detectPlatform maps model identifiers", () => {
   assert.equal(detectPlatform({ model: "Mac14,3" }), "macOS");
@@ -27,7 +27,7 @@ test("detectPlatform maps model identifiers", () => {
   assert.equal(detectPlatform({ model: "" }), "unknown");
 });
 
-import { buildMajorTables } from "../scripts/lib/evaluate.mjs";
+import { buildMajorTables } from "../dist/reports/domain/sofa-eval.js";
 import { readFileSync } from "node:fs";
 const macFeed = JSON.parse(readFileSync(new URL("./fixtures/sofa-macos.json", import.meta.url)));
 const iosFeed = JSON.parse(readFileSync(new URL("./fixtures/sofa-ios.json", import.meta.url)));
@@ -45,7 +45,7 @@ test("buildMajorTables builds majors, xprotect, supported, model map", () => {
   assert.deepEqual(r2651.cveList.find(c => c.id === "CVE-2025-0001"), { id: "CVE-2025-0001", exploited: true });
 });
 
-import { assessOS } from "../scripts/lib/evaluate.mjs";
+import { assessOS } from "../dist/reports/domain/sofa-eval.js";
 
 test("assessOS computes behind counts and status", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -65,7 +65,7 @@ test("assessOS computes behind counts and status", () => {
   assert.equal(unknown.status, "unknown");
 });
 
-import { recommendTarget } from "../scripts/lib/evaluate.mjs";
+import { recommendTarget } from "../dist/reports/domain/sofa-eval.js";
 
 test("recommendTarget builds supported upgrade path", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -84,7 +84,7 @@ test("recommendTarget builds supported upgrade path", () => {
   assert.equal(r3.target, null);
 });
 
-import { evaluateDevice } from "../scripts/lib/evaluate.mjs";
+import { evaluateDevice } from "../dist/reports/domain/sofa-eval.js";
 
 test("evaluateDevice composes findings", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -116,7 +116,7 @@ test("evaluateDevice: current non-Mac has no upgrade target", () => {
   assert.equal(ipadCurrent.recommended.target, null);
 });
 
-import { aggregateCveDetail, summarize } from "../scripts/lib/evaluate.mjs";
+import { aggregateCveDetail, summarize } from "../dist/reports/domain/sofa-eval.js";
 const devices = JSON.parse(readFileSync(new URL("./fixtures/devices.json", import.meta.url)));
 
 test("aggregateCveDetail lists CVEs with exposure counts", () => {
@@ -159,7 +159,8 @@ test("xprotectCollected is false when no device reports xprotect_version", () =>
   assert.equal(allDeviceRows(ev)[0].xp, "N/A");
 });
 
-import { toCsv, securityRows, allDeviceRows, cveRows } from "../scripts/lib/render.mjs";
+import { toCsv } from "../scripts/lib/render.mjs";
+import { securityRows, allDeviceRows, cveRows } from "../dist/reports/domain/sofa-eval.js";
 
 test("toCsv escapes and joins", () => {
   const csv = toCsv([["a", "b"]], [{ a: "x,y", b: 'q"z' }]);
@@ -174,7 +175,8 @@ test("section row builders return arrays of objects", () => {
   assert.ok(cveRows(aggregateCveDetail(ev, t)).length >= 1);
 });
 
-import { renderMarkdown, vulnerabilityRows } from "../scripts/lib/render.mjs";
+import { renderMarkdown } from "../scripts/lib/render.mjs";
+import { vulnerabilityRows } from "../dist/reports/domain/sofa-eval.js";
 
 test("renderMarkdown produces all four sections + CVE detail", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -241,7 +243,7 @@ test("EOL-major device still gets an unfixed-CVE count (not null)", () => {
   assert.equal(typeof e.cvesBehind, "number"); // computed, not null
 });
 
-import { deviceCveRows } from "../scripts/lib/evaluate.mjs";
+import { deviceCveRows } from "../dist/reports/domain/sofa-eval.js";
 
 test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -261,7 +263,7 @@ test("deviceCveRows groups each device's missing CVEs into ONE multi-line row", 
   assert.equal(rows.filter(r => r.serial === "CCC3").length, 0);
 });
 
-import { cveDeviceRows } from "../scripts/lib/evaluate.mjs";
+import { cveDeviceRows } from "../dist/reports/domain/sofa-eval.js";
 
 test("cveDeviceRows lists affected devices per CVE (inverse of device-cves)", () => {
   const t = buildMajorTables(macFeed, iosFeed);
@@ -276,7 +278,7 @@ test("cveDeviceRows lists affected devices per CVE (inverse of device-cves)", ()
   assert.equal(rows.every(r => r.devices_exposed > 0), true);
 });
 
-import { groupBreakdownRows } from "../scripts/lib/render.mjs";
+import { groupBreakdownRows } from "../dist/reports/domain/sofa-eval.js";
 
 test("device group surfaces per-row and in the per-group rollup", () => {
   const t = buildMajorTables(macFeed, iosFeed);

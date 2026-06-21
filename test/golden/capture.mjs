@@ -77,10 +77,7 @@ import {
   renderMarkdown, vulnerabilityRows, groupBreakdownRows,
 } from "../../scripts/lib/render.mjs";
 
-function captureAudit() {
-  console.log("Capturing audit golden…");
-  const dir = ensureGolden("audit");
-
+export function buildAuditInput() {
   // devices.json is already in the flat shape evaluateDevice expects
   const devices = fix("devices.json");
   const macFeed  = fix("sofa-macos.json");
@@ -90,6 +87,15 @@ function captureAudit() {
   const ev        = devices.map((d) => evaluateDevice(d, tables));
   const cveDetail = aggregateCveDetail(ev, tables);
   const summary   = summarize(ev, cveDetail);
+
+  return { ev, tables, cveDetail, summary, dateStr: FIXED_DATE, scoped: false };
+}
+
+function captureAudit() {
+  console.log("Capturing audit golden…");
+  const dir = ensureGolden("audit");
+
+  const { ev, tables, cveDetail, summary } = buildAuditInput();
 
   const W = (name, content) => writeGolden(dir, name, content);
 
