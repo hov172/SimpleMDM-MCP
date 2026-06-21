@@ -102,6 +102,71 @@ test("manifest default (omitted) still writes manifest.csv", async () => {
   assert.ok(res.manifestSha256.length === 64, "manifestSha256 must be a valid sha256 hash when default");
 });
 
+// Hardening: a malformed spec must never silently clobber outputs. Any two
+// artifacts that would resolve to the same on-disk filename must fail loudly
+// BEFORE anything is written.
+test("write rejects csvName colliding with mdName (the FileVault-report bug)", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "dup" });
+  d.section("S").table([{ key: "a", header: "A" }], [{ a: "1" }], "dup");
+  await assert.rejects(
+    () => d.write(out, { format: "all", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" }),
+    /collision/i,
+  );
+  // Fail-fast: nothing should have been written to the output dir.
+  assert.ok(!existsSync(join(out, "dup")), "no artifact may be written when a collision is detected");
+});
+
+test("write rejects mdName without .md extension (html/pdf clobber the md)", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "report" });
+  await assert.rejects(
+    () => d.write(out, { format: "all", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" }),
+    /collision/i,
+  );
+});
+
+test("write rejects duplicate csvName across two table blocks", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "report.md" });
+  d.section("S1").table([{ key: "a", header: "A" }], [{ a: "1" }], "data.csv");
+  d.section("S2").table([{ key: "b", header: "B" }], [{ b: "2" }], "data.csv");
+  await assert.rejects(
+    () => d.write(out, { format: "md", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" }),
+    /collision/i,
+  );
+});
+
+test("write rejects a dataFile colliding with a table csvName", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "report.md" });
+  d.section("S").table([{ key: "a", header: "A" }], [{ a: "1" }], "shared.csv");
+  d.dataFile("shared.csv", "x", "dupe");
+  await assert.rejects(
+    () => d.write(out, { format: "md", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" }),
+    /collision/i,
+  );
+});
+
+test("write rejects a data artifact named manifest.csv (collides with auto manifest)", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "report.md" });
+  d.dataFile("manifest.csv", "x", "shadow");
+  await assert.rejects(
+    () => d.write(out, { format: "md", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" }),
+    /collision/i,
+  );
+});
+
+test("write ALLOWS same base name with distinct extensions (foo.csv + foo.md)", async () => {
+  const out = mkdtempSync(join(tmpdir(), "out-"));
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape", mdName: "foo.md" });
+  d.section("S").table([{ key: "a", header: "A" }], [{ a: "1" }], "foo.csv");
+  await d.write(out, { format: "all", reportOnly: false, generatedIso: "2026-06-20T00:00:00Z" });
+  assert.ok(existsSync(join(out, "foo.csv")), "foo.csv must be written");
+  assert.ok(existsSync(join(out, "foo.md")), "foo.md must be written");
+});
+
 test("format:md + reportOnly does NOT write data CSVs", async () => {
   const out = mkdtempSync(join(tmpdir(), "out-"));
   const d = new Dossier({ title: "T", pageStyle: "a3-landscape", footerTitle: "T", mdName: "report.md" });

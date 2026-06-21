@@ -20,7 +20,9 @@ function withSecurityInput() {
 test("buildLogsDossier withSecurity emits security-posture.csv and device-cves.csv", async () => {
   const out = mkdtempSync(join(tmpdir(), "logs-sec-"));
   try {
-    await buildLogsDossier(withSecurityInput(), { withSecurity: true }).write(out, { format: "csv", reportOnly: false });
+    // manifest:false matches the production logs writeOpts (registry.ts) — the logs
+    // dossier ships its own bespoke manifest.csv, so the engine auto-manifest is suppressed.
+    await buildLogsDossier(withSecurityInput(), { withSecurity: true }).write(out, { format: "csv", reportOnly: false, manifest: false });
     assert.ok(existsSync(join(out, "security-posture.csv")), "security-posture.csv must exist");
     assert.ok(existsSync(join(out, "device-cves.csv")), "device-cves.csv must exist");
   } finally { rmSync(out, { recursive: true, force: true }); }
@@ -34,7 +36,7 @@ test("buildLogsDossier withInventory emits inventory.csv, apps.csv, profiles.csv
   input.bundles[0].users = [];
   const out = mkdtempSync(join(tmpdir(), "logs-inv-"));
   try {
-    await buildLogsDossier(input, { withInventory: true }).write(out, { format: "csv", reportOnly: false });
+    await buildLogsDossier(input, { withInventory: true }).write(out, { format: "csv", reportOnly: false, manifest: false });
     assert.ok(existsSync(join(out, "inventory.csv")), "inventory.csv must exist");
     assert.ok(existsSync(join(out, "apps.csv")), "apps.csv must exist");
     assert.ok(existsSync(join(out, "profiles.csv")), "profiles.csv must exist");
@@ -56,7 +58,7 @@ test("buildLogsDossier raw-logs.json redacts secret device attributes", async ()
 
   const out = mkdtempSync(join(tmpdir(), "logs-redact-"));
   try {
-    await buildLogsDossier(input).write(out, { format: "md", reportOnly: false });
+    await buildLogsDossier(input).write(out, { format: "md", reportOnly: false, manifest: false });
     const raw = readFileSync(join(out, "raw-logs.json"), "utf8");
 
     // Plaintext secrets must not appear anywhere in the dump.
