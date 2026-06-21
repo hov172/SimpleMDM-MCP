@@ -9,6 +9,7 @@ import {
 } from "../domain/logs.js";
 import { allDeviceRows, deviceCveRows } from "../domain/sofa-eval.js";
 import { sha256 } from "../engine/manifest.js";
+import { redactDeviceRaw } from "../domain/inventory.js";
 
 const cols = (arr: string[]) => arr.map((n) => ({ key: n, header: n }));
 
@@ -48,7 +49,7 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
   add("logs-status-snapshots.csv", toCsv(cols(STATUS_COLUMNS), sr), "status.changed snapshots; full status JSON externalized to status-snapshots/ (see status_json_file column)", `${sr.length} snapshots`);
   add("logs-summary.csv", toCsv(cols(SUMMARY_COLUMNS), mr), "Per-device pivot + coverage window", `${bundles.length} devices`);
   if (fr.length) add("findings.csv", toCsv(cols(FINDINGS_COLUMNS), fr), "Auto-detected per-device findings", `${fr.length} findings`);
-  add("raw-logs.json", JSON.stringify({ generated_at: nowIso, selector: null, devices: bundles.map((b: any) => ({ device: b.device, logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
+  add("raw-logs.json", JSON.stringify({ generated_at: nowIso, selector: null, devices: bundles.map((b: any) => ({ device: redactDeviceRaw(b.device), logs: b.logs })) }, null, 2), "Verbatim per-device log records", `${bundles.length} devices`);
 
   if (opts.withSecurity && input.security) {
     const { tables, evald } = input.security;

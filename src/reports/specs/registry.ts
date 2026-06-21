@@ -11,7 +11,6 @@ export interface RegistryEntry {
   buildInput(scope: LegacySelector, ctx: Ctx, opts?: Record<string, any>): Promise<any>;
   build(input: any, opts?: Record<string, any>): Dossier;
   defaultFormat: Format;
-  needsConfirmAll: boolean;
   writeOpts: { manifest?: boolean };
   summaryText?(input: any, opts?: Record<string, any>): string;
 }
@@ -21,7 +20,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
     buildInput: (scope, ctx) => auditInputLive(scope, ctx),
     build: (input) => buildAuditDossier(input),
     defaultFormat: "all",
-    needsConfirmAll: false,
     writeOpts: {},
     summaryText(input: any, opts: any): string {
       const s = input.summary;
@@ -45,7 +43,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
     buildInput: (scope, ctx, opts) => inventoryInputLive(scope, ctx, opts),
     build: (input, opts) => buildInventoryDossier(input, opts),
     defaultFormat: "all",
-    needsConfirmAll: true,
     writeOpts: {},
     summaryText(input: any, opts: any): string {
       const records: any[] = input.records ?? [];
@@ -87,7 +84,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
     buildInput: (scope, ctx, opts) => logsInputLive(scope, ctx, opts),
     build: (input, opts) => buildLogsDossier(input, opts),
     defaultFormat: "all",
-    needsConfirmAll: true,
     writeOpts: { manifest: false },
     summaryText(input: any, opts: any): string {
       const { bundles, dateStr } = input;
