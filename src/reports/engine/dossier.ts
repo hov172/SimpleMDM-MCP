@@ -14,6 +14,7 @@ export interface WriteResult {
   files: { name: string; description: string; rows: number | null; sha256: string }[];
   manifestSha256: string;
   skipped: { artifact: string; reason: string }[];
+  partial?: boolean;
 }
 
 class SectionBuilder {
