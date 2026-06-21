@@ -19,11 +19,14 @@ export function renderAuditMarkdown(
   summary: AuditSummary,
   tables: SofaTables,
   dateStr: string,
-  { scoped = false } = {},
+  { scoped = false, account = null as { name: string; total: number | null; available: number | null } | null } = {},
 ): string {
   void cveDetail; // accepted for API compatibility, not used directly
   const out: string[] = [];
   out.push(`# SOFA Fleet Audit — ${dateStr}\n`);
+  if (account) {
+    out.push(`Account: **${String(account.name).replace(/\|/g, "\\|")}**${account.total != null ? ` · licenses ${account.total - (account.available ?? 0)} used of ${account.total}` : ""}\n`);
+  }
 
   out.push("## Security Report\n");
   out.push(`Devices with issues: **${summary.withIssues}** / ${summary.total}. ` +
