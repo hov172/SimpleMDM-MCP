@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-06-21
+
+### Fixed
+- Dynamic `generate_report` (devices adapter) now resolves device-group and assignment-group **names** instead of leaving the `device_group`/`assignment_groups` fields blank. The adapter fetches `/device_groups` and `/assignment_groups`, builds the id→name maps, and passes them to `normalizeDevice` — so a `Group` column renders e.g. `HLAB_Faculty` like the inventory report does, not blank. Best-effort: a failed group fetch degrades to blank names rather than failing the report.
+
 ## [0.30.0] - 2026-06-21
 
 ### Added
