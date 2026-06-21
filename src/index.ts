@@ -3718,7 +3718,9 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
 
         let rows: unknown[];
         try {
-          const source = new ServerDataSource(simpleMDM);
+          // Inject the cached, write-invalidated collectDevices() so repeated reports
+          // (within SIMPLEMDM_CACHE_TTL_MS) reuse the fleet instead of re-paginating /devices.
+          const source = new ServerDataSource(simpleMDM, undefined, undefined, collectDevices);
           rows = await adapterRows(source, spec.dataAdapter);
         } catch (e) {
           return { error: `dynamic report fetch failed: ${formatError(e)}` };

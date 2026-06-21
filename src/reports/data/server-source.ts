@@ -17,6 +17,10 @@ export class ServerDataSource implements DataSource {
     private readonly client: ClientFn,
     private readonly maxPages = 200,
     fetchJson?: FetchJsonFn,
+    // Optional cached raw-/devices fetcher. When the MCP server injects its
+    // write-invalidated collectDevices(), back-to-back reports reuse the cached
+    // fleet instead of re-paginating /devices on every run. Omitted → paginateAll.
+    private readonly deviceFetcher?: () => Promise<any[]>,
   ) {
     this.fetchJson = fetchJson ?? defaultFetchJson;
   }
@@ -75,7 +79,7 @@ export class ServerDataSource implements DataSource {
   }
 
   async devices(scope?: Scope): Promise<DeviceRecord[]> {
-    const raw = await this.paginateAll("/devices");
+    const raw = this.deviceFetcher ? await this.deviceFetcher() : await this.paginateAll("/devices");
     const filtered = this.applyScope(raw, scope);
     // Attach the original raw API object so dynamic-report filters can reach any
     // SimpleMDM device field via `raw.attributes.<field>`, not just normalized keys.
