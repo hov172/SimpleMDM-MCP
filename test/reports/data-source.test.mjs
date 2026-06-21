@@ -66,6 +66,33 @@ test("ServerDataSource.devices carries the raw API object (.raw) for dynamic fil
   assert.equal(String(d.raw.id), String(rawDevices[0].id), "raw must be the original device, untouched");
 });
 
+test("ServerDataSource.devices uses an injected deviceFetcher (cache path) instead of the raw client", async () => {
+  // The 4th ctor arg lets the MCP server hand the report engine its cached,
+  // write-invalidated collectDevices() so back-to-back reports don't re-paginate /devices.
+  let clientCalls = 0;
+  const countingClient = async () => { clientCalls++; return { data: [], has_more: false }; };
+  const cachedRaw = [{ id: 7, type: "device", attributes: { device_name: "Cached Mac", serial_number: "CACHE1" } }];
+  let fetcherCalls = 0;
+  const deviceFetcher = async () => { fetcherCalls++; return cachedRaw; };
+
+  const ds = new ServerDataSource(countingClient, 200, undefined, deviceFetcher);
+  const devs = await ds.devices({ kind: "all" });
+
+  assert.equal(fetcherCalls, 1, "must call the injected fetcher");
+  assert.equal(clientCalls, 0, "must NOT hit the raw paginating client when a fetcher is injected");
+  assert.equal(devs.length, 1);
+  assert.equal(devs[0].raw, cachedRaw[0], "raw passthrough preserved through the cache path");
+});
+
+test("ServerDataSource.devices falls back to the raw client when no deviceFetcher is injected", async () => {
+  let clientCalls = 0;
+  const countingClient = async () => { clientCalls++; return { data: rawDevices, has_more: false }; };
+  const ds = new ServerDataSource(countingClient); // no fetcher
+  const devs = await ds.devices({ kind: "all" });
+  assert.ok(clientCalls > 0, "must paginate via the client when no fetcher is provided");
+  assert.ok(devs.length > 0);
+});
+
 test("no report fetch path calls a mutating client method — all 5 methods", async () => {
   const calls = [];
   const spy = makeSpyClient(calls);
