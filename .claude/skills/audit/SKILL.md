@@ -10,7 +10,7 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 ## Steps
 
 1. Determine the format from the user's request (default `all`). Map words to flags:
-   - "csv" → `--format csv`, "word"/"docx" → `--format docx`, "markdown"/"md" → `--format md`, otherwise `--format all`. "just the report"/"no data CSVs" → add `--report-only` (skips the CSV exports; not valid with `--format csv`).
+   - "csv" → `--format csv`, "word"/"docx" → `--format docx`, "markdown"/"md" → `--format md`, otherwise `--format all`. "just the report"/"no data CSVs" → add `--report-only` (skips the CSV exports; not valid with `--format csv`). "compact"/"fit to A4"/"standard page" → `--page-size a4` (default is roomy `a3`).
 2. Optional scope (at most one; omit for the whole fleet): a serial (or several) → `--serial A,B`; a group name → `--group "Name"` (matches device **and** assignment groups); "last N seen" → `--last-seen N`. A scoped run also trims the Vulnerability Check to the OS major-version ladders the selected devices are on (drops the iOS/iPadOS table and unrelated macOS majors).
 3. Run: `node dist/reports/cli.js audit --format <format> [selector]`
 3. Read `reports/audit-<today>/summary.txt` and relay the headline counts to the user
@@ -33,4 +33,5 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 - Read-only: the engine performs no SimpleMDM writes; a read-only `SIMPLEMDM_API_KEY` in `.env` is enough.
 - XProtect checks populate only if the `xprotect_version` custom attribute is collected (see `reports/xprotect/STAGING.md`); otherwise they report `N/A (not set up)` (and `N/A` per device).
 - Requires `SIMPLEMDM_API_KEY` in `.env` (read-only key is sufficient).
-- XProtect checks populate only if the `xprotect_version` custom attribute is collected; otherwise they report 0 / "absent".
+- Page size: `--page-size a3` (default, roomy A3-landscape) or `--page-size a4` (compact A4-landscape that shrinks the wide All Devices table to fit a standard page). Maps to the `page_size` param on `run_fleet_audit`.
+- On `--format all`, the run also writes always-on bundle artifacts: `manifest.sha256` (SHA-256 integrity list) and `<report-dir>.zip` (single archive), via python3 stdlib (best-effort).

@@ -17,8 +17,10 @@ It is a **sibling** to the [`/audit`](fleet-audit.md) command, not a replacement
 | Purpose | Vulnerability / compliance posture | Activity / event timeline (legal/forensic) |
 | Cadence | Run on the whole fleet regularly | Run on demand for specific devices |
 
-It is **not** part of the MCP server's tool surface. It's a host-side script
-(`scripts/logs-audit.mjs`) plus a `/logs-audit` Claude Code skill wrapper. It talks
+It is driven by the **unified TypeScript report engine** (`src/reports/`, compiled to
+`dist/reports/cli.js`), exposed via the `/logs-audit` Claude Code skill, the
+`run_device_logs_audit` MCP tool (spawns the CLI as a host-side subprocess, writes files),
+and the in-process `generate_report` MCP tool (catalog mode `report: "logs"`). It talks
 **directly to the SimpleMDM API** (read-only) — a read-only API key is sufficient.
 
 ---
@@ -32,7 +34,7 @@ In Claude Code, ask for it (the **`/logs-audit`** skill maps your words to flags
 Or run the engine directly:
 
 ```bash
-node scripts/logs-audit.mjs <selector> [flags]
+node dist/reports/cli.js logs <selector> [flags]
 ```
 
 ### Selectors (exactly one required)
@@ -53,6 +55,7 @@ node scripts/logs-audit.mjs <selector> [flags]
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device log detail in the report document: `summary` (aggregation + findings, default) \| `table` (full per-device event table) \| `full` (both). `logs.csv`/`raw-logs.json` always keep 100% regardless |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
+| `--report-only` | write only the rendered report + `summary.txt` + `manifest.csv`; skip the data exports (not valid with `--format csv`) |
 | `--confirm-all` | required acknowledgement for `--all` |
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).
@@ -87,6 +90,7 @@ exports contain live tenant data, serials, and event history, and are never comm
 | `security-posture.csv`, `device-cves.csv` | *(with `--with-security`)* SOFA posture for the selected devices, and every CVE each is still missing |
 | `findings.csv` | auto-detected per-device findings (app-reinstall loops, software-update-failure loops, profile churn) — written when any are detected |
 | `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier** (see below) |
+| `manifest.sha256`, `<report-dir>.zip` | *(on `--format all`)* always-on bundle artifacts — a sha256sum-format integrity list of every deliverable and a single zip archive of the whole report directory (python3 stdlib, best-effort). This is in addition to the bespoke `manifest.csv` above (which carries the legal disclosures). |
 
 ### The combined dossier (`report.*`)
 
@@ -127,37 +131,41 @@ headless Chrome.
 
 ```bash
 # One device, every artifact (CSV + JSON + manifest + md/html/docx/pdf report)
-node scripts/logs-audit.mjs --serial C02ABC123XYZ --format all
+node dist/reports/cli.js logs --serial C02ABC123XYZ --format all
 
 # The 10 most recently active devices, with security posture, full report
-node scripts/logs-audit.mjs --last-seen 10 --with-security --format all
+node dist/reports/cli.js logs --last-seen 10 --with-security --format all
 
 # A whole group, with inventory + security, data files only
-node scripts/logs-audit.mjs --group "Faculty" --with-inventory --with-security --format csv
+node dist/reports/cli.js logs --group "Faculty" --with-inventory --with-security --format csv
 
 # Two specific devices into a named directory
-node scripts/logs-audit.mjs --serial ABC123,DEF456 --out reports/case-2026-06 --format all
+node dist/reports/cli.js logs --serial ABC123,DEF456 --out reports/case-2026-06 --format all
 
 # Whole fleet (heavy — explicit acknowledgement required)
-node scripts/logs-audit.mjs --all --confirm-all --format csv
+node dist/reports/cli.js logs --all --confirm-all --format csv
 ```
 
 ---
 
 ## Architecture / code map
 
+The logs audit is one report in the **unified TypeScript report engine** under
+`src/reports/` (compiled to `dist/reports/`):
+
 | File | Responsibility |
 |---|---|
-| `scripts/logs-audit.mjs` | entry point — arg parsing, `.env` key load, device resolution, per-device fetch (continue-on-error), artifact writing, manifest + summary |
-| `scripts/lib/logs.mjs` | **pure** functions (no network/fs): `parseArgs`, `selectDevices`, `toIso`, `logRows`, `statusSnapshotRows`/`statusSnapshotFiles`, `logSummaryRows`, `manifestRows`/`DISCLOSURES`, `renderDetailedReport` |
-| `scripts/lib/simplemdm.mjs` | API client — paginated device / `/logs` / apps / profiles / users / group fetchers |
-| `scripts/lib/evaluate.mjs`, `sofa.mjs` | reused from `/audit` for the `--with-security` SOFA evaluation |
-| `scripts/lib/render.mjs` | reused `toCsv` / `esc` (RFC-4180, CRLF, multi-line cells) |
-| `scripts/logs-report.head.html` | the US-Letter portrait report stylesheet (page footer, callouts, table styling) |
+| `src/reports/cli.ts` | CLI entrypoint (`dist/reports/cli.js`) + shared `runReport` core: arg parsing, selectors, `--with-security`/`--with-inventory` toggles |
+| `src/reports/specs/logs.ts` · `specs/registry.ts` | the logs report spec — device resolution, per-device fetch (continue-on-error), snapshot sidecars, bespoke `manifest.csv` + summary — wired into the registry |
+| `src/reports/domain/logs.ts` | **pure** functions (no network/fs): `selectDevices`, `toIso`, `logRows`, `statusSnapshotRows`/`statusSnapshotFiles`, `logSummaryRows`, `manifestRows`/`DISCLOSURES`, `renderDetailedReport` |
+| `src/reports/data/server-source.ts` · `scripts/lib/simplemdm.mjs` | read-only data source — paginated device / `/logs` / apps / profiles / users / group fetchers |
+| `src/reports/domain/sofa-eval.ts` · `scripts/lib/sofa.mjs` | reused from `/audit` for the `--with-security` SOFA evaluation |
+| `src/reports/engine/{csv,theme,document,extras}.ts` | shared rendering: `toCsv` (RFC-4180, CRLF, multi-line cells), the US-Letter portrait theme (page footer, callouts), and always-on bundle artifacts (`manifest.sha256`, `<dir>.zip`) |
 | `.claude/skills/logs-audit/SKILL.md` | the `/logs-audit` skill wrapper |
 
-All transform/selection/parse logic lives in the pure `lib/logs.mjs` and is unit-tested
-in `test/logs-audit.test.mjs`; the entry script is thin I/O orchestration.
+All transform/selection/parse logic lives in the pure `domain/logs.ts` and is unit-tested
+(plus the golden-parity test against `test/golden/logs/`); the spec is thin I/O
+orchestration.
 
 ---
 

@@ -8,10 +8,12 @@ Software Updates). It answers, for every device: *is the OS current, how many un
 are FileVault / SIP / Firewall / XProtect in the right state?* — and exports the
 results to CSV, Markdown, Word, and PDF.
 
-It is **not** part of the MCP server's tool surface. It's a host-side script
-(`scripts/sofa-audit.mjs`) plus a `/audit` Claude Code skill wrapper. It talks
-**directly to the SimpleMDM API** (read-only) and the public SOFA feed — no external
-app, service, or database.
+It is driven by the **unified TypeScript report engine** (`src/reports/`, compiled to
+`dist/reports/cli.js`), exposed three ways: the `/audit` Claude Code skill wrapper, the
+`run_fleet_audit` MCP tool (which spawns the CLI as a host-side subprocess and writes
+files to disk), and the in-process `generate_report` MCP tool (catalog mode `report:
+"audit"`, returns `WriteResult` metadata). It talks **directly to the SimpleMDM API**
+(read-only) and the public SOFA feed — no external app, service, or database.
 
 ---
 
@@ -75,7 +77,7 @@ In Claude Code, ask for it (the `/audit` skill runs the engine):
 Or run the engine directly:
 
 ```bash
-node scripts/sofa-audit.mjs --format all     # csv | md | docx | all  (default: all)
+node dist/reports/cli.js audit --format all     # csv | md | docx | all  (default: all)
 ```
 
 | Flag | Meaning |
@@ -87,7 +89,9 @@ node scripts/sofa-audit.mjs --format all     # csv | md | docx | all  (default: 
 | `--serial A,B` | scope the audit to these devices (whole fleet if omitted) |
 | `--group "Name"` | scope to a **device or assignment** group (at most one selector) |
 | `--last-seen N` | scope to the N most recently seen devices |
+| `--page-size a3\|a4` | PDF/HTML page size: `a3` (default) = roomy A3-landscape; `a4` = compact A4-landscape that shrinks the wide All Devices table to fit a standard page |
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
+| `--report-only` | write only the rendered report + `summary.txt`; skip the data CSV exports (not valid with `--format csv`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
 
 By default the audit covers the **whole fleet**. The optional selectors above scope it to a
@@ -177,6 +181,8 @@ contain live tenant data and are never committed.
 | `full-audit.md` | combined | the four sections + By Device Group, as Markdown |
 | `full-audit.docx` | combined | Word version (via pandoc) |
 | `full-audit.pdf` | combined | print-ready PDF, written automatically by `--format all` (WeasyPrint/Chrome) |
+| `manifest.sha256` | bundle | SHA-256 integrity manifest (sha256sum format) of every deliverable — always written on `--format all` |
+| `<report-dir>.zip` | bundle | single archive of the whole report directory — always written on `--format all` (python3 stdlib, best-effort) |
 
 ### Report sections (`full-audit.md`)
 
@@ -209,13 +215,15 @@ scripts/make-audit-pdf.sh                       # newest reports/audit-*/
 scripts/make-audit-pdf.sh reports/audit-2026-06-08
 ```
 
-It renders `full-audit.md → full-audit.html → full-audit.pdf` with `pandoc` + the shared
-renderer (`scripts/lib/report-pdf.mjs`), using `scripts/audit-report.head.html` for
-styling: **A3 landscape, full page width, dynamic content-sized columns**, with the same
-navy/zebra look and **footer page numbers** as the `/logs-audit` dossier. PDF rendering
-prefers **WeasyPrint** (`brew install weasyprint`) for the "Page X of Y" footer and falls
-back to headless Chrome / Edge / Chromium (which renders correctly but without page
-numbers). Edit `scripts/audit-report.head.html` to tweak fonts, margins, or page size.
+It renders `full-audit.md → full-audit.html → full-audit.pdf` with `pandoc`, generating
+the HTML style header from the unified engine's theme module
+(`dist/reports/engine/theme.js`): **A3 landscape, full page width, dynamic content-sized
+columns**, with the same navy/zebra look and **footer page numbers** as the `/logs-audit`
+dossier. PDF rendering prefers **WeasyPrint** (`brew install weasyprint`) for the "Page X
+of Y" footer and falls back to headless Chrome / Edge / Chromium (which renders correctly
+but without page numbers). To tweak fonts, margins, or page size, edit the theme in
+`src/reports/engine/theme.ts` and rebuild (or use the `--page-size a4` flag for a compact
+A4-landscape layout).
 
 ---
 
@@ -233,19 +241,22 @@ device's value to SOFA's latest XProtect config: lower → *outdated*, non-numer
 
 ## Architecture / code map
 
+The audit is one report in the **unified TypeScript report engine** under `src/reports/`
+(compiled to `dist/reports/`). The audit-specific pieces:
+
 | File | Responsibility |
 |---|---|
-| `scripts/sofa-audit.mjs` | orchestrator + CLI: fetch, evaluate, write files |
-| `scripts/lib/evaluate.mjs` | **pure** logic: version math, platform detection, SOFA tables, OS assessment, upgrade paths, per-device evaluation, CVE aggregation, group rollup, summary |
-| `scripts/lib/render.mjs` | **pure** rendering: CSV row builders + escaping, Markdown |
-| `scripts/lib/sofa.mjs` | fetch + cache the SOFA feeds |
-| `scripts/lib/simplemdm.mjs` | paginated device + device-group fetch (429 backoff) |
-| `scripts/lib/docx.mjs` | pandoc → docx |
-| `scripts/lib/report-pdf.mjs` · `scripts/audit-report.head.html` · `scripts/make-audit-pdf.sh` | PDF export (shared WeasyPrint/Chrome renderer + A3 stylesheet + standalone regenerator) |
-| `test/sofa-audit.test.mjs` | unit tests for the pure logic (fixtures, no network) |
+| `src/reports/cli.ts` | CLI entrypoint (`dist/reports/cli.js`) + shared `runReport` core (also called in-process by `generate_report`): flag parsing, scope selectors, format/`--page-size` validation |
+| `src/reports/specs/audit.ts` · `specs/registry.ts` | the audit report spec wired into the report registry |
+| `src/reports/domain/sofa-eval.ts` | **pure** logic: version math, platform detection, SOFA tables, OS assessment, upgrade paths, per-device evaluation, CVE aggregation, group rollup, summary |
+| `src/reports/domain/audit-render.ts` | **pure** rendering: CSV row builders + escaping, Markdown |
+| `src/reports/data/server-source.ts` · `scripts/lib/sofa.mjs` · `scripts/lib/simplemdm.mjs` | read-only data source: paginated device + device-group fetch (429 backoff) and SOFA feed fetch/cache |
+| `src/reports/engine/{document,dossier,manifest,extras,theme}.ts` | shared rendering pipeline: pandoc → docx/html/pdf, manifest, always-on bundle artifacts (`manifest.sha256`, `<dir>.zip`), and the A3/A4 theme |
+| `scripts/make-audit-pdf.sh` | standalone PDF regenerator (styles from `dist/reports/engine/theme.js`) |
+| `test/golden-parity.test.mjs` + the `test/golden/audit/` fixtures | byte-compare the engine output against committed fixtures (no network) |
 
-The pure modules (`evaluate`, `render`) are fixture-tested with `node --test` and carry
-no IO, so the join/CVE/eligibility logic is verifiable without hitting the network.
+The domain modules (`sofa-eval`, `audit-render`) carry no IO, so the join/CVE/eligibility
+logic is verifiable without hitting the network.
 
 ---
 
