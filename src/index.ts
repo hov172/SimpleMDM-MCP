@@ -1628,7 +1628,7 @@ export const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {} } },
 
   { name: "run_fleet_audit",
-    description: "Run the host-side macOS Security Audit script (scripts/sofa-audit.mjs). Joins live SimpleMDM inventory with the SOFA feed. Generates CSV, MD, Word, and PDF reports under reports/audit-YYYY-MM-DD.",
+    description: "Runs the unified report engine CLI (node dist/reports/cli.js audit) as a host-side subprocess; writes CSV/md/html/docx/pdf files under reports/audit-YYYY-MM-DD and returns a text summary + report head. For in-process metadata-only generation (and declarative dynamic specs) use generate_report.",
     inputSchema: { type: "object", properties: {
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Report format to generate. Default is 'all'." },
       serial: { type: "string", description: "Scope to these comma-separated serial numbers (e.g. C02ABC123,DEF456)." },
@@ -1640,7 +1640,7 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "run_device_logs_audit",
-    description: "Run the host-side Forensic Logs Audit script (scripts/logs-audit.mjs). Collects /logs activity feed, detects reinstall loops or update failure loops, and writes report dossiers.",
+    description: "Runs the unified report engine CLI (node dist/reports/cli.js logs) as a host-side subprocess; collects /logs activity feed, detects reinstall loops or update-failure loops, and writes report dossiers under reports/logs-audit-YYYY-MM-DD. For in-process generation use generate_report.",
     inputSchema: { type: "object", properties: {
       serial: { type: "string", description: "Comma-separated list of device serial numbers to audit." },
       last_seen: { type: "number", description: "Audit the N most recently active devices." },
@@ -1656,7 +1656,7 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "run_inventory_report",
-    description: "Run the host-side Fleet Inventory Report script (scripts/inventory-report.mjs). Searchable inventory of devices, installed/assigned apps and profiles, and security posture, with deployment-gap findings. Writes CSVs and a md/html/docx/pdf dossier under reports/inventory-YYYY-MM-DD.",
+    description: "Runs the unified report engine CLI (node dist/reports/cli.js inventory) as a host-side subprocess; searchable fleet inventory of devices, apps, profiles, and security posture, with deployment-gap findings. Writes CSVs and a md/html/docx/pdf dossier. For in-process generation use generate_report.",
     inputSchema: { type: "object", properties: {
       search: { type: "string", description: "Query, e.g. 'group:faculty,staff seen:>=2025-01-01' or 'type:laptop os:<15 filevault:off'. Bare keywords AND together; OR between terms; -term excludes; field:value supports comma-lists, * wildcards, comparators, ranges, relative dates (seen:90d)." },
       serial: { type: "string", description: "Comma-separated device serial numbers." },
@@ -1701,7 +1701,7 @@ export const TOOLS: Tool[] = [
   // UNIFIED REPORT ENGINE (in-process)
   // ══════════════════════════════════════════════════════════════════════════
   { name: "generate_report",
-    description: "Generate a fleet dossier in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Two modes (provide exactly one): (1) catalog — set `report` (audit/inventory/logs) + `scope`; reuses the same registry and bridge as the CLI. (2) dynamic — set `spec`, a declarative report definition rendered in the house style over a chosen dataAdapter (devices/apps/profiles/users/logs/posture). For large fleets prefer scoped selectors; whole-fleet (all) requires confirm_all:true in the scope object.",
+    description: "Generate a fleet dossier in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Two modes (provide exactly one): (1) catalog — set `report` (audit/inventory/logs) + `scope`; reuses the same registry and bridge as the CLI. (2) dynamic — set `spec`, a declarative report definition rendered in the house style over a chosen dataAdapter (devices/apps/profiles/users/logs/posture). For large fleets prefer scoped selectors; whole-fleet (all) requires confirm_all:true in the scope object. The run_fleet_audit, run_device_logs_audit, and run_inventory_report tools wrap the same engine as host-side subprocesses for on-disk delivery.",
     inputSchema: { type: "object", properties: {
       report: { type: "string", enum: ["audit", "inventory", "logs"], description: "Catalog mode: report type — audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export). Mutually exclusive with `spec`." },
       scope: { type: "object", description: "Catalog mode device selector — one of: {serials:[\"SN1\",...]}, {group:\"GroupName\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"query\"} (inventory only). Whole-fleet scope requires confirm_all:true to prevent accidental large fetches." },
@@ -3224,24 +3224,18 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const dateStr = new Date().toISOString().slice(0, 10);
       const outDir = customOutDir ?? `reports/audit-${dateStr}`;
 
-      const runArgs = ["--format", format, "--out", outDir];
-      if (serial) runArgs.push("--serial", serial);
-      if (group) runArgs.push("--group", group);
-      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
-      if (noNetworkCache) runArgs.push("--no-network-cache");
-      if (args.report_only === true) runArgs.push("--report-only");
-
       const here = dirname(fileURLToPath(import.meta.url));
-      const scriptPath = resolve(here, "..", "scripts", "sofa-audit.mjs");
+      const cliPath = resolve(here, "reports", "cli.js");
 
       const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
-      
+
+      const { buildAuditCliArgs } = await import("./reportCliArgs.js");
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const execFileAsync = promisify(execFile);
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildAuditCliArgs(args, outDir)], { env });
         
         let summaryContent = "";
         try {
@@ -3291,27 +3285,18 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const dateStr = new Date().toISOString().slice(0, 10);
       const outDir = customOutDir ?? `reports/logs-audit-${dateStr}`;
 
-      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail, "--out", outDir];
-      if (serial) runArgs.push("--serial", serial);
-      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
-      if (group) runArgs.push("--group", group);
-      if (all) runArgs.push("--all");
-      if (confirmAll) runArgs.push("--confirm-all");
-      if (withInventory) runArgs.push("--with-inventory");
-      if (withSecurity) runArgs.push("--with-security");
-      if (args.report_only === true) runArgs.push("--report-only");
-
       const here = dirname(fileURLToPath(import.meta.url));
-      const scriptPath = resolve(here, "..", "scripts", "logs-audit.mjs");
+      const cliPath = resolve(here, "reports", "cli.js");
 
       const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
 
+      const { buildLogsCliArgs } = await import("./reportCliArgs.js");
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const execFileAsync = promisify(execFile);
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildLogsCliArgs(args, outDir)], { env });
 
         let summaryContent = "";
         try {
@@ -3361,27 +3346,12 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const raw = args.raw === true;
       const customOutDir = args.out_dir as string | undefined;
 
-      const runArgs: string[] = ["--format", format, "--report-detail", reportDetail, "--report-style", reportStyle];
-      if (sortSpec) runArgs.push("--sort", sortSpec);
-      if (search) runArgs.push("--search", search);
-      if (serial) runArgs.push("--serial", serial);
-      if (group) runArgs.push("--group", group);
-      if (lastSeen != null) runArgs.push("--last-seen", String(lastSeen));
-      if (all) runArgs.push("--all");
-      if (confirmAll) runArgs.push("--confirm-all");
-      if (allowPartial) runArgs.push("--allow-partial");
-      if (args.report_only === true) runArgs.push("--report-only");
-      if (raw) runArgs.push("--raw");
-      // No default --out: the engine picks reports/inventory-YYYY-MM-DD and
-      // auto-suffixes -2, -3… so same-day runs never mix outputs. We recover
-      // the directory from the engine's "Output: <dir>" summary line.
-      if (customOutDir) runArgs.push("--out", customOutDir);
-
       const here = dirname(fileURLToPath(import.meta.url));
-      const scriptPath = resolve(here, "..", "scripts", "inventory-report.mjs");
+      const cliPath = resolve(here, "reports", "cli.js");
 
       const env = { ...process.env, SIMPLEMDM_API_KEY: API_KEY };
 
+      const { buildInventoryCliArgs } = await import("./reportCliArgs.js");
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const execFileAsync = promisify(execFile);
@@ -3399,7 +3369,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       };
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [scriptPath, ...runArgs], { env });
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildInventoryCliArgs(args)], { env });
         const { outDir, summary, report } = collectOutputs(stdout);
         return {
           success: true,
@@ -3417,7 +3387,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         const { outDir, summary } = collectOutputs(err.stdout);
         return {
           success: false,
-          partial_data: Boolean(summary),
+          partial_data: err.code === 2,
           error: err.message,
           stdout: err.stdout,
           stderr: err.stderr,
