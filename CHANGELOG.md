@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-06-21
+
+### Added
+- Selectable audit page size via `page_size` (`run_fleet_audit` MCP tool) / `--page-size` (CLI): `a3` (default, roomy A3-landscape with larger text) or `a4` (compact A4-landscape that shrinks the wide 14-column All Devices table to fit a standard page without clipping). Render-only change — no effect on CSV/markdown output.
+
 ## [0.26.0] - 2026-06-21
 
 ### Added
