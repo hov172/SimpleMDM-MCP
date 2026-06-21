@@ -184,7 +184,9 @@ export function buildInventoryInput() {
   // Pin the clock so stale-device / other date-relative findings are stable
   const findings = inventoryFindings(records, { now: FIXED_NOW_MS });
 
-  return { records, findings, dateStr: FIXED_DATE };
+  const rawById = new Map(DEVICES.map((d) => [d.id, d]));
+
+  return { records, findings, dateStr: FIXED_DATE, rawById };
 }
 
 function captureInventory() {
