@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tokenize, QueryError } from "../scripts/lib/query.mjs";
+import { tokenize, QueryError } from "../dist/reports/domain/query.js";
 
 test("tokenize splits on whitespace and keeps quoted phrases together", () => {
   assert.deepEqual(tokenize('macbook os:<15.5 -group:loaners'), ["macbook", "os:<15.5", "-group:loaners"]);
@@ -17,7 +17,7 @@ test("tokenize of empty/blank input returns []", () => {
   assert.deepEqual(tokenize("   "), []);
 });
 
-import { parseTerm } from "../scripts/lib/query.mjs";
+import { parseTerm } from "../dist/reports/domain/query.js";
 
 test("parseTerm: bare keyword and quoted phrase", () => {
   assert.deepEqual(parseTerm("macbook"), { neg: false, field: null, src: "macbook", alts: [{ match: "substr", text: "macbook" }] });
@@ -82,7 +82,7 @@ test("parseTerm: unknown field fails fast listing valid fields; empty value fail
   assert.throws(() => parseTerm("attr.:5"), /attr\./);
 });
 
-import { parseQuery, planQuery, sectionsReferenced } from "../scripts/lib/query.mjs";
+import { parseQuery, planQuery, sectionsReferenced } from "../dist/reports/domain/query.js";
 
 test("parseQuery groups OR-adjacent terms into one unit, ANDs the rest", () => {
   const ast = parseQuery("macbook os:<15.5 serial:C02* OR serial:FVFG*");
@@ -119,7 +119,7 @@ test("sectionsReferenced lists the per-device sections a query touches", () => {
   assert.deepEqual([...sectionsReferenced(parseQuery("os:15"))], []);
 });
 
-import { evaluate } from "../scripts/lib/query.mjs";
+import { evaluate } from "../dist/reports/domain/query.js";
 
 const NOW = Date.parse("2026-06-10T12:00:00Z");
 const REC = {
