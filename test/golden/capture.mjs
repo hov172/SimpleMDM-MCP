@@ -71,11 +71,28 @@ export function readGolden(report, name) {
 import {
   buildMajorTables, evaluateDevice, aggregateCveDetail,
   deviceCveRows, cveDeviceRows, summarize,
-} from "../../scripts/lib/evaluate.mjs";
-import {
-  toCsv, securityRows, needUpdateRows, allDeviceRows, cveRows,
-  renderMarkdown, vulnerabilityRows, groupBreakdownRows,
-} from "../../scripts/lib/render.mjs";
+  securityRows, needUpdateRows, allDeviceRows, cveRows,
+  vulnerabilityRows, groupBreakdownRows,
+} from "../../dist/reports/domain/sofa-eval.js";
+// Legacy render.mjs `renderMarkdown` was ported verbatim as `renderAuditMarkdown`.
+import { renderAuditMarkdown } from "../../dist/reports/domain/audit-render.js";
+
+// Legacy `toCsv(header, rows)` from render.mjs, inlined verbatim. The TS port's
+// engine/csv.js `toCsv(columns: Column[], rows)` takes a different shape
+// ({header,key} column objects); capture.mjs calls every csv with the legacy
+// array-of-names + name-keyed-row-objects contract, which the TS domain row
+// functions still emit. Inlining keeps output byte-identical without depending
+// on the deletable legacy lib.
+function esc(v) {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toCsv(header, rows) {
+  const cols = header[0];
+  const lines = [cols.map(esc).join(",")];
+  for (const r of rows) lines.push(cols.map((c) => esc(r[c])).join(","));
+  return lines.join("\r\n");
+}
 
 export function buildAuditInput() {
   // devices.json is already in the flat shape evaluateDevice expects
@@ -123,7 +140,7 @@ function captureAudit() {
   W("cve-devices.csv", toCsv(
     [["cve_id","fixed_in_version","os_track","actively_exploited","devices_exposed","devices"]],
     cveDeviceRows(ev, tables)));
-  W("full-audit.md", renderMarkdown(ev, cveDetail, summary, tables, FIXED_DATE, { scoped: false }));
+  W("full-audit.md", renderAuditMarkdown(ev, cveDetail, summary, tables, FIXED_DATE, { scoped: false }));
 
   // Binaries (docx, pdf) require running the full engine with pandoc/WeasyPrint;
   // not produced here — record empty manifest.
@@ -139,7 +156,7 @@ function captureAudit() {
 import {
   buildModelMap, assignmentAppMap, profileAssignmentMap,
   normalizeDevice, normalizeApps, normalizeProfiles, normalizeUsers,
-} from "../../scripts/lib/inventory.mjs";
+} from "../../dist/reports/domain/inventory.js";
 import {
   DEVICE_COLUMNS, deviceRows,
   APP_COLUMNS, appRows,
@@ -151,7 +168,7 @@ import {
   rollupRows, BY_MODEL_COLUMNS, byModelRows,
   FINDING_COLUMNS, inventoryFindings,
   renderInventoryReport,
-} from "../../scripts/lib/inventory-render.mjs";
+} from "../../dist/reports/domain/inventory-render.js";
 
 export function buildInventoryInput() {
   const DEVICES  = invFix("devices.json").data;
@@ -234,7 +251,7 @@ import {
   manifestRows, MANIFEST_COLUMNS,
   renderDetailedReport,
   findingRows, FINDINGS_COLUMNS,
-} from "../../scripts/lib/logs.mjs";
+} from "../../dist/reports/domain/logs.js";
 
 export function buildLogsInput() {
   const RAW  = fix("devices-sample.json").data;
