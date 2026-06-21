@@ -1,5 +1,7 @@
 import { Dossier } from "../engine/dossier.js";
 import { toCsv } from "../engine/csv.js";
+// @ts-ignore — retained legacy lib, no .d.ts
+import { flatten } from "../../../scripts/lib/simplemdm.mjs";
 import {
   logRows, LOG_COLUMNS, statusSnapshotRows, STATUS_COLUMNS, statusSnapshotFiles,
   logSummaryRows, SUMMARY_COLUMNS, findingRows, FINDINGS_COLUMNS,
@@ -13,6 +15,7 @@ const cols = (arr: string[]) => arr.map((n) => ({ key: n, header: n }));
 export interface LogsBuildOpts {
   reportDetail?: string;
   withSecurity?: boolean;
+  withInventory?: boolean;
 }
 
 export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier {
@@ -55,6 +58,17 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
     add("device-cves.csv",
       toCsv(cols(["name","serial","device_group","model","os","unfixed_count","exploited_count","cves"]), deviceCveRows(evald, tables)),
       "Per-device outstanding CVEs", `${evald.length} devices`);
+  }
+
+  if (opts.withInventory) {
+    const invRows = bundles.map((b: any) => flatten(b.device));
+    add("inventory.csv",
+      toCsv(cols(["id","name","serial","model","osVersion","last_seen_at","filevault_enabled","sip_enabled","firewall_enabled","device_group_id"]), invRows),
+      "Per-device inventory", `${invRows.length} devices`);
+    const appRows = bundles.flatMap((b: any) => (b.apps ?? []).map((a: any) => ({ serial: b.device.attributes?.serial_number, name: a.attributes?.name, identifier: a.attributes?.identifier, version: a.attributes?.version, managed: a.attributes?.managed })));
+    add("apps.csv", toCsv(cols(["serial","name","identifier","version","managed"]), appRows), "Installed apps per device", `${appRows.length} app records`);
+    const profRows = bundles.flatMap((b: any) => (b.profiles ?? []).map((p: any) => ({ serial: b.device.attributes?.serial_number, type: p.type, id: p.id, name: p.attributes?.name })));
+    add("profiles.csv", toCsv(cols(["serial","type","id","name"]), profRows), "Profiles per device", `${profRows.length} profile records`);
   }
 
   // report.md written by engine's bodyMarkdown path; manifest entry uses same rendered string.
