@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-06-21
+
+### Added
+- Always-on bundle artifacts on `format: all` for every report (audit, inventory, logs, and dynamic `generate_report` specs): `manifest.sha256` (sha256sum-format integrity list), a `<report-dir>.zip` archive of the whole report, and `report-table.xlsx` (Excel twin of `report-table.csv` for inventory flat/roster styles). Generated via python3 stdlib only (already in the image) — no new dependencies; best-effort (skips if python3 is unavailable, like the pdf/docx pipeline).
+
 ## [0.27.0] - 2026-06-21
 
 ### Added
