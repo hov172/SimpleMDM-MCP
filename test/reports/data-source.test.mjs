@@ -66,11 +66,12 @@ test("ServerDataSource.devices carries the raw API object (.raw) for dynamic fil
   assert.equal(String(d.raw.id), String(rawDevices[0].id), "raw must be the original device, untouched");
 });
 
-test("ServerDataSource.devices uses an injected deviceFetcher (cache path) instead of the raw client", async () => {
+test("ServerDataSource.devices uses an injected deviceFetcher (cache path) instead of paginating /devices", async () => {
   // The 4th ctor arg lets the MCP server hand the report engine its cached,
   // write-invalidated collectDevices() so back-to-back reports don't re-paginate /devices.
-  let clientCalls = 0;
-  const countingClient = async () => { clientCalls++; return { data: [], has_more: false }; };
+  // (The client is still used for the small group-name lists — see paths below.)
+  const clientPaths = [];
+  const countingClient = async (path) => { clientPaths.push(path); return { data: [], has_more: false }; };
   const cachedRaw = [{ id: 7, type: "device", attributes: { device_name: "Cached Mac", serial_number: "CACHE1" } }];
   let fetcherCalls = 0;
   const deviceFetcher = async () => { fetcherCalls++; return cachedRaw; };
@@ -79,9 +80,39 @@ test("ServerDataSource.devices uses an injected deviceFetcher (cache path) inste
   const devs = await ds.devices({ kind: "all" });
 
   assert.equal(fetcherCalls, 1, "must call the injected fetcher");
-  assert.equal(clientCalls, 0, "must NOT hit the raw paginating client when a fetcher is injected");
+  assert.ok(!clientPaths.some((p) => p.startsWith("/devices")), "must NOT paginate /devices via the client when a fetcher is injected");
   assert.equal(devs.length, 1);
   assert.equal(devs[0].raw, cachedRaw[0], "raw passthrough preserved through the cache path");
+});
+
+test("ServerDataSource.devices resolves device_group + assignment_group NAMES (not ids)", async () => {
+  // Regression: the dynamic report adapter must enrich devices with group names like
+  // the inventory bridge does, so the Group column shows "HLAB_Faculty", not blank.
+  const rawDev = [{ id: 1, type: "device", attributes: { device_name: "Mac1", name: "Lab Mac", serial_number: "S1" },
+    relationships: { device_group: { data: { id: 92181 } }, groups: { data: [{ id: 5 }, { id: 6 }] } } }];
+  const client = async (path) => {
+    if (path.startsWith("/device_groups")) return { data: [{ id: 92181, attributes: { name: "HLAB_Faculty" } }], has_more: false };
+    if (path.startsWith("/assignment_groups")) return { data: [{ id: 5, attributes: { name: "Faculty Managed" } }, { id: 6, attributes: { name: "K2" } }], has_more: false };
+    if (path.startsWith("/devices")) return { data: rawDev, has_more: false };
+    return { data: [], has_more: false };
+  };
+  const ds = new ServerDataSource(client);
+  const devs = await ds.devices({ kind: "all" });
+  assert.equal(devs[0].device_group, "HLAB_Faculty", "device_group must resolve the id to its name");
+  assert.deepEqual(devs[0].assignment_groups, ["Faculty Managed", "K2"], "assignment_groups must resolve ids to names");
+});
+
+test("ServerDataSource.devices degrades gracefully when group lists fail (blank, not crash)", async () => {
+  const rawDev = [{ id: 1, attributes: { serial_number: "S1" }, relationships: { device_group: { data: { id: 99 } } } }];
+  const client = async (path) => {
+    if (path.startsWith("/device_groups") || path.startsWith("/assignment_groups")) throw new Error("503 overload");
+    if (path.startsWith("/devices")) return { data: rawDev, has_more: false };
+    return { data: [], has_more: false };
+  };
+  const ds = new ServerDataSource(client);
+  const devs = await ds.devices({ kind: "all" });
+  assert.equal(devs.length, 1, "report still generates when group enrichment fails");
+  assert.equal(devs[0].device_group, "", "unresolved group is blank, not a thrown error");
 });
 
 test("ServerDataSource.devices falls back to the raw client when no deviceFetcher is injected", async () => {
