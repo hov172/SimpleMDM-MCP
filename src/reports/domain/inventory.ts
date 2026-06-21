@@ -106,6 +106,10 @@ export interface AssignedProfileInfo {
 export type SectionStatus = "ok" | "failed" | "pending" | "skipped";
 
 export interface DeviceRecord {
+  // Optional passthrough of the original raw /devices API object. Populated only by
+  // the DataSource.devices() adapter (for dynamic-report filtering on raw API fields);
+  // the inventory bridge does not set it, so normalized output is unaffected.
+  raw?: unknown;
   id: number | string;
   name: string;
   device_name: string;

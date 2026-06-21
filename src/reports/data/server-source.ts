@@ -77,7 +77,9 @@ export class ServerDataSource implements DataSource {
   async devices(scope?: Scope): Promise<DeviceRecord[]> {
     const raw = await this.paginateAll("/devices");
     const filtered = this.applyScope(raw, scope);
-    return filtered.map((d: any) => normalizeDevice(d));
+    // Attach the original raw API object so dynamic-report filters can reach any
+    // SimpleMDM device field via `raw.attributes.<field>`, not just normalized keys.
+    return filtered.map((d: any) => ({ ...normalizeDevice(d), raw: d }));
   }
 
   async apps(scope?: Scope): Promise<any[]> {
