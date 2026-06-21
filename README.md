@@ -452,6 +452,7 @@ node dist/reports/cli.js audit --format all   # csv | md | docx | all  (default:
 | `--serial A,B` | scope the audit to these devices (whole fleet if omitted) |
 | `--group "Name"` | scope to a **device or assignment** group (at most one selector) |
 | `--last-seen N` | scope to the N most recently seen devices |
+| `--page-size a3\|a4` | PDF/HTML page size: `a3` (default) = roomy A3-landscape; `a4` = compact A4-landscape that shrinks the wide All Devices table to fit a standard page |
 | `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
 | `--report-only` | write only the rendered report + `summary.txt`; skip the data CSV exports (not valid with `--format csv`) |
@@ -504,6 +505,7 @@ tenant data and are never committed):
 | `cve-devices.csv` | the inverse — one row per CVE, with the **affected device names/serials** collapsed into a single multi-line cell (`cve_id, fixed_in_version, os_track, actively_exploited, devices_exposed, devices`) |
 | `full-audit.md` | the four sections combined as Markdown |
 | `full-audit.docx` | Word version of `full-audit.md` (when `--format docx`/`all`) |
+| `manifest.sha256`, `<report-dir>.zip` | *(on `--format all`)* always-on bundle artifacts — a SHA-256 integrity manifest and a single zip archive of the whole report directory (python3 stdlib, best-effort) |
 
 ### The four sections
 
@@ -560,8 +562,9 @@ the result to CSV, raw JSON, a SHA-256 integrity manifest, and a detailed combin
 report (Markdown / HTML / Word / PDF).
 
 Like `/audit`, it talks **directly to the SimpleMDM API** (read-only) — no external app
-or service — and is driven by the unified report engine CLI (`node dist/reports/cli.js logs`) plus a `/logs-audit`
-skill, not an MCP tool.
+or service — and is driven by the unified report engine (`node dist/reports/cli.js logs`),
+exposed via the `/logs-audit` skill, the `run_device_logs_audit` MCP tool (host-side
+subprocess), and the in-process `generate_report` MCP tool.
 
 > 📖 **Deep dive:** see [`docs/logs-audit.md`](docs/logs-audit.md) for the full output
 > reference, fidelity/disclosure notes, code map, and more examples.
@@ -672,8 +675,9 @@ answers *"what happened on these machines?"*, `/inventory` answers *"which devic
 these criteria, and what exactly is on them?"*
 
 Like its siblings, it talks **directly to the SimpleMDM API** (read-only) — no external
-service — and is a host-side script (`dist/reports/cli.js inventory`) plus an
-`/inventory` skill, not an MCP tool.
+service — and runs on the unified report engine (`dist/reports/cli.js inventory`),
+exposed via the `/inventory` skill, the `run_inventory_report` MCP tool (host-side
+subprocess), and the in-process `generate_report` MCP tool.
 
 > 📖 **Deep dive:** see [`docs/inventory.md`](docs/inventory.md) for the full query-language
 > grammar, every output column, findings semantics, and the partial-data completeness model.
@@ -792,8 +796,10 @@ live tenant data and are never committed):
 | `by-group.csv` `by-type.csv` `by-model.csv` `by-os.csv` | rollups (by-model carries marketing name + release year) |
 | `findings.csv` | always written — assigned-app-missing, assigned-profile-missing, low-storage, stale-device, recovery-key-missing, duplicate-name, os-outlier; status `flag` or `unknown` |
 | `report-table.csv` | *(with `--report-style flat` or `roster`)* CSV twin of the report's device table(s) — same columns (`model_id` … `last_seen`, users + assignment groups inline, `device_group` as a column), cells, and row order as the report; roster rows follow the report's section reading order |
+| `report-table.xlsx` | *(with `--report-style flat`/`roster` on `--format all`)* Excel workbook of `report-table.csv` (python3 stdlib, best-effort) |
 | `raw/devices.json` | *(with `--raw`)* raw device records with **all secrets redacted** (FileVault key, firmware password, Recovery Lock password) |
 | `manifest.sha256` | SHA-256 of every output file, summary included |
+| `<report-dir>.zip` | *(on `--format all`)* single zip archive of the whole report directory (python3 stdlib, best-effort) |
 | `summary.txt` | account + license usage, query echo, matched counts, findings by type, partial-data details |
 | `report.md` / `.html` / `.docx` / `.pdf` | the combined **dossier**: account/license header, fleet rollups, findings rollup + per-type tables, per-device facts table + assigned apps/profiles tables (every detail level) + installed inventory (per `--report-detail`) |
 

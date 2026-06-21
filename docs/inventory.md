@@ -1,12 +1,15 @@
 # Fleet Inventory Reports (`/inventory`)
 
-`scripts/inventory-report.mjs` builds a **searchable fleet inventory** straight from the
+The **inventory** report builds a **searchable fleet inventory** straight from the
 SimpleMDM API (read-only): devices, installed apps, assigned apps **and** assigned
 profiles with deployment-gap detection, local users, and groups — selected by a
 multi-keyword + field-filter query language, exported as CSVs plus a combined dossier in
 Markdown / HTML / Word / PDF.
 
-It is a host-side script + the `/inventory` Claude Code skill, **not an MCP tool**.
+It is one report in the **unified TypeScript report engine** (`src/reports/`, compiled to
+`dist/reports/cli.js`), exposed via the `/inventory` Claude Code skill, the
+`run_inventory_report` MCP tool (spawns the CLI as a host-side subprocess, writes files),
+and the in-process `generate_report` MCP tool (catalog mode `report: "inventory"`).
 Siblings: [`/audit`](fleet-audit.md) (fleet security posture vs SOFA) and
 [`/logs-audit`](logs-audit.md) (forensic activity logs).
 
@@ -14,14 +17,13 @@ Siblings: [`/audit`](fleet-audit.md) (fleet security posture vs SOFA) and
 - **Local-only output**: `reports/` is gitignored; exports contain live tenant data and
   are never committed.
 - **Rendering**: `pandoc` for html/docx; PDF prefers WeasyPrint (A3 landscape,
-  real footer page numbers) with headless-Chrome fallback — the same shared pipeline as
-  the other two reports (`scripts/lib/report-pdf.mjs`, stylesheet
-  `scripts/inventory-report.head.html`).
+  real footer page numbers) with headless-Chrome fallback — the same shared engine
+  pipeline (`src/reports/engine/`) as the other two reports.
 
 ## CLI
 
 ```bash
-node scripts/inventory-report.mjs [selector] [--search '<query>'] [flags]
+node dist/reports/cli.js inventory [selector] [--search '<query>'] [flags]
 ```
 
 At most **one** selector; `--search` may stand alone or combine with a selector.
@@ -37,10 +39,9 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 |---|---|
 | `--format csv\|md\|docx\|all` | `csv` → CSVs + summary only; `md` adds `report.md`; `docx` adds Word; `all` (default) adds HTML + PDF |
 | `--report-detail summary\|table\|full` | per-device dossier tables: `summary` = facts + assigned apps/profiles tables; `table` adds the installed-apps table; `full` adds installed profiles + local users |
-| `--report-style dossier\|roster\|flat` | `dossier` (default) = audit style (rollups → findings → per-device facts); `roster` = people-facing list — by-group summary with total, type/model breakdowns, then one section per device group with one row per device (model #, marketing name, year, device name, serial, **local users**, **assignment groups**, macOS, last seen); `flat` = one single table with `device_group` as a column — the spreadsheet-like hand-off view. Both roster and flat also write `report-table.csv`, a CSV twin of the report's device rows (same columns, cells, and row order; roster rows follow the section reading order with `device_group` as a column) |
+| `--report-style roster\|flat` | omit (default) = audit-style dossier (rollups → findings → per-device facts); `roster` = people-facing list — by-group summary with total, type/model breakdowns, then one section per device group with one row per device (model #, marketing name, year, device name, serial, **local users**, **assignment groups**, macOS, last seen); `flat` = one single table with `device_group` as a column — the spreadsheet-like hand-off view. Both roster and flat also write `report-table.csv`, a CSV twin of the report's device rows (same columns, cells, and row order; roster rows follow the section reading order with `device_group` as a column) |
 | `--sort <field[:asc\|desc]>` | row order for roster/flat: `seen` `name` `serial` `model` `os` `group` `year` — e.g. `--sort seen:desc` puts the most recently seen devices first. Defaults: roster = oldest-seen first within each group; flat = device group, then last seen. (`os` sorts numerically, so 15.10 > 15.9.) To *filter* by last seen instead, use the `seen:` query field |
 | `--no-apps` / `--no-profiles` / `--no-users` | skip a per-device section entirely (its CSV is skipped; a query referencing it errors) |
-| `--no-findings` | skip the findings pass |
 | `--raw` | write `raw/devices.json` (redacted — see Secrets) |
 | `--allow-partial` | exit 0 despite failed per-device fetches (default exit 2 — see Completeness) |
 | `--report-only` | write only the rendered report + `summary.txt` + `manifest.sha256` — plus `report-table.csv` for roster/flat styles; skips all data CSVs (`devices.csv`, rollups, findings, apps/profiles/users, assigned-*). Not valid with `--format csv` |
@@ -76,7 +77,7 @@ Value syntax, per field kind:
 | `name` `devicename` `serial` `udid` `imei` | text | identity |
 | `mac` | text | matches WiFi, Bluetooth, and Ethernet MACs |
 | `ip` | text | last-seen IP |
-| `model` | text | matches the model identifier **and** the marketing name (SOFA feed, with a curated [Apple legacy table](../scripts/lib/apple-legacy-models.mjs) covering pre-SOFA Macs back to 2009) |
+| `model` | text | matches the model identifier **and** the marketing name (SOFA feed, with a curated Apple legacy table covering pre-SOFA Macs back to 2009) |
 | `type` | text | derived class: `imac` `laptop` `desktop` `ipad` `iphone` `appletv` `mac` `other` |
 | `arch` | text | `processor_architecture` (e.g. `intel`, `arm64`) |
 | `os` `build` | version / text | `os` compares numerically |
@@ -225,7 +226,7 @@ model #, marketing name, release year, device name, serial, local users, assignm
 groups, macOS, last seen) — one command:
 
 ```bash
-node scripts/inventory-report.mjs \
+node dist/reports/cli.js inventory \
   --search 'devicegroup:faculty,staff' --report-style roster --format all
 ```
 
@@ -240,50 +241,50 @@ Fill in the `<angle brackets>`; everything else is ready to paste.
 
 ```bash
 # GENERAL TEMPLATE
-node scripts/inventory-report.mjs \
+node dist/reports/cli.js inventory \
   --search '<query>' \
-  --report-style <dossier|roster> --report-detail <summary|table|full> \
+  [--report-style <roster|flat>] --report-detail <summary|table|full> \
   --format <csv|md|docx|all> [--out reports/<name>]
 
 # COMMON ─────────────────────────────────────────────────────────────────────
 # Group roster (people-facing PDF/Word, sectioned by device group)
-node scripts/inventory-report.mjs --search 'devicegroup:<groups>' --report-style roster --format all
+node dist/reports/cli.js inventory --search 'devicegroup:<groups>' --report-style roster --format all
 
 # Flat one-table export (device_group as a column), most recently seen first
 # — roster and flat both also write report-table.csv, the CSV twin of the report table
-node scripts/inventory-report.mjs --search 'devicegroup:<groups>' --report-style flat --sort seen:desc --format all
+node dist/reports/cli.js inventory --search 'devicegroup:<groups>' --report-style flat --sort seen:desc --format all
 
 # Full audit dossier for one group
-node scripts/inventory-report.mjs --group "<Group>" --report-detail full --format all
+node dist/reports/cli.js inventory --group "<Group>" --report-detail full --format all
 
 # Most recently active devices, everything
-node scripts/inventory-report.mjs --last-seen <N> --report-detail full --format all
+node dist/reports/cli.js inventory --last-seen <N> --report-detail full --format all
 
 # Stale sweep: not seen in N days
-node scripts/inventory-report.mjs --search '-seen:<N>d' --format csv
+node dist/reports/cli.js inventory --search '-seen:<N>d' --format csv
 
 # SPECIALIZED ────────────────────────────────────────────────────────────────
 # Compliance pack: unencrypted + actively used (leadership-ready PDF)
-node scripts/inventory-report.mjs --search 'filevault:off seen:30d' --format all
+node dist/reports/cli.js inventory --search 'filevault:off seen:30d' --format all
 
 # Escrow gap: encrypted but no recovery key
-node scripts/inventory-report.mjs --search 'filevault:on recoverykey:no' --format csv
+node dist/reports/cli.js inventory --search 'filevault:on recoverykey:no' --format csv
 
 # Deployment gap: assigned an app but missing it (fleet-wide per-device scan)
-node scripts/inventory-report.mjs --search 'assigned:<app> -app:<app>' --confirm-all
+node dist/reports/cli.js inventory --search 'assigned:<app> -app:<app>' --confirm-all
 
 # Refresh planning: old Intel machines still in use
-node scripts/inventory-report.mjs --search 'arch:intel seen:30d os:<15' --format all
+node dist/reports/cli.js inventory --search 'arch:intel seen:30d os:<15' --format all
 
 # Low disk before it bites
-node scripts/inventory-report.mjs --search 'storage:<20 seen:30d' --format csv
+node dist/reports/cli.js inventory --search 'storage:<20 seen:30d' --format csv
 
 # Forensic hunt by network identity
-node scripts/inventory-report.mjs --search 'mac:<prefix>*' --format csv
-node scripts/inventory-report.mjs --search 'ip:<prefix>*' --format csv
+node dist/reports/cli.js inventory --search 'mac:<prefix>*' --format csv
+node dist/reports/cli.js inventory --search 'ip:<prefix>*' --format csv
 
 # Semester intake: everything enrolled in a window
-node scripts/inventory-report.mjs --search 'enrolled:<YYYY-MM-DD>..<YYYY-MM-DD>' --report-style roster --format all
+node dist/reports/cli.js inventory --search 'enrolled:<YYYY-MM-DD>..<YYYY-MM-DD>' --report-style roster --format all
 ```
 
 When `/inventory` isn't the right tool: what's *vulnerable* (CVEs, upgrade paths) →
@@ -300,12 +301,15 @@ CSVs keep full ISO timestamps.
 
 ## Code map
 
+The inventory report is one report in the **unified TypeScript report engine** under
+`src/reports/` (compiled to `dist/reports/`):
+
 | File | Responsibility |
 |---|---|
-| `scripts/inventory-report.mjs` | CLI engine: guards → fleet sweeps → prefilter → per-device fetches → evaluate → write |
-| `scripts/lib/query.mjs` | pure query language: tokenizer → parser → planner → tri-state evaluator (no I/O) |
-| `scripts/lib/inventory.mjs` | API-shape normalization: searchable record, model enrichment (SOFA `Models` overlaid on the legacy table), assignment maps, CLI args |
-| `scripts/lib/apple-legacy-models.mjs` | curated identifier → marketing name + release year for pre-SOFA Macs (iMac14,1 → "iMac (21.5-inch, Late 2013)"), sourced from Apple's identify-your-model pages (e.g. [108054](https://support.apple.com/en-us/108054)); SOFA wins whenever it knows the model |
-| `scripts/lib/inventory-render.mjs` | CSV row builders, rollups, findings, markdown dossier |
-| `scripts/inventory-report.head.html` | A3-landscape PDF stylesheet (shared renderer: `scripts/lib/report-pdf.mjs`) |
-| `test/query.test.mjs`, `test/inventory-report.test.mjs`, `test/inventory-engine.test.mjs` | parser/evaluator units, normalization/render units, end-to-end engine with mocked fetch |
+| `src/reports/cli.ts` | CLI entrypoint (`dist/reports/cli.js`) + shared `runReport` core: guards (incl. the fleet-wide `--search` confirm gate) → flag parsing → selectors |
+| `src/reports/specs/inventory.ts` · `specs/registry.ts` | the inventory report spec (sweeps → prefilter → per-device fetches → evaluate → write) wired into the registry |
+| `src/reports/domain/query.ts` | pure query language: tokenizer → parser → planner → tri-state evaluator (no I/O) |
+| `src/reports/domain/inventory.ts` | API-shape normalization: searchable record, model enrichment (SOFA `Models` overlaid on a curated legacy table for pre-SOFA Macs back to 2009), assignment maps |
+| `src/reports/domain/inventory-render.ts` | CSV row builders, rollups, findings, markdown dossier (incl. roster/flat tables) |
+| `src/reports/engine/{theme,document,dossier,extras}.ts` | shared rendering pipeline: A3/A4 theme + PDF, plus always-on bundle artifacts (`manifest.sha256`, `<dir>.zip`, and `report-table.xlsx` for roster/flat) |
+| `test/golden-parity.test.mjs` + the `test/golden/inventory/` fixtures | byte-compare the engine output against committed fixtures (no network) |

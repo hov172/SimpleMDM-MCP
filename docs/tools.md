@@ -12,9 +12,10 @@ The server registers **181 tools** covering the full SimpleMDM API surface (28 d
 | `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
-| `run_fleet_audit` | Run host-side SOFA macOS Security Audit script (`scripts/sofa-audit.mjs`) |
-| `run_device_logs_audit` | Run host-side Forensic Logs Audit script (`scripts/logs-audit.mjs`) |
-| `run_inventory_report` | Run host-side searchable Fleet Inventory Report script (`scripts/inventory-report.mjs`) |
+| `run_fleet_audit` | Run the SOFA macOS security audit via the unified report engine CLI (`node dist/reports/cli.js audit`) as a host-side subprocess; writes CSV/md/html/docx/pdf to `reports/` and returns a text summary. Supports `page_size: a3\|a4`. |
+| `run_device_logs_audit` | Run the forensic device-logs audit via the unified report engine CLI (`node dist/reports/cli.js logs`) as a host-side subprocess; writes dossiers + CSVs to `reports/` and returns a text summary |
+| `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary |
+| `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs) and return `WriteResult` metadata (out_dir + per-file sha256). Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
 
 **Apple schema helpers**
 

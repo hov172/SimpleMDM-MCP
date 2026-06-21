@@ -4,7 +4,7 @@ A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that d
 
 > **Status (0.18.0):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
 >
-> A complementary host-side **[`/audit` command](../README.md#fleet-audit-audit)** (added in 0.10.0) bundles much of this fleet analytics into a one-shot, exportable SOFA-based macOS security report (CSV / Markdown / Word / PDF). It talks directly to the SimpleMDM API + the SOFA feed and is independent of these MCP tools.
+> A complementary **[`/audit` command](../README.md#fleet-audit-audit)** (added in 0.10.0) bundles much of this fleet analytics into a one-shot, exportable SOFA-based macOS security report (CSV / Markdown / Word / PDF). It is now part of the unified TypeScript report engine (`dist/reports/cli.js`), exposed via the `/audit` skill, the `run_fleet_audit` MCP tool (host-side subprocess), and the in-process `generate_report` MCP tool. It talks directly to the SimpleMDM API + the SOFA feed.
 
 Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 
@@ -140,7 +140,7 @@ When adding a new tool, consider whether an empty/null result could be misinterp
 
 ## Testing strategy
 
-There is **no automated fixture suite** for the live SimpleMDM analytics tools — they hit a tenant, and recording fixtures for the full 179-tool surface is not yet justified by team size. Static tool-count checks, Apple schema helper tests, and the MCP stdio smoke test cover the local/non-tenant behavior.
+There is **no automated fixture suite** for the live SimpleMDM analytics tools — they hit a tenant, and recording fixtures for the full 181-tool surface is not yet justified by team size. Static tool-count checks, Apple schema helper tests, and the MCP stdio smoke test cover the local/non-tenant behavior.
 
 Until that changes, the validation contract is:
 
@@ -159,14 +159,14 @@ Open work (not yet started):
 - **0.5.0**: 28 derived tools shipped. Minor bump (additive, no breaking changes).
 - **0.6.0**: Auto-pagination on all list tools, in-memory TTL cache with automatic write-invalidation, response slimming for heavy list endpoints, stable OS-lag baseline for `get_compliance_violators`.
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
-- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`179`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
+- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`181`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
 
 ---
 
 ## MCP context budget
 
-The catalog is now **180 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **181 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.

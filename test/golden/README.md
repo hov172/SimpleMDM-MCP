@@ -1,16 +1,18 @@
 # Golden Report Fixtures
 
-These files capture the deterministic output of the three legacy report engines
-(`sofa-audit`, `inventory-report`, `logs-audit`) against the committed test fixtures.
-They serve as the regression oracle for the unified TypeScript engine migration.
+These files capture the deterministic output of the three report engines (audit,
+inventory, logs) against the committed test fixtures. They were originally captured from
+the legacy `.mjs` engines as the regression oracle for the unified TypeScript engine
+migration; the capture harness (`capture.mjs`) and `test/golden-parity.test.mjs` now
+exercise the unified engine's domain modules under `dist/reports/domain/`.
 
 ## What's here
 
-| Directory  | Key file         | Source engine            |
-|------------|------------------|--------------------------|
-| `audit/`   | `full-audit.md`  | `scripts/sofa-audit.mjs` |
-| `inventory/`| `report.md`    | `scripts/inventory-report.mjs` |
-| `logs/`    | `report.md`      | `scripts/logs-audit.mjs` |
+| Directory  | Key file         | Source module (unified engine)        |
+|------------|------------------|---------------------------------------|
+| `audit/`   | `full-audit.md`  | `dist/reports/domain/sofa-eval.js` + `audit-render.js` |
+| `inventory/`| `report.md`    | `dist/reports/domain/inventory.js` + `inventory-render.js` |
+| `logs/`    | `report.md`      | `dist/reports/domain/logs.js`        |
 
 Each directory also contains:
 - Text CSV artifacts (`*.csv`) — compared byte-for-byte
@@ -40,14 +42,12 @@ timestamps to `2026-01-01T00:00:00Z` so output is byte-stable across runs.
 
 ## Logs parity test — groupNameMap limitation
 
-The real `logs-audit.mjs` driver fetches device- and assignment-group names via
-the SimpleMDM API at run time and passes the resulting map to `renderDetailedReport`.
-Because no live API key is available during offline testing, the capture harness
-passes `groupNameMap = {}` instead, which causes group names in the dossier to
-appear blank.
+The logs report fetches device- and assignment-group names via the SimpleMDM API at
+run time and passes the resulting map to `renderDetailedReport`. Because no live API
+key is available during offline testing, the capture harness passes `groupNameMap = {}`
+instead, which causes group names in the dossier to appear blank.
 
-**Phase 2 authors:** when writing the parity test for the logs report, pass
-`groupNameMap = {}` on **both** sides of the comparison (golden capture and new
-engine under test) so the comparison stays valid. Do NOT try to populate the map
-from fixtures only on one side, or the strings will differ for every device that
-belongs to a group.
+The parity test (`test/golden-parity.test.mjs`) therefore passes `groupNameMap = {}` on
+**both** sides of the comparison (golden capture and the unified engine under test) so the
+comparison stays valid — populating the map from fixtures on only one side would make the
+strings differ for every device that belongs to a group.
