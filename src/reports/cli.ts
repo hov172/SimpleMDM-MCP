@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { WriteResult } from "./engine/dossier.js";
 import type { Format } from "./engine/csv.js";
 import { REGISTRY } from "./specs/registry.js";
@@ -42,6 +43,8 @@ export interface RunReportOpts {
   // logs-specific opts
   withSecurity?: boolean;
   withInventory?: boolean;
+  // global opts
+  noNetworkCache?: boolean;
 }
 
 export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<WriteResult> {
@@ -55,7 +58,7 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   }
 
   const apiKey = loadEnvKey() ?? "";
-  const ctx: Ctx = { apiKey };
+  const ctx: Ctx = { apiKey, noNetworkCache: opts.noNetworkCache };
 
   const entryOpts = {
     noApps: opts.noApps,
@@ -96,13 +99,21 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   mkdirSync(opts.outDir, { recursive: true });
   const result = await dossier.write(opts.outDir, { format: opts.format, reportOnly: opts.reportOnly, ...entry.writeOpts });
 
+  // Write summary.txt if the registry entry provides a summaryText function
+  if (entry.summaryText) {
+    const summaryOpts = { ...entryOpts, scope: opts.scope, search: opts.search, outDir: opts.outDir };
+    writeFileSync(join(opts.outDir, "summary.txt"), entry.summaryText(input, summaryOpts));
+  }
+
   // Surface partial-fetch failures (mirrors legacy --allow-partial / exit-2 behavior)
-  if (!opts.allowPartial && (input.failures as any[] | undefined)?.length) {
+  const partial = !opts.allowPartial && Boolean((input.failures as any[] | undefined)?.length);
+  if (partial) {
     console.warn(
       `inventory: ${(input.failures as any[]).length} per-device section fetch(es) failed` +
       ` (use --allow-partial to suppress this warning)`,
     );
   }
+  result.partial = partial;
 
   for (const f of result.files) log(`  ${f.name}`);
   log(`Output: ${opts.outDir}`);
@@ -137,7 +148,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const COMMON_FLAGS = new Set([
     "--serial", "--group", "--last-seen", "--all", "--confirm-all",
     "--format", "--out", "--report-only",
-    "--report-detail",
+    "--report-detail", "--no-network-cache",
   ]);
   const INVENTORY_ONLY_FLAGS = new Set([
     "--search", "--no-apps", "--no-profiles", "--no-users",
@@ -202,6 +213,20 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   }
   const scope: LegacySelector = selectorArgs[0] ?? null;
 
+  // ── §8 Fleet-wide-search confirm guard ────────────────────────────────────
+  // inventory --search with no selector and no device-scoped prefilter fetches per-device
+  // data for the whole fleet — same guard as legacy inventory-report.mjs:76-81
+  if (reportName === "inventory" && scope === null && val("--search") !== null && !has("--confirm-all")) {
+    const { parseQuery, planQuery } = await import("./domain/query.js");
+    const ast = parseQuery(val("--search") as string);
+    const { deviceUnits } = planQuery(ast);
+    if (deviceUnits.length === 0) {
+      throw new Error(
+        "--search with no selector and no device-scoped prefilter fetches per-device data for the whole fleet; add --confirm-all to proceed",
+      );
+    }
+  }
+
   // ── Format ─────────────────────────────────────────────────────────────────
   const formatArg = val("--format") ?? entry.defaultFormat;
   if (!["csv", "md", "docx", "all"].includes(formatArg)) {
@@ -226,6 +251,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const raw = has("--raw");
   const withSecurity = has("--with-security");
   const withInventory = has("--with-inventory");
+  const noNetworkCache = has("--no-network-cache");
 
   // ── Validate wired flags ───────────────────────────────────────────────────
   if (reportStyleRaw !== null && reportStyleRaw !== undefined && !["flat", "roster"].includes(reportStyleRaw)) {
@@ -263,13 +289,14 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     reportStyle: (reportStyleRaw as "flat" | "roster" | undefined) ?? undefined,
     sort,
     search: searchQuery,
-    raw, withSecurity, withInventory,
+    raw, withSecurity, withInventory, noNetworkCache,
   }, { ...deps, log: deps?.log ?? console.log });
 }
 
 export async function main(): Promise<void> {
   try {
-    await runCli(process.argv.slice(2));
+    const result = await runCli(process.argv.slice(2));
+    if (result.partial) process.exit(2);
   } catch (e) {
     console.error((e as Error).message);
     process.exit(1);
