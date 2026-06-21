@@ -84,9 +84,10 @@ export class Dossier {
     const files: WrittenFile[] = [];
     const skipped: { artifact: string; reason: string }[] = [];
 
-    // 1. Data CSVs — one per table block that named a csvName
-    // Written for all non-report-only formats (csv/md/docx/all), matching legacy engine behaviour.
+    // 1. Data artifacts — written for all non-report-only formats (csv/md/docx/all),
+    // matching legacy engine behaviour. Gated once on writeData.
     if (gate.writeData) {
+      // 1a. Data CSVs — one per table block that named a csvName.
       for (const s of this.doc.sections) {
         for (const b of s.blocks) {
           if (b.kind === "table" && b.csvName) {
@@ -94,10 +95,8 @@ export class Dossier {
           }
         }
       }
-    }
 
-    // 1b. Registered data files (dataFile / dataCsv)
-    if (gate.writeData) {
+      // 1b. Registered data files (dataFile / dataCsv).
       for (const df of this._dataFiles) {
         const fullPath = join(outDir, df.name);
         mkdirSync(dirname(fullPath), { recursive: true });

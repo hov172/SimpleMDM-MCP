@@ -99,6 +99,26 @@ test("securityPosture uses injected fetchJson — no live network", async () => 
   );
 });
 
+// 2.4a: extend the read-only invariant to securityPosture (the 6th method), which the
+// "all 5 methods" test above omits. It must reach SimpleMDM only via GET (no mutation).
+test("securityPosture calls no mutating client method (read-only, 6th method)", async () => {
+  const calls = [];
+  const spy = makeSpyClient(calls);
+  const stubFetchJson = async (url) => {
+    if (url.includes("macos")) return sofaMacos;
+    if (url.includes("ios")) return sofaIos;
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  const ds = new ServerDataSource(spy, 200, stubFetchJson);
+  await ds.securityPosture({ kind: "all" }).catch(() => {});
+  assert.ok(calls.length > 0, "spy should have been called for device data");
+  assert.equal(
+    calls.some((m) => /create|update|delete|push|wipe|lock|post|put|patch/i.test(m)),
+    false,
+    `Mutating call detected: ${calls.join(", ")}`,
+  );
+});
+
 // 2.4c: logs() must not silently drop data when it hits the page cap while the API
 // still reports has_more — a forensic/legal export should error, not truncate quietly.
 test("logs() throws (not silently truncates) when the page cap is hit with has_more", async () => {
