@@ -25,3 +25,18 @@ test("buildLogsDossier withSecurity emits security-posture.csv and device-cves.c
     assert.ok(existsSync(join(out, "device-cves.csv")), "device-cves.csv must exist");
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
+
+test("buildLogsDossier withInventory emits inventory.csv, apps.csv, profiles.csv", async () => {
+  const input = buildLogsInput();
+  // attach minimal apps/profiles to the first bundle (shape inputs.ts will produce)
+  input.bundles[0].apps = [{ attributes: { name: "Chrome", identifier: "com.google.Chrome", version: "1", managed: true } }];
+  input.bundles[0].profiles = [{ type: "profile", id: 5, attributes: { name: "WiFi" } }];
+  input.bundles[0].users = [];
+  const out = mkdtempSync(join(tmpdir(), "logs-inv-"));
+  try {
+    await buildLogsDossier(input, { withInventory: true }).write(out, { format: "csv", reportOnly: false });
+    assert.ok(existsSync(join(out, "inventory.csv")), "inventory.csv must exist");
+    assert.ok(existsSync(join(out, "apps.csv")), "apps.csv must exist");
+    assert.ok(existsSync(join(out, "profiles.csv")), "profiles.csv must exist");
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});

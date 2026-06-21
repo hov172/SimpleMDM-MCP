@@ -177,6 +177,7 @@ export async function inventoryInputLive(
 
 export interface LogsInputOpts {
   withSecurity?: boolean;
+  withInventory?: boolean;
 }
 
 export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsInputOpts = {}): Promise<any> {
@@ -201,12 +202,23 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
   const selected = selectDevices(raw, scope, matchGroupIds);
   if (selected.length === 0) throw new Error("No devices matched the selector");
 
+  let fetchDeviceApps: any, fetchDeviceProfiles: any, fetchDeviceUsers: any;
+  if (opts?.withInventory) {
+    ({ fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers } = await import("../../../scripts/lib/simplemdm.mjs"));
+  }
+
   const bundles: any[] = [];
   for (const device of selected) {
     const serial: string | undefined = device.attributes?.serial_number;
     if (!serial) continue;
     try {
-      bundles.push({ device, logs: await fetchDeviceLogs(apiKey, serial) });
+      const bundle: any = { device, logs: await fetchDeviceLogs(apiKey, serial) };
+      if (opts?.withInventory) {
+        bundle.apps = await fetchDeviceApps(apiKey, device.id);
+        bundle.profiles = await fetchDeviceProfiles(apiKey, device.id);
+        bundle.users = await fetchDeviceUsers(apiKey, device.id);
+      }
+      bundles.push(bundle);
     } catch (e) {
       console.warn(`logs: failed to fetch logs for ${serial}: ${(e as Error).message}`);
     }
