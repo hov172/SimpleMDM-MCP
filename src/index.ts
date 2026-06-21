@@ -39,6 +39,7 @@ import {
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
+import { compareVersions } from "./reports/domain/sofa-eval.js";
 import { buildDynamicDossier, validateDynamicSpec, adapterRows, type DynamicReportSpec } from "./reports/specs/dynamic.js";
 import { ServerDataSource } from "./reports/data/server-source.js";
 
@@ -1626,6 +1627,10 @@ export const TOOLS: Tool[] = [
 
   { name: "get_api_coverage",
     description: "Read — Report which SimpleMDM capability areas this MCP server exposes (tool count per area, total tools, write vs read). Static introspection of the registered tool list.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "check_for_update",
+    description: "Read — Check whether a newer simplemdm-mcp release is available. Compares this server's running version against the latest GitHub release and returns {current_version, latest_version, update_available, release_url, upgrade}. Note: the server cannot update itself (it runs in a pinned, read-only Docker container) — when an update is available it returns the host-side upgrade steps to run.",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "run_fleet_audit",
@@ -3643,6 +3648,44 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         coverage_by_area: counts,
         note: "Static coverage derived from registered tools; does not probe the live SimpleMDM API.",
       };
+    }
+
+    case "check_for_update": {
+      const REPO = "hov172/SimpleMDM-MCP";
+      const current = PKG_VERSION;
+      try {
+        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+          headers: { "User-Agent": "simplemdm-mcp", "Accept": "application/vnd.github+json" },
+        });
+        if (!res.ok) return { error: `GitHub releases API returned ${res.status}`, current_version: current };
+        const rel = await res.json() as { tag_name?: string; html_url?: string; published_at?: string };
+        const latest = String(rel.tag_name ?? "").replace(/^v/, "");
+        if (!latest) return { error: "Could not read the latest release tag", current_version: current };
+        const update_available = compareVersions(latest, current) > 0;
+        return {
+          current_version: current,
+          latest_version: latest,
+          update_available,
+          release_url: rel.html_url,
+          published_at: rel.published_at,
+          message: update_available
+            ? `Update available: ${current} → ${latest}.`
+            : `Up to date (running ${current}).`,
+          // The server runs in a pinned, read-only Docker container and cannot update
+          // itself; surface the host-side upgrade steps instead.
+          upgrade: update_available ? {
+            note: "Run on the host (the container cannot self-update):",
+            steps: [
+              "git -C <repo> pull",
+              `docker build --build-arg VERSION=${latest} -t simplemdm-mcp:${latest} -t simplemdm-mcp:latest <repo>`,
+              `point the MCP client config image at simplemdm-mcp:${latest}`,
+              "stop the running simplemdm container, then reconnect the MCP server",
+            ],
+          } : undefined,
+        };
+      } catch (e) {
+        return { error: `Update check failed: ${formatError(e)}`, current_version: current };
+      }
     }
 
     // ── Unified Report Engine (in-process) ──────────────────────────────────

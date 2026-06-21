@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **181 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **182 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -12,6 +12,7 @@ The server registers **181 tools** covering the full SimpleMDM API surface (28 d
 | `get_device_full_profile` | **Compound** — device + profiles + installed apps + users + recent logs in parallel (device_id or serial_number) |
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
+| `check_for_update` | Compare the running server version against the latest GitHub release; reports `update_available` + the host-side upgrade steps (the container cannot self-update) |
 | `run_fleet_audit` | Run the SOFA macOS security audit via the unified report engine CLI (`node dist/reports/cli.js audit`) as a host-side subprocess; writes CSV/md/html/docx/pdf to `reports/` and returns a text summary. Supports `page_size: a3\|a4`. |
 | `run_device_logs_audit` | Run the forensic device-logs audit via the unified report engine CLI (`node dist/reports/cli.js logs`) as a host-side subprocess; writes dossiers + CSVs to `reports/` and returns a text summary |
 | `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary |
