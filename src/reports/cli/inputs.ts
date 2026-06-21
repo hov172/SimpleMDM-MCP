@@ -35,6 +35,7 @@ export type LegacySelector =
 export interface Ctx {
   apiKey: string;
   cacheDir?: string;
+  noNetworkCache?: boolean;
 }
 
 export function loadEnvKey(): string | null {
@@ -57,7 +58,7 @@ export async function auditInputLive(scope: LegacySelector, ctx: Ctx): Promise<a
     await import("../../../scripts/lib/simplemdm.mjs");
 
   const { apiKey, cacheDir = "reports/.audit-cache" } = ctx;
-  const { macFeed, iosFeed } = await loadSofa(cacheDir, {});
+  const { macFeed, iosFeed } = await loadSofa(cacheDir, { noCache: ctx.noNetworkCache ?? false });
   const tables = buildMajorTables(macFeed, iosFeed);
   const groups: Map<any, string> = await fetchDeviceGroups(apiKey);
 
@@ -124,7 +125,7 @@ export async function inventoryInputLive(
 
   let models = new Map<string, any>();
   try {
-    const { macFeed, iosFeed } = await loadSofa("reports/.inventory-cache", {});
+    const { macFeed, iosFeed } = await loadSofa("reports/.inventory-cache", { noCache: ctx.noNetworkCache ?? false });
     models = buildModelMap(macFeed, iosFeed);
   } catch (e) { console.warn(`inventory: SOFA enrichment unavailable (${(e as Error).message})`); }
 
@@ -229,7 +230,7 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
     const { loadSofa } = await import("../../../scripts/lib/sofa.mjs");
     const { flatten } = await import("../../../scripts/lib/simplemdm.mjs");
     const { buildMajorTables, evaluateDevice } = await import("../domain/sofa-eval.js");
-    const { macFeed, iosFeed } = await loadSofa("reports/.logs-audit-cache", {});
+    const { macFeed, iosFeed } = await loadSofa("reports/.logs-audit-cache", { noCache: ctx.noNetworkCache ?? false });
     const tables = buildMajorTables(macFeed, iosFeed);
     security = { tables, evald: bundles.map((b: any) => evaluateDevice(flatten(b.device), tables)) };
   }
