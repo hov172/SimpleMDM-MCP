@@ -45,6 +45,8 @@ export interface RunReportOpts {
   withInventory?: boolean;
   // global opts
   noNetworkCache?: boolean;
+  // audit-specific: PDF/HTML page size ("a3-landscape" roomy default | "a4-landscape" compact)
+  pageStyle?: "a3-landscape" | "a4-landscape";
 }
 
 export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<WriteResult> {
@@ -72,6 +74,7 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
     raw: opts.raw,
     withSecurity: opts.withSecurity,
     withInventory: opts.withInventory,
+    pageStyle: opts.pageStyle,
   };
 
   const fetchFn = deps?.fetchInput ?? ((_rep: string, sc: LegacySelector, c: Ctx) => entry.buildInput(sc, c, entryOpts));
@@ -157,6 +160,9 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const LOGS_ONLY_FLAGS = new Set([
     "--with-security", "--with-inventory",
   ]);
+  const AUDIT_ONLY_FLAGS = new Set([
+    "--page-size",
+  ]);
 
   // Build the set of allowed flags for this report
   const allowedForReport = new Set([...COMMON_FLAGS]);
@@ -165,6 +171,9 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   }
   if (reportName === "logs") {
     LOGS_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
+  }
+  if (reportName === "audit") {
+    AUDIT_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
   }
 
   // Validate flags: must be either known and allowed for this report, or rejected with guidance
@@ -175,6 +184,8 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
           throw new Error(`${f} is only supported for the inventory report`);
         } else if (LOGS_ONLY_FLAGS.has(f)) {
           throw new Error(`${f} is only supported for the logs report`);
+        } else if (AUDIT_ONLY_FLAGS.has(f)) {
+          throw new Error(`${f} is only supported for the audit report`);
         } else {
           throw new Error(`unknown flag: ${f}`);
         }
@@ -252,10 +263,19 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const withSecurity = has("--with-security");
   const withInventory = has("--with-inventory");
   const noNetworkCache = has("--no-network-cache");
+  // Audit-only: --page-size a3|a4 (accepts the long form too).
+  const pageSizeRaw = val("--page-size");
 
   // ── Validate wired flags ───────────────────────────────────────────────────
   if (reportStyleRaw !== null && reportStyleRaw !== undefined && !["flat", "roster"].includes(reportStyleRaw)) {
     throw new Error(`Invalid --report-style "${reportStyleRaw}" (flat|roster)`);
+  }
+  let pageStyle: "a3-landscape" | "a4-landscape" | undefined;
+  if (pageSizeRaw != null) {
+    const v = pageSizeRaw.toLowerCase();
+    if (v === "a3" || v === "a3-landscape") pageStyle = "a3-landscape";
+    else if (v === "a4" || v === "a4-landscape") pageStyle = "a4-landscape";
+    else throw new Error(`Invalid --page-size "${pageSizeRaw}" (a3|a4)`);
   }
   if (reportDetailRaw !== null && reportDetailRaw !== undefined && !["summary", "table", "full"].includes(reportDetailRaw)) {
     throw new Error(`Invalid --report-detail "${reportDetailRaw}" (summary|table|full)`);
@@ -289,7 +309,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     reportStyle: (reportStyleRaw as "flat" | "roster" | undefined) ?? undefined,
     sort,
     search: searchQuery,
-    raw, withSecurity, withInventory, noNetworkCache,
+    raw, withSecurity, withInventory, noNetworkCache, pageStyle,
   }, { ...deps, log: deps?.log ?? console.log });
 }
 

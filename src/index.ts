@@ -1636,6 +1636,7 @@ export const TOOLS: Tool[] = [
       last_seen: { type: "number", description: "Scope to this number of most recently active devices." },
       no_network_cache: { type: "boolean", description: "Set true to ignore cached SOFA feed and refetch it." },
       report_only: { type: "boolean", description: "Write only the rendered report + summary; skip the data CSV exports. Not valid with format 'csv'." },
+      page_size: { type: "string", enum: ["a3", "a4"], description: "PDF/HTML page size. 'a3' (default) = roomy A3-landscape with larger text; 'a4' = compact A4-landscape that shrinks the wide All Devices table to fit a standard page (denser, more wrapping)." },
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
 

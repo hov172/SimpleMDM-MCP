@@ -1,6 +1,6 @@
 import type { Column, Row } from "./csv.js";
 
-export type PageStyle = "a3-landscape" | "letter-portrait";
+export type PageStyle = "a3-landscape" | "a4-landscape" | "letter-portrait";
 
 export type DocBlock =
   | { kind: "summary"; markdown: string }
