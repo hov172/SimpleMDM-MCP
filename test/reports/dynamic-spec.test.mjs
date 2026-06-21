@@ -72,6 +72,34 @@ test("validateDynamicSpec rejects missing title and empty sections", () => {
   assert.match(String(validateDynamicSpec({ title: "X", dataAdapter: "devices", sections: [] })), /section/i);
 });
 
+// 2.7b: type-validate optional fields so a malformed spec returns {error} rather than
+// throwing a raw TypeError inside Dossier.write().
+const okSection = { heading: "S", table: { columns: [{ key: "serial", header: "serial" }], from: "rows" } };
+
+test("validateDynamicSpec rejects an invalid pageStyle", () => {
+  const err = validateDynamicSpec({ title: "X", pageStyle: "wallpaper", dataAdapter: "devices", sections: [okSection] });
+  assert.match(String(err), /pageStyle/i);
+});
+
+test("validateDynamicSpec rejects a non-string mdName or footerTitle", () => {
+  assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "a3-landscape", mdName: 123, dataAdapter: "devices", sections: [okSection] })), /mdName/i);
+  assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "a3-landscape", footerTitle: {}, dataAdapter: "devices", sections: [okSection] })), /footerTitle/i);
+});
+
+test("validateDynamicSpec rejects empty or malformed columns", () => {
+  assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "a3-landscape", dataAdapter: "devices", sections: [{ heading: "S", table: { columns: [], from: "rows" } }] })), /column/i);
+  assert.match(String(validateDynamicSpec({ title: "X", pageStyle: "a3-landscape", dataAdapter: "devices", sections: [{ heading: "S", table: { columns: [{ key: "serial" }], from: "rows" } }] })), /column|key|header/i);
+});
+
+test("validateDynamicSpec accepts a spec that omits the optional mdName/footerTitle", () => {
+  // mdName/footerTitle are optional; absence is fine. pageStyle is required.
+  assert.strictEqual(validateDynamicSpec({ title: "X", pageStyle: "letter-portrait", dataAdapter: "devices", sections: [okSection] }), null);
+});
+
+test("validateDynamicSpec rejects a missing pageStyle", () => {
+  assert.match(String(validateDynamicSpec({ title: "X", dataAdapter: "devices", sections: [okSection] })), /pageStyle/i);
+});
+
 // ── adapterRows (offline routing via a fake DataSource) ──────────────────────
 
 test("adapterRows routes each adapter to its DataSource method", async () => {
