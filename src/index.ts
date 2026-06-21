@@ -3677,25 +3677,53 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const format = String(args.format ?? "all") as "csv" | "md" | "docx" | "all";
       const reportOnly = args.report_only === true;
 
-      // Map scope object → LegacySelector; enforce confirm-all for whole-fleet
+      // Validate format against the engine's enum (parity with the CLI's --format guard).
+      if (!["csv", "md", "docx", "all"].includes(format)) {
+        return { error: `Invalid format "${format}" (csv|md|docx|all)` };
+      }
+
+      // Map scope object → LegacySelector; enforce confirm-all for whole-fleet.
       type LegacySelector =
         | { kind: "serial"; value: string[] }
         | { kind: "group"; value: string }
         | { kind: "last-seen"; value: number }
         | { kind: "all"; value: true }
         | null;
+
+      // At most one selector key may be present (parity with the CLI, which rejects >1).
+      // confirm_all is a modifier for `all`, not a selector, so it is excluded here.
+      const SELECTOR_KEYS = ["serials", "group", "last_seen", "all", "search"];
+      const present = SELECTOR_KEYS.filter((k) => scopeArg[k] != null && scopeArg[k] !== false);
+      if (present.length > 1) {
+        return {
+          error: `Use at most one selector: serials | group | last_seen | all | search (got: ${present.join(", ")})`,
+        };
+      }
+
       let scope: LegacySelector;
       let search: string | null = null;
 
       if (scopeArg.serials != null) {
-        const serials = Array.isArray(scopeArg.serials)
-          ? (scopeArg.serials as unknown[]).map(String)
-          : [String(scopeArg.serials)];
+        const serials = (Array.isArray(scopeArg.serials)
+          ? (scopeArg.serials as unknown[])
+          : [scopeArg.serials])
+          .map(String)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (!serials.length) {
+          return { error: "serials must contain at least one serial number" };
+        }
         scope = { kind: "serial", value: serials };
       } else if (scopeArg.group != null) {
-        scope = { kind: "group", value: String(scopeArg.group) };
+        const group = String(scopeArg.group).trim();
+        if (!group) return { error: "group must be a non-empty group name" };
+        scope = { kind: "group", value: group };
       } else if (scopeArg.last_seen != null) {
-        scope = { kind: "last-seen", value: Number(scopeArg.last_seen) };
+        const v = Number(scopeArg.last_seen);
+        if (!Number.isInteger(v) || v < 1) {
+          return { error: "last_seen must be a positive integer (number of days)" };
+        }
+        scope = { kind: "last-seen", value: v };
       } else if (scopeArg.all === true) {
         if (scopeArg.confirm_all !== true) {
           return {
@@ -3706,12 +3734,19 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         }
         scope = { kind: "all", value: true };
       } else if (scopeArg.search != null) {
-        // inventory search: no scope selector; filter applied post-fetch
-        scope = null;
+        // search is an inventory-only post-fetch filter; reject it for other reports
+        // instead of silently ignoring it (audit) or throwing a raw fetch error (logs).
+        if (report !== "inventory") {
+          return {
+            error: `search scope is only supported for the inventory report (got report="${report}"). ` +
+              "Use serials, group, last_seen, or all for audit/logs.",
+          };
+        }
+        scope = null; // no device selector; filter applied post-fetch
         search = String(scopeArg.search);
       } else {
         return {
-          error: "scope must be one of: {serials:[...]}, {group:\"...\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"...\"}",
+          error: "scope must be one of: {serials:[...]}, {group:\"...\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"...\"} (inventory only)",
         };
       }
 

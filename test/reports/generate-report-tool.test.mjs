@@ -181,6 +181,86 @@ test("generate_report tool: unknown scope shape returns error", async () => {
   assert.ok("error" in result, "result must have an 'error' field for unknown scope");
 });
 
+// ── 3b. Per-report scope validation (parity with the CLI guards) ─────────────
+
+test("generate_report tool: search scope on audit returns error (no silent swallow)", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", {
+    report: "audit",
+    scope: { search: "model:MacBook" },
+  });
+  assert.ok(result && typeof result === "object");
+  assert.ok("error" in result, "search on audit must return an error, not run silently");
+  assert.match(String(result.error), /search/i, "error must mention search/inventory");
+});
+
+test("generate_report tool: search scope on logs returns error (not a raw throw)", async () => {
+  await loadIndex();
+  // Must return a friendly {error}, not throw a raw Error from the live fetch path.
+  const result = await handleTool("generate_report", {
+    report: "logs",
+    scope: { search: "anything" },
+  });
+  assert.ok(result && typeof result === "object");
+  assert.ok("error" in result, "search on logs must return a friendly error object");
+  assert.match(String(result.error), /search/i);
+});
+
+test("generate_report tool: search scope on inventory is accepted (no validation error)", async () => {
+  await loadIndex();
+  // Inventory legitimately supports search; the guard must NOT reject it.
+  // It may fail downstream on network, but must not return a scope-validation error.
+  let result, threw = false;
+  try {
+    result = await handleTool("generate_report", { report: "inventory", scope: { search: "x" }, format: "md" });
+  } catch { threw = true; }
+  if (!threw && result && typeof result === "object" && "error" in result) {
+    assert.doesNotMatch(String(result.error), /only supported|must be one of/i,
+      "inventory search must not trigger a scope-validation error");
+  }
+});
+
+test("generate_report tool: last_seen non-positive-integer returns error", async () => {
+  await loadIndex();
+  for (const bad of [0, -5, 1.5, "abc"]) {
+    const result = await handleTool("generate_report", { report: "audit", scope: { last_seen: bad } });
+    assert.ok(result && typeof result === "object" && "error" in result,
+      `last_seen=${JSON.stringify(bad)} must return an error`);
+    assert.match(String(result.error), /last_seen|positive integer/i);
+  }
+});
+
+test("generate_report tool: empty serials array returns error", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", { report: "audit", scope: { serials: [] } });
+  assert.ok(result && typeof result === "object" && "error" in result,
+    "empty serials must return an error");
+  assert.match(String(result.error), /serial/i);
+});
+
+test("generate_report tool: invalid format returns error", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", {
+    report: "audit",
+    scope: { serials: ["ABC"] },
+    format: "xlsx",
+  });
+  assert.ok(result && typeof result === "object" && "error" in result,
+    "invalid format must return an error");
+  assert.match(String(result.error), /format/i);
+});
+
+test("generate_report tool: multiple selectors returns error", async () => {
+  await loadIndex();
+  const result = await handleTool("generate_report", {
+    report: "audit",
+    scope: { serials: ["ABC"], group: "Engineering" },
+  });
+  assert.ok(result && typeof result === "object" && "error" in result,
+    "multiple selectors must return an error");
+  assert.match(String(result.error), /one selector|at most one/i);
+});
+
 test("generate_report tool: serial scope accepted (returns error only from missing network, not guard)", async () => {
   await loadIndex();
   // We can't run the full tool without network; just verify the guard doesn't reject serial scopes.
