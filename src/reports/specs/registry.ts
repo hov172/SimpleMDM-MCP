@@ -30,7 +30,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
     writeOpts: {},
   },
   logs: {
-    buildInput: (scope, ctx) => logsInputLive(scope, ctx),
+    buildInput: (scope, ctx, opts) => logsInputLive(scope, ctx, opts),
     build: (input, opts) => buildLogsDossier(input, opts),
     defaultFormat: "all",
     needsConfirmAll: true,

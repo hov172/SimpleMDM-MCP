@@ -175,7 +175,11 @@ export async function inventoryInputLive(
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
 
-export async function logsInputLive(scope: LegacySelector, ctx: Ctx): Promise<any> {
+export interface LogsInputOpts {
+  withSecurity?: boolean;
+}
+
+export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsInputOpts = {}): Promise<any> {
   if (!scope) throw new Error("logs report requires a selector (--serial | --group | --last-seen | --all)");
   const { fetchAllDevicesRaw, fetchDeviceLogs, fetchDeviceGroups, fetchAssignmentGroups } =
     await import("../../../scripts/lib/simplemdm.mjs");
@@ -208,5 +212,14 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx): Promise<an
     }
   }
 
-  return { bundles, dateStr: todayStr(), nowIso: nowIsoFn() };
+  let security;
+  if (opts?.withSecurity) {
+    const { loadSofa } = await import("../../../scripts/lib/sofa.mjs");
+    const { flatten } = await import("../../../scripts/lib/simplemdm.mjs");
+    const { buildMajorTables, evaluateDevice } = await import("../domain/sofa-eval.js");
+    const { macFeed, iosFeed } = await loadSofa("reports/.logs-audit-cache", {});
+    const tables = buildMajorTables(macFeed, iosFeed);
+    security = { tables, evald: bundles.map((b: any) => evaluateDevice(flatten(b.device), tables)) };
+  }
+  return { bundles, dateStr: todayStr(), nowIso: nowIsoFn(), security };
 }
