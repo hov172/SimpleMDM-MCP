@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-06-21
+
+### Fixed
+- Report headers once again show the `Account: <name> · licenses X used of Y` line and a **real scope label** (`--all` / `--serial …` / `--group …` / `search (whole fleet)`) instead of a hardcoded `--all`. The unified-report-engine migration had dropped the `/account` fetch and scope-label threading; the renderers still supported `account` but the builders stopped passing it. The account is now fetched best-effort (a failure degrades to omitting the line, never aborting the report) in all three live input builders, and the account line renders consistently across the inventory, audit, and logs dossiers.
+
+### Changed
+- The dynamic-report writer (`Dossier.write`) now **rejects colliding artifact names** before writing anything. A spec whose `csvName` equals its `mdName`, or whose `mdName` lacks the `.md` extension (so the derived `.html`/`.pdf`/`.docx` paths fold onto it), previously caused the CSV, Markdown, and PDF to overwrite each other at one path — leaving a single file and a manifest whose hashes no longer matched disk. The writer now enumerates every planned output name and throws a clear error on the first duplicate, so malformed specs fail loudly instead of silently clobbering outputs.
+
 ## [0.30.1] - 2026-06-21
 
 ### Fixed
