@@ -171,7 +171,7 @@ export async function inventoryInputLive(
   }
 
   const findings = inventoryFindings(records);
-  return { records, findings, dateStr: todayStr(), failures, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])) };
+  return { records, findings, dateStr: todayStr(), failures, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])), fleetCount: rawDevices.length };
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
