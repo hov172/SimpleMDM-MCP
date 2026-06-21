@@ -153,10 +153,7 @@ import {
   renderInventoryReport,
 } from "../../scripts/lib/inventory-render.mjs";
 
-function captureInventory() {
-  console.log("Capturing inventory golden…");
-  const dir = ensureGolden("inventory");
-
+export function buildInventoryInput() {
   const DEVICES  = invFix("devices.json").data;
   const AG       = invFix("assignment-groups.json").data;
   const SOFA     = invFix("sofa-models.json");
@@ -186,6 +183,15 @@ function captureInventory() {
 
   // Pin the clock so stale-device / other date-relative findings are stable
   const findings = inventoryFindings(records, { now: FIXED_NOW_MS });
+
+  return { records, findings, dateStr: FIXED_DATE };
+}
+
+function captureInventory() {
+  console.log("Capturing inventory golden…");
+  const dir = ensureGolden("inventory");
+
+  const { records, findings } = buildInventoryInput();
 
   const W = (name, content) => writeGolden(dir, name, content);
 
