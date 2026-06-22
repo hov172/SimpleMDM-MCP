@@ -153,6 +153,27 @@ Every per-device section (`apps`, `profiles`, `users`) tracks `ok` / `failed` /
 `--no-apps`-style skips are deliberate exclusions, not unknowns. App-catalog/rollup
 exclusions due to incomplete data are disclosed in `summary.txt` and the dossier.
 
+### Unenrolled devices and `422 device is not enrolled`
+
+A common, **expected** source of partial runs is unenrolled devices. SimpleMDM still
+lists a device after it unenrolls (`status: unenrolled`, empty `enrollment_channels`),
+but its per-device endpoints (`/devices/<id>/users`, `installed_apps`, `profiles`)
+return `422 device is not enrolled` because there is no live MDM channel to query. The
+engine treats that 422 like any other section failure: the section is marked `failed`,
+the device is kept and flagged, and a whole-fleet `--all` run is reported **PARTIAL**
+(exit 2) even though every *enrolled* device fetched cleanly.
+
+This is not a transient error and **retrying does not help** — there is genuinely no
+data to return until the device re-enrolls. For a fleet that carries stale unenrolled
+records, the practical options are:
+
+- **Accept it** — the PARTIAL banner and `summary.txt` correctly document that those
+  specific devices have no per-device data; everything else is complete.
+- **`--allow-partial`** — exit 0 and drop the failure-gating, when you expect some
+  unenrolled devices and don't want the run treated as a failure.
+- **Scope around them** — e.g. `--search 'status:enrolled'` (or a date filter like
+  `seen:>=…`) so unenrolled/stale devices are excluded from the per-device pass entirely.
+
 ## Secrets
 
 `filevault_recovery_key`, `firmware_password`, and `recovery_lock_password` are actual
