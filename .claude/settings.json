@@ -113,6 +113,12 @@
       "Bash(npm pack:*)",
       "Bash(npm view:*)",
       "Bash(docker:*)"
+    ],
+    "deny": [
+      "Bash(docker system prune:*)",
+      "Bash(docker volume rm:*)",
+      "Bash(docker volume prune:*)",
+      "Bash(docker network rm:*)"
     ]
   }
 }

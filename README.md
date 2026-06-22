@@ -916,7 +916,7 @@ This repo ships two permission profiles for [Claude Code](https://docs.claude.co
 
 | File | Scope | When to use |
 |---|---|---|
-| `.claude/settings.json` | Committed, team-wide | Conservative default — pre-approves read-only tools and safe shell helpers. Writes and destructive git still prompt. |
+| `.claude/settings.json` | Committed, team-wide | Conservative default — pre-approves read-only tools, safe shell helpers, and routine `docker` operations (`build`/`run`/`exec`/`stop`/`rm`, etc.) for the containerized server, while a `deny` list blocks destructive docker (`system prune`, `volume rm`/`prune`, `network rm`). SimpleMDM writes and destructive git still prompt. |
 | `.claude/settings.auto.example.json` | Template | Opt-in "auto mode" profile — fewer prompts, with a deny list covering destructive shell, history-rewriting git, and SimpleMDM write tools (`wipe_device`, `delete_*`, `clear_*`). |
 
 **To activate auto mode for your user:**
