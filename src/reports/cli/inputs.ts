@@ -158,6 +158,13 @@ export async function inventoryInputLive(
     normalizeDevice(d, { dgMap, agNames, agAppsByDevice: agApps, models, profileAssign }));
 
   // Per-device section fetches: skip sections requested via opts, track failures.
+  // Expected, non-transient failure: an UNENROLLED device (status "unenrolled",
+  // empty enrollment_channels) is still listed by /devices, but its per-device
+  // endpoints return `422 device is not enrolled` — there is no live MDM channel to
+  // query. We record it as a normal section failure, so a whole-fleet run that
+  // includes stale unenrolled devices is reported PARTIAL (exit 2 unless
+  // --allow-partial). Retrying does not help; scope with status:enrolled to avoid it.
+  // See docs/inventory.md → "Completeness model".
   const failures: Array<{ serial: string; section: string; message: string }> = [];
   for (const r of records) {
     if (opts.noApps) {
