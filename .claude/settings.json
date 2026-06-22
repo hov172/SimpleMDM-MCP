@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "mcp__simplemdm__check_for_update",
       "mcp__simplemdm__get_account",
       "mcp__simplemdm__get_app",
       "mcp__simplemdm__get_assignment_group",
@@ -111,9 +112,7 @@
       "Bash(npm run:*)",
       "Bash(npm pack:*)",
       "Bash(npm view:*)",
-      "Bash(docker build:*)",
-      "Bash(docker images:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker:*)"
     ]
   }
 }
