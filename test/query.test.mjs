@@ -236,3 +236,49 @@ test("evaluate: devicegroup matches device groups ONLY (group: also matches assi
   assert.equal(evaluate(parseQuery("group:apps"), REC, { now: NOW }).matched, true);
   assert.equal(planQuery(parseQuery("devicegroup:faculty")).deviceUnits.length, 1);
 });
+
+test("parseTerm: type:mac is an umbrella alias expanding to every Mac bucket", () => {
+  const t = parseTerm("type:mac");
+  assert.deepEqual(t.alts.map((a) => a.text), ["laptop", "imac", "desktop", "mac"]);
+  assert.equal(t.warnings, undefined);                 // valid value → no warning, clean shape
+  // comma-list mixes an alias with a canonical value and de-dupes
+  assert.deepEqual(parseTerm("type:mac,ipad").alts.map((a) => a.text), ["laptop", "imac", "desktop", "mac", "ipad"]);
+  // canonical singletons are untouched; globs pass through unflagged
+  assert.deepEqual(parseTerm("type:laptop").alts.map((a) => a.text), ["laptop"]);
+  assert.equal(parseTerm("type:mac*").alts[0].match, "glob");
+  assert.equal(parseTerm("type:mac*").warnings, undefined);
+});
+
+test("parseTerm: unknown enum value warns loudly instead of silently matching zero", () => {
+  const t = parseTerm("type:macbook");
+  assert.ok(t.warnings && t.warnings.length === 1);
+  assert.match(t.warnings[0], /not a known type value/);
+  assert.match(t.warnings[0], /Valid:.*mac/);
+  // the bad token is still parsed (matches nothing) so the rest of the query runs
+  assert.equal(t.alts[0].text, "macbook");
+  // a good + bad mix warns only about the bad token
+  const mix = parseTerm("type:laptop,tablett");
+  assert.equal(mix.warnings.length, 1);
+  assert.match(mix.warnings[0], /tablett/);
+});
+
+test("parseQuery aggregates enum warnings across all terms", () => {
+  const ast = parseQuery("type:macbook arch:apple* type:widget");
+  assert.equal(ast.warnings.length, 2);
+  assert.ok(ast.warnings.every((w) => /not a known type value/.test(w)));
+  assert.deepEqual(parseQuery("type:mac").warnings, []);  // clean query → empty list
+});
+
+test("evaluate: type:mac matches every Mac form factor and excludes iPads", () => {
+  const laptop = { ...REC, type: "laptop" };
+  const imac = { ...REC, type: "imac" };
+  const desktop = { ...REC, type: "desktop" };
+  const macFallback = { ...REC, type: "mac" };          // unresolved-model bucket
+  const ipad = { ...REC, type: "ipad" };
+  for (const r of [laptop, imac, desktop, macFallback]) {
+    assert.equal(evaluate(parseQuery("type:mac"), r, { now: NOW }).matched, true);
+  }
+  assert.equal(evaluate(parseQuery("type:mac"), ipad, { now: NOW }).matched, false);
+  // negation still works through the alias
+  assert.equal(evaluate(parseQuery("-type:mac"), ipad, { now: NOW }).matched, true);
+});

@@ -98,6 +98,7 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   if (opts.report === "inventory" && opts.search) {
     const { parseQuery, evaluate } = await import("./domain/query.js");
     const ast = parseQuery(opts.search);
+    for (const w of ast.warnings) log(`Warning: ${w}`);
     const now = Date.now();
     const kept = (rawInput.records as any[]).filter((r: any) => {
       const res = evaluate(ast, r, { now });
@@ -108,7 +109,7 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
     });
     const { inventoryFindings } = await import("./domain/inventory-render.js");
     const findings = inventoryFindings(kept);
-    input = { ...rawInput, records: kept, findings };
+    input = { ...rawInput, records: kept, findings, queryWarnings: ast.warnings };
   }
 
   // Thread the human scope label into the dossier header (account is fetched in the

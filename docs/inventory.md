@@ -78,8 +78,8 @@ Value syntax, per field kind:
 | `mac` | text | matches WiFi, Bluetooth, and Ethernet MACs |
 | `ip` | text | last-seen IP |
 | `model` | text | matches the model identifier **and** the marketing name (SOFA feed, with a curated Apple legacy table covering pre-SOFA Macs back to 2009) |
-| `type` | text | derived class: `imac` `laptop` `desktop` `ipad` `iphone` `appletv` `mac` `other` |
-| `arch` | text | `processor_architecture` (e.g. `intel`, `arm64`) |
+| `type` | text | derived class: `laptop` `imac` `desktop` `ipad` `iphone` `appletv` `other`, plus `mac` (Apple-silicon model whose form factor didn't resolve). **Umbrella aliases:** `mac` / `computer` match **any** Mac form factor (laptop + imac + desktop + the `mac` bucket); `tablet`→`ipad`, `phone`/`mobile`→`iphone`, `tv`→`appletv`. An unrecognized value (e.g. `type:macbook`) is **not** silently dropped — it emits a `Query warning` on stdout and in `summary.txt`. |
+| `arch` | text | `processor_architecture`. Matches `intel` for Intel Macs and `apple*` for Apple Silicon (the raw value is `Apple Silicon`, so use the `apple*` wildcard). **`arm` / `arm64` do NOT match** — that string is not what SimpleMDM returns. |
 | `os` `build` | version / text | `os` compares numerically |
 | `group` | text | device **and** assignment group names |
 | `devicegroup` | text | device group name only (use when assignment-group matches would over-select) |
@@ -196,6 +196,8 @@ the `run_inventory_report` MCP tool — does this mapping for you.)
 | "all faculty and staff devices seen since 2025" | `--search 'group:faculty,staff seen:>=2025-01-01'` |
 | "which devices haven't checked in for 90 days?" | `--search '-seen:90d'` |
 | "every Intel Mac still in service" | `--search 'arch:intel seen:90d'` |
+| "all Macs (any form factor)" | `--search 'type:mac'` |
+| "Apple Silicon Macs — e.g. eligible for an Apple-silicon-only macOS" | `--search 'type:mac arch:apple*'` |
 | "all the M1 iMacs" | `--search 'model:"iMac (24-inch, M1, 2021)"'` |
 | "iPads only, as a PDF" | `--search 'type:ipad' --format all` |
 
