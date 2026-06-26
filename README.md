@@ -694,7 +694,7 @@ In Claude Code, ask for it (the **`/inventory`** skill maps your words to flags)
 | *"which MacBooks are still on macOS 14 or older, excluding loaners?"* | `--search 'type:laptop os:<15 -group:loaners'` |
 | *"which devices are assigned Zoom but don't have it installed?"* | `--search 'assigned:zoom -app:zoom' --confirm-all` |
 | *"Intel Macs without FileVault, seen in the last 90 days"* | `--search 'arch:intel filevault:off seen:90d'` |
-| *"Macs with Remote Desktop enabled"* | `--search 'ard:on type:laptop,imac,desktop,mac'` |
+| *"Macs with Remote Desktop enabled"* | `--search 'ard:on type:mac'` |
 | *"devices with less than 20 GB free"* | `--search 'storage:<20'` |
 | *"inventory the Library group with full app detail as a PDF"* | `--group "Library" --report-detail full --format all` |
 | *"full inventory of the 5 most recently seen devices"* | `--last-seen 5 --report-detail full` |

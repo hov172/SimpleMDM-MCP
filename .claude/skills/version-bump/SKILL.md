@@ -19,22 +19,27 @@ publishing, plugin manifests, marketplace files, or Discord notifications.
 
 ## Version files
 
-The version string lives in **exactly one file: `package.json`** (the
-`"version"` field). Confirm before editing:
+The version is authored in **`package.json`** (the `"version"` field), but
+`package-lock.json` mirrors it in **two** spots (top-level `"version"` and
+`packages[""].version`). Bump `package.json`, then sync the lockfile:
 
 ```bash
-git grep -n '"version": "<OLD>"'   # must list only package.json
+npm install --package-lock-only      # rewrites package-lock.json to the new version
+git grep -n '"version": "<OLD>"'     # must return NOTHING after the sync
+git grep -n '"version": "X.Y.Z"'     # lists package.json + package-lock.json (x2)
 ```
 
-Do not look for plugin manifests or lockfile version fields — there are none
-to bump. `src/index.ts` reads the version from `package.json` at startup, and
-the Docker build passes it through a `VERSION` build-arg, so both stay in sync
-automatically.
+Do **not** hand-edit the lockfile or leave it out of sync — an
+`npm ci` against a mismatched lockfile fails. There are no plugin manifests or
+marketplace files to touch. `src/index.ts` reads the version from
+`package.json` at startup, and the Docker build passes it through a `VERSION`
+build-arg, so the running server and image label stay in sync automatically.
 
 ## Workflow
 
-1. **Bump** `package.json` `"version"` to `X.Y.Z`. Verify:
-   `git grep -n '"version": "X.Y.Z"'` lists package.json;
+1. **Bump** `package.json` `"version"` to `X.Y.Z`, then run
+   `npm install --package-lock-only` to sync `package-lock.json`. Verify:
+   `git grep -n '"version": "X.Y.Z"'` lists package.json + package-lock.json;
    `git grep -n '"version": "<OLD>"'` returns nothing.
 2. **CHANGELOG.md** — Keep a Changelog format. Contributors accumulate entries
    under an `[Unreleased]` heading.
@@ -47,7 +52,7 @@ automatically.
 3. **Verify the build** — `npm run test`. This runs `tsc` then the
    `node --test` suite; it must exit 0 with all tests passing. `dist/` is
    gitignored — never stage build artifacts.
-4. **Commit** — `git add package.json CHANGELOG.md` then
+4. **Commit** — `git add package.json package-lock.json CHANGELOG.md` then
    `git commit -m "chore: release X.Y.Z"`.
 5. **Tag** — annotated: `git tag -a vX.Y.Z -m "Version X.Y.Z"`.
 6. **Push** — `git push origin main && git push origin vX.Y.Z`.
@@ -92,7 +97,7 @@ release and confirm with the user first.
 
 ## Checklist
 
-- [ ] `package.json` version bumped; `git grep` for old version is empty
+- [ ] `package.json` version bumped **and** `package-lock.json` synced (`npm install --package-lock-only`); `git grep` for old version is empty
 - [ ] `CHANGELOG.md` has the new dated section
 - [ ] `npm run test` passes (build + tests)
 - [ ] `chore: release X.Y.Z` committed
