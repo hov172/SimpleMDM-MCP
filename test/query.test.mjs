@@ -126,7 +126,7 @@ const REC = {
   name: "Alice MBP", device_name: "ALICE-MBP", serial: "C02FAC111", udid: "UDID-201", imei: "",
   wifi_mac: "a4:83:e7:11:11:11", ethernet_macs: ["a4:83:e7:11:11:12"], last_ip: "10.42.1.10",
   model_id: "MacBookPro18,1", model_name: "MacBook Pro (16-inch, M1 Pro, 2021)", model_year: "2021",
-  type: "laptop", arch: "arm64", os_version: "15.5", build_version: "24F74",
+  type: "laptop", arch: "Apple Silicon", os_version: "15.5", build_version: "24F74",
   device_group: "Faculty", assignment_groups: ["Faculty Apps"], assigned_apps: ["Zoom", "Google Chrome"],
   seen_at: "2026-06-09T16:00:00.000-04:00", enrolled_at: "2025-02-01T10:00:00.000-04:00",
   storage_free_gb: 512.5, storage_total_gb: 994.66, battery_pct: 88,
