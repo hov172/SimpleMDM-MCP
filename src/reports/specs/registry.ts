@@ -48,6 +48,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
       const records: any[] = input.records ?? [];
       const findings: any[] = input.findings ?? [];
       const failures: any[] = input.failures ?? [];
+      const queryWarnings: string[] = input.queryWarnings ?? [];
       const dateStr: string = input.dateStr ?? "";
       const rawById: Map<any, any> | undefined = input.rawById;
       const sel = opts?.scope as LegacySelector;
@@ -63,6 +64,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
       const lines: (string | null)[] = [
         `Inventory Report ${dateStr}`,
         opts?.search ? `Query: ${opts.search}` : null,
+        ...queryWarnings.map((w: string) => `Query warning: ${w}`),
         `Scope: ${scopeLabel}`,
         `Devices: ${records.length} matched (of ${rawById?.size ?? "?"} selected${fleetCount != null ? `, fleet ${fleetCount}` : ""})`,
         undetermined ? `Undetermined matches (included, flagged): ${undetermined}` : null,

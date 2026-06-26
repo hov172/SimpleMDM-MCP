@@ -28,17 +28,43 @@ export interface Term {
   src: string;
   alts: Alt[];
   attrName?: string;
+  /** Non-fatal lint messages (e.g. an unknown enum value that can't match).
+   *  Only set when non-empty so a clean term deep-equals its plain shape. */
+  warnings?: string[];
 }
 
 export interface Unit { terms: Term[] }
-export interface Ast { units: Unit[] }
+export interface Ast { units: Unit[]; warnings: string[] }
 
 interface FieldDef {
   kind: string;
   scope: "device" | "per-device";
   section?: string;
   get?: (r: R) => any;
+  /** Closed set of values the engine can emit for this field. When present, a
+   *  value that is neither one of these nor a declared alias is flagged as a
+   *  warning instead of silently matching nothing. */
+  values?: string[];
+  /** Friendly umbrella words the engine never emits, expanded to the canonical
+   *  values they cover (e.g. type:mac → laptop,imac,desktop,mac). */
+  aliases?: Record<string, string[]>;
 }
+
+// Canonical device-type tokens produced by deriveType() in inventory.ts. Keep in
+// sync with that function. `mac` is the fallback bucket for Apple-silicon model
+// IDs (Mac<n>,<n>) whose marketing name didn't resolve to a specific form factor.
+const TYPE_VALUES = ["laptop", "imac", "desktop", "mac", "ipad", "iphone", "appletv", "other"];
+// `type:mac`/`type:computer` span every Mac bucket so the query reliably returns
+// laptops, iMacs, desktops and the unresolved-model `mac` bucket — not just the
+// substring-coincidental `imac`. The others read naturally for non-Mac devices.
+const TYPE_ALIASES: Record<string, string[]> = {
+  mac:      ["laptop", "imac", "desktop", "mac"],
+  computer: ["laptop", "imac", "desktop", "mac"],
+  tablet:   ["ipad"],
+  phone:    ["iphone"],
+  mobile:   ["iphone"],
+  tv:       ["appletv"],
+};
 
 export function tokenize(q: unknown): string[] {
   const out: string[] = [];
@@ -69,7 +95,7 @@ export const FIELDS: Record<string, FieldDef> = {
   mac:            { kind: "text",         scope: "device",     get: (r) => [r.wifi_mac, r.bluetooth_mac, ...(r.ethernet_macs ?? [])] },
   ip:             { kind: "text",         scope: "device",     get: (r) => [r.last_ip] },
   model:          { kind: "text",         scope: "device",     get: (r) => [r.model_id, r.model_name] },
-  type:           { kind: "text",         scope: "device",     get: (r) => [r.type] },
+  type:           { kind: "text",         scope: "device",     get: (r) => [r.type], values: TYPE_VALUES, aliases: TYPE_ALIASES },
   arch:           { kind: "text",         scope: "device",     get: (r) => [r.arch] },
   os:             { kind: "version",      scope: "device",     get: (r) => r.os_version },
   build:          { kind: "text",         scope: "device",     get: (r) => [r.build_version] },
@@ -181,6 +207,39 @@ function parseValue(kind: string, raw: string, src: string): Alt[] {
   return alts;
 }
 
+// For enum fields (those with a `values` set), expand aliases to their canonical
+// tokens and report any value that can match nothing. Globs (containing *) pass
+// through untouched and are never flagged — `type:mac*` is a deliberate pattern.
+// Unknown values are kept verbatim so the query still parses (and matches zero),
+// while the returned `unknown` list lets the caller warn loudly.
+function expandEnumValue(field: FieldDef, fieldName: string, raw: string): { value: string; unknown: string[] } {
+  if (!field.values) return { value: raw, unknown: [] };
+  const known = new Set(field.values);
+  const aliases = field.aliases ?? {};
+  const out: string[] = [];
+  const unknown: string[] = [];
+  const seen = new Set<string>();
+  const push = (v: string) => { if (!seen.has(v)) { seen.add(v); out.push(v); } };
+  for (const partRaw of splitCommaQuoteAware(raw)) {
+    const part = stripQuotes(partRaw).trim();
+    if (!part) continue;
+    if (part.includes("*")) { push(part); continue; }
+    const lc = part.toLowerCase();
+    const expanded = aliases[lc] ?? (known.has(lc) ? [lc] : null);
+    if (expanded === null) { unknown.push(part); push(part); continue; }
+    expanded.forEach(push);
+  }
+  return { value: out.join(","), unknown };
+}
+
+function enumWarnings(field: FieldDef, fieldName: string, unknown: string[]): string[] {
+  if (!unknown.length) return [];
+  const valid = [...new Set([...(field.values ?? []), ...Object.keys(field.aliases ?? {})])].join(", ");
+  return unknown.map(
+    (u) => `${fieldName}:${u} — "${u}" is not a known ${fieldName} value, so nothing will match it. Valid: ${valid}.`,
+  );
+}
+
 export function parseTerm(token: string): Term {
   const src = token;
   let tok = token;
@@ -200,7 +259,12 @@ export function parseTerm(token: string): Term {
     }
     if (fieldRaw in FIELDS) {
       if (valueStripped === "") throw new QueryError(`Field "${fieldRaw}:" needs a value`);
-      return { neg, field: fieldRaw, src, alts: parseValue(FIELDS[fieldRaw].kind, valueRaw, src) };
+      const fdef = FIELDS[fieldRaw];
+      const { value: expandedValue, unknown } = expandEnumValue(fdef, fieldRaw, valueRaw);
+      const term: Term = { neg, field: fieldRaw, src, alts: parseValue(fdef.kind, expandedValue, src) };
+      const warnings = enumWarnings(fdef, fieldRaw, unknown);
+      if (warnings.length) term.warnings = warnings;
+      return term;
     }
     throw new QueryError(`Unknown field "${fieldRaw}:" — valid fields: ${Object.keys(FIELDS).join(", ")}, attr.<name>`);
   }
@@ -223,7 +287,8 @@ export function parseQuery(q: string): Ast {
     }
     units.push({ terms });
   }
-  return { units };
+  const warnings = units.flatMap((u) => u.terms).flatMap((t) => t.warnings ?? []);
+  return { units, warnings };
 }
 
 export function termScope(term: Term): "device" | "per-device" {
