@@ -92,7 +92,7 @@ Scope: --all · Devices: **4**
 | --- | --- |
 | Serial / UDID | `C02FAC111` · `UDID-201` |
 | Network | WiFi `a4:83:e7:11:11:11` · Ethernet `a4:83:e7:11:11:12` · last IP `10.42.1.10` |
-| Hardware | MacBook Pro (16-inch, M1 Pro, 2021) (`MacBookPro18,1`, 2021) · laptop · arm64 |
+| Hardware | MacBook Pro (16-inch, M1 Pro, 2021) (`MacBookPro18,1`, 2021) · laptop · Apple Silicon |
 | Storage / battery | 512.5 / 994.66 GB free · battery 88% |
 | OS | 15.5 (24F74) · RSR (a) |
 | Security | FileVault on · recovery key on · SIP on · firewall on · ARD on · activation lock off · firmware lock on · recovery lock on |
@@ -144,7 +144,7 @@ Scope: --all · Devices: **4**
 | --- | --- |
 | Serial / UDID | `D25STA222` · `UDID-202` |
 | Network | WiFi `a4:83:e7:22:22:22` · last IP `10.42.1.11` |
-| Hardware | iMac (24-inch, M1, 2021, Four Ports) (`iMac21,1`, 2021) · imac · arm64 |
+| Hardware | iMac (24-inch, M1, 2021, Four Ports) (`iMac21,1`, 2021) · imac · Apple Silicon |
 | Storage / battery | 8.2 / 465.63 GB free |
 | OS | 14.7.1 (23H222) |
 | Security | FileVault on · recovery key off · SIP on · firewall off · ARD n/a · activation lock n/a · firmware lock n/a · recovery lock n/a |
@@ -193,7 +193,7 @@ Scope: --all · Devices: **4**
 | --- | --- |
 | Serial / UDID | `E33LAB333` · `UDID-203` |
 | Network | WiFi `a4:83:e7:33:33:33` · Ethernet `a4:83:e7:33:33:34` · last IP `10.42.2.20` |
-| Hardware | Mac mini (M1, 2020) (`Macmini9,1`, 2020) · desktop · arm64 |
+| Hardware | Mac mini (M1, 2020) (`Macmini9,1`, 2020) · desktop · Apple Silicon |
 | Storage / battery | 300 / 465.63 GB free |
 | OS | 15.5 (24F74) |
 | Security | FileVault off · recovery key off · SIP on · firewall on · ARD n/a · activation lock n/a · firmware lock n/a · recovery lock n/a |

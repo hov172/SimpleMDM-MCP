@@ -92,7 +92,7 @@ test("normalizeDevice builds the full searchable record (real attribute names)",
   assert.equal(r.model_name, "MacBook Pro (16-inch, M1 Pro, 2021)");
   assert.equal(r.model_year, "2021");
   assert.equal(r.type, "laptop");
-  assert.equal(r.arch, "arm64");
+  assert.equal(r.arch, "Apple Silicon");
   assert.equal(r.device_group, "Faculty");
   assert.deepEqual(r.assignment_groups, ["Faculty Apps"]);
   assert.deepEqual(r.assigned_apps, ["Zoom", "Google Chrome"]);
