@@ -208,7 +208,7 @@ the `run_inventory_report` MCP tool — does this mapping for you.)
 | "unencrypted Macs that are actively used" | `--search 'filevault:off seen:30d'` |
 | "FileVault on but recovery key not escrowed" | `--search 'filevault:on recoverykey:no'` |
 | "Remote Desktop enabled but no firewall" | `--search 'ard:on firewall:off'` |
-| "anything still below macOS 15" | `--search 'os:<15 type:laptop,imac,desktop,mac'` |
+| "anything still below macOS 15" | `--search 'os:<15 type:mac'` |
 | "devices not enrolled through ADE/DEP" | `--search 'dep:no'` |
 | "who's not on declarative management yet?" | `--search 'ddm:off'` |
 
