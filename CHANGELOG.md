@@ -6,6 +6,17 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.3] - 2026-06-26
+
+### Fixed
+- Inventory `--search` `type:mac` now matches **every Mac form factor**. The `type` field only ever emits `laptop`/`imac`/`desktop` (plus a `mac` fallback bucket for Apple-silicon model IDs whose marketing name didn't resolve), so the documented `type:mac` filter substring-matched only `imac` and silently dropped laptops and desktops. `type:mac` (and `type:computer`) are now umbrella aliases that expand to all Mac buckets; `tablet`→`ipad`, `phone`/`mobile`→`iphone`, and `tv`→`appletv` are also recognized. Globs such as `type:mac*` still pass through unchanged.
+
+### Changed
+- An inventory `--search` value that cannot match any known token for an enum field now **emits a `Query warning`** (printed on stdout and recorded in `summary.txt`) instead of silently returning zero rows. For example, `type:macbook` now reports `"macbook" is not a known type value` along with the valid values, so a typo no longer looks like an empty fleet.
+
+### Documentation
+- Corrected the `arch` field reference in the inventory docs: the real `processor_architecture` values are `intel` and `Apple Silicon` (filter Apple Silicon with `arch:apple*`). The previously documented `arm64` does **not** match. Documented the new `type` aliases and warning behavior, and added cookbook examples for `type:mac` and `type:mac arch:apple*`.
+
 ## [0.30.2] - 2026-06-21
 
 ### Fixed
