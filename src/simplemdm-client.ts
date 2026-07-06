@@ -46,6 +46,15 @@ export async function throwForStatus(upstream: string, res: Response): Promise<n
 }
 
 export async function simpleMDM(path: string, opts: RequestInit = {}): Promise<unknown> {
+  // Fail fast with the actual cause. Startup permits a missing key in
+  // LOCAL_APP_MODE, but only the two local-app tools work without one — every
+  // other tool lands here and would otherwise surface an opaque upstream 401.
+  if (!API_KEY) {
+    throw new Error(
+      "SIMPLEMDM_API_KEY is not set. This tool requires direct SimpleMDM API access; " +
+      "LOCAL_APP_MODE only serves get_fleet_summary and get_security_posture without an API key.",
+    );
+  }
   const headers: Record<string, string> = {
     Authorization: AUTH_HEADER,
     ...(opts.headers as Record<string, string> ?? {}),
