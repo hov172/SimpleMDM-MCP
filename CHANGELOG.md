@@ -6,11 +6,25 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.31.1] - 2026-07-06
+
+Documentation deep-dive plus four small fixes. No new tools, no tool-schema changes.
+
 ### Fixed
 - Whole-fleet (`--all`) audit and inventory runs no longer print `Scope: last-seen true` in `summary.txt` — both summary scope labels lacked a case for the `all` selector kind and fell through to the last-seen branch; they now say `whole fleet`.
-- Report-producing MCP tools now resolve relative `reports/` paths against the installed package root and launch the report CLI from that root, instead of depending on the MCP client's current working directory (`/`, `~`, or another unrelated directory in desktop clients).
-- Docker builds now include `data/`, so the Apple device-management schema helpers keep the full checked-in schema cache instead of falling back to the small curated seed set.
+- Report-producing MCP tools now resolve relative `reports/` paths against the installed package root and launch the report CLI from that root, instead of depending on the MCP client's current working directory (`/`, `~`, or another unrelated directory in desktop clients) — on source installs launched by Claude Desktop, reports previously targeted `/reports/...`.
+- Docker builds now include `data/`, so the Apple device-management schema helpers keep the full checked-in schema cache instead of silently falling back to the small curated seed set.
 - `--allow-partial` is accepted for logs reports as documented by the partial-data model, while audit reports still reject it.
+
+### Documentation
+- **The README's Docker `claude mcp add` snippets never delivered the API key to the container** (verified empirically — `docker run` without `-e` does not forward host env; the server died at startup). Both snippets now forward with a bare `-e SIMPLEMDM_API_KEY` inside `docker run`.
+- Removed the nonexistent `--no-findings` flag; documented `--findings-exclude`, the `diff` subcommand / `run_report_diff`, and `run_config_backup` in the README (the v0.31.0 headline features were absent from it).
+- Requirements now cover the optional report-export toolchain (pandoc, WeasyPrint or headless Chrome, python3 — all graceful skips), OS support, and how `.env` is actually consumed (the server itself never loads it).
+- PARTIAL/limitations semantics updated across README and all three report docs; inventory exit codes corrected (no exit 3; argument errors exit 1); CLI vs MCP-tool default output directories untangled.
+- docs/tools.md: all 17 destructive tools now carry the `⚠️ destructive` marker (13 were missing), the stale "no message endpoint" note replaced (superseded by `push_message`), two broken links fixed.
+- `.env.example` rewritten below the fold: the "Future options — do not enable" section wrongly forbade the fully-supported MunkiReport and local-app-mode variables; all ten are now documented with defaults (the file had been untouched since v0.6.0).
+- Roadmap, CONTRIBUTING, PR template, SECURITY scope, and examples/README refreshed to match the current code (counts, test-suite reality, docs/tools.md as the tools reference, dead `reports/xprotect/STAGING.md` references removed).
+- API-key permissions section now lists every read and write domain the 189 tools actually use.
 
 ## [0.31.0] - 2026-07-06
 
