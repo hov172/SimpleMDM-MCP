@@ -235,6 +235,18 @@ function getDeviceStatus(attributes: DeviceAttributes): string {
   return attributes.status ?? attributes.enrollment_status ?? "unknown";
 }
 
+// SimpleMDM reports battery_level as a "NN%" string; tolerate bare numbers too.
+// A "%"-suffixed value is always a percentage — "1%" is one percent, not a 0-1
+// fraction. Only a bare number strictly below 1 is treated as a fraction.
+export function normalizeBatteryPct(raw: number | string | null | undefined): number | undefined {
+  if (raw == null) return undefined;
+  const isPercentString = typeof raw === "string" && raw.trim().endsWith("%");
+  const num = typeof raw === "string" ? parseFloat(raw.replace("%", "")) : Number(raw);
+  if (!Number.isFinite(num)) return undefined;
+  const pct = !isPercentString && num < 1 ? num * 100 : num;
+  return pct < 0 || pct > 100 ? undefined : pct;
+}
+
 // Paginate SimpleMDM /devices bypassing the local-app shortcut (used by derived
 // fleet rollups). Hard-capped by MAX_PAGES to bound memory/time.
 async function* paginateDevices(): AsyncGenerator<DeviceRecord> {
@@ -255,9 +267,10 @@ async function collectDevices(): Promise<DeviceRecord[]> {
   const cacheKey = "__collectDevices__";
   const hit = listCache.get(cacheKey);
   if (hit && Date.now() <= hit.expiry) return hit.data as DeviceRecord[];
+  const genAtStart = cacheGeneration; // see collectAllPages: don't re-cache over an invalidation
   const out: DeviceRecord[] = [];
   for await (const d of paginateDevices()) out.push(d);
-  listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS });
+  if (cacheGeneration === genAtStart) listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS });
   return out;
 }
 
@@ -268,6 +281,10 @@ async function collectInstalledApps(deviceId: string | number): Promise<Installe
   const cacheKey = `__installedApps__${deviceId}`;
   const hit = listCache.get(cacheKey);
   if (hit && Date.now() <= hit.expiry) return hit.data as InstalledAppRecord[];
+  const genAtStart = cacheGeneration; // see collectAllPages: don't re-cache over an invalidation
+  const cacheIfCurrent = (data: InstalledAppRecord[]) => {
+    if (cacheGeneration === genAtStart) listCache.set(cacheKey, { data, expiry: Date.now() + CACHE_TTL_MS });
+  };
   const id = encodeURIComponent(String(deviceId));
   const out: InstalledAppRecord[] = [];
   let cursor: string | number | undefined;
@@ -276,9 +293,9 @@ async function collectInstalledApps(deviceId: string | number): Promise<Installe
     const p = await simpleMDM(`/devices/${id}/installed_apps?limit=100${q}`) as PaginatedResponse<InstalledAppRecord>;
     const appPage = Array.isArray(p?.data) ? p.data : [];
     for (const a of appPage) out.push(a);
-    if (!p.has_more) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
+    if (!p.has_more) { cacheIfCurrent(out); return out; }
     cursor = appPage.at(-1)?.id;
-    if (cursor == null) { listCache.set(cacheKey, { data: out, expiry: Date.now() + CACHE_TTL_MS }); return out; }
+    if (cursor == null) { cacheIfCurrent(out); return out; }
   }
   throw new Error(`collectInstalledApps(${deviceId}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
 }
@@ -333,10 +350,17 @@ function cacheSet(key: string, data: unknown[]): void {
   listCache.set(key, { data, expiry: Date.now() + CACHE_TTL_MS });
 }
 
+// Bumped on every invalidation; paginations snapshot it before fetching and only
+// cacheSet if unchanged, so an in-flight read can't re-cache pre-write data over
+// a write's invalidation.
+let cacheGeneration = 0;
+
 // Invalidate all cache entries whose key starts with any of the given prefixes.
 // The special prefix "/devices" also clears collectDevices() and per-device
 // installed-app caches, since device mutations can affect fleet rollups.
-function cacheInvalidate(...prefixes: string[]): void {
+// (Exported for tests.)
+export function cacheInvalidate(...prefixes: string[]): void {
+  cacheGeneration++;
   const alsoDevices = prefixes.some(p => p === "/devices");
   const alsoApps = prefixes.some(p => p === "/apps" || p === "/installed_apps");
   for (const key of listCache.keys()) {
@@ -348,7 +372,7 @@ function cacheInvalidate(...prefixes: string[]): void {
 
 // Maps a write-operation tool name to the cache key prefixes it should
 // invalidate. Covers every tool that calls requireWrites().
-const INVALIDATION_MAP: Record<string, string[]> = {
+export const INVALIDATION_MAP: Record<string, string[]> = {
   create_device:                       ["/devices"],
   update_device:                       ["/devices"],
   delete_device:                       ["/devices"],
@@ -384,20 +408,24 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   delete_assignment_group:             ["/assignment_groups"],
   assign_device_to_group:              ["/assignment_groups", "/devices"],
   unassign_device_from_group:          ["/assignment_groups", "/devices"],
-  assign_app_to_group:                 ["/assignment_groups", "/apps"],
-  unassign_app_from_group:             ["/assignment_groups", "/apps"],
-  assign_profile_to_group:             ["/assignment_groups", "/profiles"],
-  unassign_profile_from_group:         ["/assignment_groups", "/profiles"],
-  push_apps_to_group:                  ["/assignment_groups"],
-  update_apps_in_group:                ["/assignment_groups", "/apps"],
-  sync_profiles_in_group:              ["/assignment_groups", "/profiles"],
+  // Group-level app/profile changes also mutate per-device state, which is cached
+  // under /devices/{id}/... keys — so these must invalidate "/devices" as well.
+  assign_app_to_group:                 ["/assignment_groups", "/apps", "/devices"],
+  unassign_app_from_group:             ["/assignment_groups", "/apps", "/devices"],
+  assign_profile_to_group:             ["/assignment_groups", "/profiles", "/devices"],
+  unassign_profile_from_group:         ["/assignment_groups", "/profiles", "/devices"],
+  push_apps_to_group:                  ["/assignment_groups", "/devices"],
+  update_apps_in_group:                ["/assignment_groups", "/apps", "/devices"],
+  sync_profiles_in_group:              ["/assignment_groups", "/profiles", "/devices"],
   clone_assignment_group:              ["/assignment_groups"],
   create_app:                          ["/apps"],
   update_app:                          ["/apps"],
   delete_app:                          ["/apps"],
-  request_app_management:              ["/installed_apps", "/apps"],
-  update_installed_app:                ["/installed_apps", "/apps"],
-  uninstall_app:                       ["/installed_apps", "/apps"],
+  // "/devices" covers the per-device /devices/{id}/installed_apps caches, which
+  // "/installed_apps" (the __installedApps__ rollup alias) does not reach.
+  request_app_management:              ["/installed_apps", "/apps", "/devices"],
+  update_installed_app:                ["/installed_apps", "/apps", "/devices"],
+  uninstall_app:                       ["/installed_apps", "/apps", "/devices"],
   create_custom_attribute:             ["/custom_attributes"],
   update_custom_attribute:             ["/custom_attributes"],
   delete_custom_attribute:             ["/custom_attributes"],
@@ -407,22 +435,23 @@ const INVALIDATION_MAP: Record<string, string[]> = {
   create_custom_configuration_profile: ["/custom_configuration_profiles"],
   update_custom_configuration_profile: ["/custom_configuration_profiles"],
   delete_custom_configuration_profile: ["/custom_configuration_profiles"],
-  assign_custom_profile_to_device:     ["/custom_configuration_profiles"],
-  unassign_custom_profile_from_device: ["/custom_configuration_profiles"],
+  assign_custom_profile_to_device:     ["/custom_configuration_profiles", "/devices"],
+  unassign_custom_profile_from_device: ["/custom_configuration_profiles", "/devices"],
   create_custom_declaration:           ["/custom_declarations"],
   create_safari_bookmarks_declaration: ["/custom_declarations"],
   update_custom_declaration:           ["/custom_declarations"],
   delete_custom_declaration:           ["/custom_declarations"],
-  assign_declaration_to_device:        ["/custom_declarations"],
-  unassign_declaration_from_device:    ["/custom_declarations"],
-  assign_profile_to_device:            ["/profiles"],
-  unassign_profile_from_device:        ["/profiles"],
+  assign_declaration_to_device:        ["/custom_declarations", "/devices"],
+  unassign_declaration_from_device:    ["/custom_declarations", "/devices"],
+  assign_profile_to_device:            ["/profiles", "/devices"],
+  unassign_profile_from_device:        ["/profiles", "/devices"],
   sync_dep_server:                     ["/dep_servers"],
   send_enrollment_invitation:          ["/enrollments"],
   delete_enrollment:                   ["/enrollments"],
   create_managed_app_config:           ["/apps"],
   delete_managed_app_config:           ["/apps"],
   push_managed_app_configs:            ["/apps"],
+  set_managed_app_config_schema:       ["/apps"],
   create_script:                       ["/scripts"],
   update_script:                       ["/scripts"],
   delete_script:                       ["/scripts"],
@@ -450,6 +479,10 @@ async function collectAllPages<T extends { id: string | number }>(
   if (existing) return existing as Promise<{ data: T[]; has_more: false }>;
 
   const work = (async (): Promise<{ data: T[]; has_more: false }> => {
+    // Only cache if no invalidation landed while we paginated — otherwise this
+    // result may predate a write and would resurrect stale data for a full TTL.
+    const genAtStart = cacheGeneration;
+    const cacheIfCurrent = (data: T[]) => { if (cacheGeneration === genAtStart) cacheSet(path, data); };
     const sep = path.includes("?") ? "&" : "?";
     const out: T[] = [];
     let cursor: string | number | undefined;
@@ -458,9 +491,9 @@ async function collectAllPages<T extends { id: string | number }>(
       const p = await api(`${path}${sep}limit=100${q}`) as PaginatedResponse<T>;
       const page = Array.isArray(p?.data) ? p.data : [];
       for (const r of page) out.push(r);
-      if (!p.has_more) { cacheSet(path, out); return { data: out, has_more: false }; }
+      if (!p.has_more) { cacheIfCurrent(out); return { data: out, has_more: false }; }
       cursor = page.at(-1)?.id;
-      if (cursor == null) { cacheSet(path, out); return { data: out, has_more: false }; }
+      if (cursor == null) { cacheIfCurrent(out); return { data: out, has_more: false }; }
     }
     throw new Error(`collectAllPages(${path}): exceeded ${MAX_PAGES}-page cap; raise SIMPLEMDM_MAX_PAGES.`);
   })();
@@ -1772,8 +1805,18 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       if (!deviceId && args.serial_number) {
         const found = await api(`/devices?search=${encodeURIComponent(String(args.serial_number))}&limit=10`) as PaginatedResponse<DeviceRecord>;
         const foundData = Array.isArray(found?.data) ? found.data : [];
-        const match = foundData.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number) ?? foundData[0];
-        if (!match) throw new Error(`No device found for serial_number=${args.serial_number}`);
+        // /devices?search also matches names/UDIDs — require an exact serial match;
+        // guessing (e.g. first hit) would return a dossier for the wrong device.
+        const match = foundData.find(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number === args.serial_number);
+        if (!match) {
+          const near = foundData
+            .map(d => (d as { attributes?: { serial_number?: string } }).attributes?.serial_number)
+            .filter(Boolean).slice(0, 5);
+          throw new Error(
+            `No device with exact serial_number=${args.serial_number}` +
+            (near.length ? ` (search returned near matches: ${near.join(", ")})` : "")
+          );
+        }
         deviceId = String(match.id);
       }
       if (!deviceId) throw new Error("get_device_full_profile requires device_id or serial_number");
@@ -1964,10 +2007,8 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         }
         const batRaw = d.attributes.battery_level as number | string | undefined | null;
         if (batRaw != null) {
-          const num = typeof batRaw === "string" ? parseFloat(batRaw.replace("%", "")) : Number(batRaw);
-          // SimpleMDM may report 0-1 fraction or 0-100 percentage; normalize.
-          const pct = num <= 1 ? num * 100 : num;
-          if (Number.isFinite(pct) && pct > 0 && pct <= lowBatteryPct) {
+          const pct = normalizeBatteryPct(batRaw);
+          if (pct !== undefined && pct <= lowBatteryPct) {
             lowBattery.push({
               id: d.id,
               name: d.attributes.name as string | undefined,
@@ -2202,7 +2243,12 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         const did = e.relationships?.device?.data?.id;
         if (did == null) continue;
         const meta = a.metadata as Record<string, unknown> | undefined;
-        const cmdKey = String((meta?.command_uuid as string | undefined) ?? (meta?.uuid as string | undefined) ?? `${did}:${event}:${a.at}`);
+        // Without a command_uuid, pair by device + command FAMILY (event minus its
+        // trailing sent/acknowledged verb). Keying on the full event name (or its
+        // timestamp) can never pair a sent with its terminal event, which reported
+        // every old command as pending forever.
+        const family = event.replace(/[.:]?(sent|queued|pending|acknowledged|succeeded|completed|failed|error)$/i, "");
+        const cmdKey = String((meta?.command_uuid as string | undefined) ?? (meta?.uuid as string | undefined) ?? `${did}:${family}`);
         const ts = Date.parse(String(a.at ?? ""));
         if (!Number.isFinite(ts)) continue;
         if (sentRe.test(event)) {
@@ -2408,8 +2454,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         if (getDeviceStatus(d.attributes) !== "enrolled") continue;
         const raw = d.attributes.battery_level as number | string | null | undefined;
         if (raw == null) continue;
-        const num = typeof raw === "string" ? parseFloat(raw.replace("%", "")) : Number(raw);
-        const pct = Number.isFinite(num) ? (num <= 1 ? num * 100 : num) : undefined;
+        const pct = normalizeBatteryPct(raw);
         const cycles = d.attributes.battery_cycle_count as number | undefined;
         const maxCap = d.attributes.battery_max_capacity_pct as number | undefined;
         const flagged = (pct !== undefined && pct <= lowPct) ||
@@ -3656,6 +3701,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       try {
         const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
           headers: { "User-Agent": "simplemdm-mcp", "Accept": "application/vnd.github+json" },
+          signal: AbortSignal.timeout(10_000),
         });
         if (!res.ok) return { error: `GitHub releases API returned ${res.status}`, current_version: current };
         const rel = await res.json() as { tag_name?: string; html_url?: string; published_at?: string };
@@ -3825,7 +3871,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
 // a write if its handler calls requireWrites(); DESTRUCTIVE is a subset flagged
 // for extra client confirmation.
 
-const WRITE_TOOLS = new Set<string>([
+export const WRITE_TOOLS = new Set<string>([
   "update_account",
   "create_device", "update_device", "delete_device", "delete_device_user",
   "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device", "refresh_cellular_plans",
