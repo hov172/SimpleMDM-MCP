@@ -544,3 +544,13 @@ test("inventory --findings-exclude drops the type and notes it in summary.txt", 
     assert.match(summary, /xcluded by flag: assigned-app-missing \(2\)/, "must disclose what was dropped");
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
+
+test("--allow-partial is accepted for logs runs (matches the 0.30.4 changelog)", async () => {
+  // Reaching the input builder (which needs live fetches) proves the flag
+  // passed validation; the stub keeps it offline.
+  await assert.rejects(
+    () => runCli(["logs", "--serial", "S1", "--allow-partial", "--format", "md"], { fetchInput: async () => { throw new Error("stub-input"); } }),
+    /stub-input/,
+    "must not reject --allow-partial as inventory-only",
+  );
+});

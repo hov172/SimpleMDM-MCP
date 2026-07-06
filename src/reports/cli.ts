@@ -231,10 +231,10 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   ]);
   const INVENTORY_ONLY_FLAGS = new Set([
     "--search", "--no-apps", "--no-profiles", "--no-users",
-    "--report-style", "--sort", "--allow-partial", "--raw", "--findings-exclude",
+    "--report-style", "--sort", "--raw", "--findings-exclude", "--allow-partial",
   ]);
   const LOGS_ONLY_FLAGS = new Set([
-    "--with-security", "--with-inventory",
+    "--with-security", "--with-inventory", "--allow-partial",
   ]);
   const AUDIT_ONLY_FLAGS = new Set([
     "--page-size",

@@ -56,6 +56,7 @@ node dist/reports/cli.js logs <selector> [flags]
 | `--report-detail <lvl>` | per-device log detail in the report document: `summary` (aggregation + findings, default) \| `table` (full per-device event table) \| `full` (both). `logs.csv`/`raw-logs.json` always keep 100% regardless |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
 | `--report-only` | write only the rendered report + `summary.txt` + `manifest.csv`; skip the data exports (not valid with `--format csv`) |
+| `--allow-partial` | exit 0 even if some per-device log fetches failed (default exit 2 so partial data is never silent) |
 | `--confirm-all` | required acknowledgement for `--all` |
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).

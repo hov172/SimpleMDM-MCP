@@ -378,8 +378,8 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 
 All three report types (audit / inventory / logs) share a unified engine (`dist/reports/cli.js`):
 
-- **`run_fleet_audit` / `run_device_logs_audit` / `run_inventory_report` MCP tools** — spawn the unified CLI as a **host-side subprocess**. Files are written to disk under `reports/` and the tool response returns a text summary + report preview. Use these when you want on-disk output (CSVs, dossier PDFs, manifests).
-- **`generate_report` MCP tool** — runs the same engine **in-process**, returns only `WriteResult` metadata (out_dir, file list with sha256). Also supports **declarative dynamic specs** for ad-hoc tables without writing a spec file. Use this for metadata-only generation, scripted pipelines, and custom one-off reports.
+- **`run_fleet_audit` / `run_device_logs_audit` / `run_inventory_report` MCP tools** — spawn the unified CLI as a **host-side subprocess**. Files are written to disk under `reports/` and the tool response returns a text summary + report preview. Relative output paths resolve under the installed package root, not the MCP client's current working directory. Use these when you want on-disk output (CSVs, dossier PDFs, manifests).
+- **`generate_report` MCP tool** — runs the same engine **in-process**, returns only `WriteResult` metadata (out_dir, file list with sha256). Also supports **declarative dynamic specs** for ad-hoc tables without writing a spec file. Relative output paths resolve under the installed package root. Use this for metadata-only generation, scripted pipelines, and custom one-off reports.
 
 The skills (`/audit`, `/logs-audit`, `/inventory`) invoke the run_* tools under the hood, so they also write on-disk output.
 
@@ -586,6 +586,7 @@ node dist/reports/cli.js logs <selector> [flags]
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device log detail in the report: `summary` (aggregation + findings, default) \| `table` (full event table) \| `full` (both). CSV/JSON always keep 100%. |
 | `--report-only` | write only the report dossier + `manifest.csv` + `summary.txt`; skip the CSV/JSON data exports (not valid with `--format csv`) |
+| `--allow-partial` | exit 0 even if some per-device log fetches failed (default: exit 2 so partial data is never silent) |
 | `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
 
 **Requirements:** `SIMPLEMDM_API_KEY` in `.env` (a **read-only** key is sufficient).

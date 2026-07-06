@@ -8,6 +8,9 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 - Whole-fleet (`--all`) audit and inventory runs no longer print `Scope: last-seen true` in `summary.txt` — both summary scope labels lacked a case for the `all` selector kind and fell through to the last-seen branch; they now say `whole fleet`.
+- Report-producing MCP tools now resolve relative `reports/` paths against the installed package root and launch the report CLI from that root, instead of depending on the MCP client's current working directory (`/`, `~`, or another unrelated directory in desktop clients).
+- Docker builds now include `data/`, so the Apple device-management schema helpers keep the full checked-in schema cache instead of falling back to the small curated seed set.
+- `--allow-partial` is accepted for logs reports as documented by the partial-data model, while audit reports still reject it.
 
 ## [0.31.0] - 2026-07-06
 

@@ -15,6 +15,9 @@ COPY src ./src
 # scripts/lib/*.d.mts provides the type declarations for the retained simplemdm.mjs /
 # sofa.mjs that src/reports/cli/inputs.ts imports — tsc needs them at build time.
 COPY scripts ./scripts
+# Apple device-management schema cache — without it the 16 schema tools
+# silently degrade to a small curated fallback set.
+COPY data ./data
 RUN npm run build
 RUN npm prune --omit=dev
 

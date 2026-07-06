@@ -58,6 +58,12 @@ const PKG_VERSION: string = (() => {
   }
 })();
 
+// Install root (dist/..). Report outputs and reports/-scoped paths resolve
+// against this rather than process.cwd() — desktop MCP clients launch servers
+// with cwd "/" (or "~"), which would send reports/ writes to the wrong place.
+const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const resolveReportPath = (p: string): string => p.startsWith("/") ? p : resolve(PKG_ROOT, p);
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const ALLOW_WRITES   = process.env.SIMPLEMDM_ALLOW_WRITES === "true";
@@ -3346,7 +3352,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const customOutDir = args.out_dir as string | undefined;
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      const outDir = customOutDir ?? `reports/audit-${dateStr}`;
+      const outDir = resolveReportPath(customOutDir ?? `reports/audit-${dateStr}`);
 
       const here = dirname(fileURLToPath(import.meta.url));
       const cliPath = resolve(here, "reports", "cli.js");
@@ -3359,7 +3365,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const execFileAsync = promisify(execFile);
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildAuditCliArgs(args, outDir)], { env });
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildAuditCliArgs(args, outDir)], { env, cwd: PKG_ROOT });
         
         let summaryContent = "";
         try {
@@ -3407,7 +3413,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const customOutDir = args.out_dir as string | undefined;
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      const outDir = customOutDir ?? `reports/logs-audit-${dateStr}`;
+      const outDir = resolveReportPath(customOutDir ?? `reports/logs-audit-${dateStr}`);
 
       const here = dirname(fileURLToPath(import.meta.url));
       const cliPath = resolve(here, "reports", "cli.js");
@@ -3420,7 +3426,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const execFileAsync = promisify(execFile);
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildLogsCliArgs(args, outDir)], { env });
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildLogsCliArgs(args, outDir)], { env, cwd: PKG_ROOT });
 
         let summaryContent = "";
         try {
@@ -3457,7 +3463,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
 
     case "run_config_backup": {
       const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-      const outDir = typeof args.out_dir === "string" && args.out_dir ? String(args.out_dir) : `reports/config-backup-${ts}`;
+      const outDir = resolveReportPath(typeof args.out_dir === "string" && args.out_dir ? String(args.out_dir) : `reports/config-backup-${ts}`);
       const errors: Array<{ item: string; error: string }> = [];
       const manifestFiles: Array<{ file: string; bytes: number; sha256: string }> = [];
       const safeName = (v: unknown) => String(v ?? "unnamed").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 60);
@@ -3532,8 +3538,8 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       // Restrict to reports/ so this cannot be used to read arbitrary paths.
       const inReports = (p: unknown, label: string): string => {
         const raw = String(p ?? "");
-        const full = resolve(raw);
-        const root = resolve("reports");
+        const full = resolveReportPath(raw);
+        const root = resolve(PKG_ROOT, "reports");
         if (full !== root && !full.startsWith(root + "/")) {
           throw new Error(`${label} must be a directory under reports/ (got "${raw}")`);
         }
@@ -3571,6 +3577,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const allowPartial = args.allow_partial === true;
       const raw = args.raw === true;
       const customOutDir = args.out_dir as string | undefined;
+      const outDirArg = customOutDir ? resolveReportPath(customOutDir) : undefined;
 
       const here = dirname(fileURLToPath(import.meta.url));
       const cliPath = resolve(here, "reports", "cli.js");
@@ -3583,7 +3590,8 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const execFileAsync = promisify(execFile);
 
       const collectOutputs = (stdout: string | undefined) => {
-        const outDir = customOutDir ?? stdout?.match(/^Output: (.+)$/m)?.[1];
+        const rawOutDir = outDirArg ?? stdout?.match(/^Output: (.+)$/m)?.[1];
+        const outDir = rawOutDir ? resolveReportPath(rawOutDir) : undefined;
         if (!outDir) return { outDir: undefined, summary: "", report: "" };
         let summary = "";
         try { summary = readFileSync(resolve(outDir, "summary.txt"), "utf8"); } catch {}
@@ -3595,7 +3603,8 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       };
 
       try {
-        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...buildInventoryCliArgs(args)], { env });
+        const cliArgs = buildInventoryCliArgs(outDirArg ? { ...args, out_dir: outDirArg } : args);
+        const { stdout, stderr } = await execFileAsync("node", [cliPath, ...cliArgs], { env, cwd: PKG_ROOT });
         const { outDir, summary, report } = collectOutputs(stdout);
         return {
           success: true,
@@ -3949,7 +3958,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         const ts = new Date();
         const dDate = ts.toISOString().slice(0, 10).replace(/-/g, "");
         const dTime = ts.toISOString().slice(11, 19).replace(/:/g, "");
-        const dynOutDir = `reports/dynamic-${dDate}-${dTime}`;
+        const dynOutDir = resolveReportPath(`reports/dynamic-${dDate}-${dTime}`);
         const dynResult = await buildDynamicDossier(spec, { rows }).write(dynOutDir, { format, reportOnly });
         // Always-on bundle artifacts (manifest.sha256, <dir>.zip; xlsx if a report-table exists).
         if (format === "all") {
@@ -4031,7 +4040,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const now = new Date();
       const date = now.toISOString().slice(0, 10).replace(/-/g, "");
       const time = now.toISOString().slice(11, 19).replace(/:/g, "");
-      const outDir = `reports/${report}-${date}-${time}`;
+      const outDir = resolveReportPath(`reports/${report}-${date}-${time}`);
 
       return runReport({ report, scope, format, reportOnly, outDir, search });
     }
