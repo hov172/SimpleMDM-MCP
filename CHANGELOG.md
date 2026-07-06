@@ -6,6 +6,9 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- Whole-fleet (`--all`) audit and inventory runs no longer print `Scope: last-seen true` in `summary.txt` — both summary scope labels lacked a case for the `all` selector kind and fell through to the last-seen branch; they now say `whole fleet`.
+
 ## [0.31.0] - 2026-07-06
 
 Tool-gap release from a usage- and API-surface analysis: seven new tools (182 → 189) and two report-quality changes. New endpoints were verified against the live tenant first — the three new device POSTs return 403 (missing API-key write scope), not 404, so enable the scopes in SimpleMDM Settings → API Keys to use them.
