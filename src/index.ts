@@ -4074,7 +4074,7 @@ export function promptBody(name: string, args: Record<string, string> | undefine
 
 const TOOL_SCHEMAS = new Map(TOOLS.map(t => [t.name, t.inputSchema]));
 
-function validateArgs(toolName: string, args: Args): void {
+export function validateArgs(toolName: string, args: Args): void {
   const schema = TOOL_SCHEMAS.get(toolName);
   if (!schema) return;
   const required = (schema as { required?: string[] }).required ?? [];
@@ -4088,7 +4088,10 @@ function validateArgs(toolName: string, args: Args): void {
     const expected = Array.isArray(spec.type) ? spec.type : spec.type ? [spec.type] : [];
     if (expected.length === 0) continue;
     const actual = Array.isArray(args[key]) ? "array" : typeof args[key];
-    if (!expected.includes(actual)) {
+    const matches = expected.some(t =>
+      t === "integer" ? typeof args[key] === "number" && Number.isInteger(args[key]) : t === actual
+    );
+    if (!matches) {
       throw new Error(`${toolName}: argument "${key}" must be ${expected.join("|")}, got ${actual}`);
     }
   }
