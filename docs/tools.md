@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **189 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **198 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 14 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -163,7 +163,10 @@ These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php
 1. **Install the module** in your MunkiReport instance: clone [SimpleMDM-MunkiReport](https://github.com/hov172/SimpleMDM-MunkiReport) to `local/modules/simplemdm`, add `simplemdm` to `MODULES`, run `php please migrate`, configure its SimpleMDM API key, and run a sync (its README's Quick Start covers this in 5 minutes).
 2. **Point this server at the instance**: set `MUNKIREPORT_BASE_URL=https://your-munkireport.example.com` (no path — the default `MUNKIREPORT_MODULE_PREFIX=/module/simplemdm` already matches the module's routes).
 3. **Authenticate**: the module's read routes require an authenticated MunkiReport session — everything except its token-protected sync/ingest endpoints. Set `MUNKIREPORT_COOKIE` to a valid MunkiReport session cookie, or `MUNKIREPORT_AUTH_HEADER_NAME`/`MUNKIREPORT_AUTH_HEADER_VALUE` if your instance sits behind header/SSO auth.
-4. **Test**: call `get_munkireport_sync_health`. Note the failure symptom: an invalid/expired session returns MunkiReport's plain-text `Authenticate first.` page with HTTP 200, which surfaces here as a **JSON parse error** — not a 401. If you see that, refresh the cookie/header.
+4. **Test**: call `get_munkireport_sync_health`. For the seven expanded read tools note: `supplemental_status`, `client_facts`, `runner_status` and both write actions need an **admin (global)** MunkiReport session, not just a logged-in one; `get_munkireport_alerts` needs the module's `get_events` route (builds from 2026-07-07 on). Note the failure symptom: an invalid/expired session returns MunkiReport's plain-text `Authenticate first.` page with HTTP 200, which surfaces here as a **JSON parse error** — not a 401. If you see that, refresh the cookie/header.
+
+
+**Deliberately not exposed** (present in the module, excluded here by design): `run_script` (executes commands on the MunkiReport server — blast radius out of proportion to MCP value), `clear_sync_runs` (destroys run history), the `api_devices` device-action passthrough (duplicates this server's own SimpleMDM write tools and would blur which API key acted), `save_config` (module config writes, including secrets), and the `ingest*`/`webhook` endpoints (this server is not the module's sync runner). Note for module operators: the module accepts its **SimpleMDM API key as the sync token** for `save_config` — treat that key accordingly.
  Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](../README.md#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
 
 | Tool | Description |
@@ -173,6 +176,15 @@ These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php
 | `get_munkireport_device_resources` | Per-device connected-resource context (by serial number) |
 | `get_munkireport_apple_care` | AppleCare coverage stats from the MunkiReport module |
 | `get_munkireport_supplemental_overview` | Supplemental fleet overview from the MunkiReport module |
+| `get_munkireport_alerts` | Alert/regression EVENTS (13 built-in types + custom rules, severity-filterable) — needs the module's `get_events` route (2026-07-07 build+) |
+| `get_munkireport_command_status` | MDM command status distribution from the module's command mirror — no SimpleMDM API equivalent exists |
+| `get_munkireport_dashboard_trend` | Daily fleet trend snapshots up to 180 days — historical data the API cannot provide |
+| `get_munkireport_supplemental_data` | Per-device cross-module detail (all enrichment sources + client facts, with freshness) |
+| `get_munkireport_supplemental_status` | Fleet enrichment health: stale/refresh_failed per source (admin session) |
+| `get_munkireport_client_facts` | Option-B endpoint-local facts for one device (admin session) |
+| `get_munkireport_runner_status` | Sync runner/cron/Python operational status — the "syncs silently stopped" warning surface (admin session) |
+| `request_munkireport_sync` | Module: write — queue a mirror sync run (admin session; acts on the module, never SimpleMDM) |
+| `refresh_munkireport_supplemental` | Module: write — recompute cross-module summaries, one device or fleet-wide (admin session) |
 
 ## Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
 

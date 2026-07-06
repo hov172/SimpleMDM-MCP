@@ -475,6 +475,8 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
   create_script_job:                   ["/script_jobs"],
   cancel_script_job:                   ["/script_jobs"],
   update_account:                      [],
+  request_munkireport_sync:            [],
+  refresh_munkireport_supplemental:    [],
 };
 
 // Stampede guard: if multiple callers request the same path concurrently, only
@@ -1697,6 +1699,50 @@ export const TOOLS: Tool[] = [
   { name: "get_munkireport_supplemental_overview",
     description: "Supplemental fleet overview — CROSS-MODULE data aggregated from other installed MunkiReport modules (built-in sources: filevault_status, findmymac, warranty/AppleCare, profile, managedinstalls; arbitrary serial-keyed third-party modules are auto-discovered). Graceful zeros for sources whose module isn't installed.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_munkireport_alerts",
+    description: "Current SimpleMDM alert/regression EVENTS from the module: 13 built-in types (command failed, FileVault/supervision/firewall/SIP/activation-lock disabled, enrollment/ADE regressed, passcode noncompliant, device stale, action accepted/failed) plus custom rules, newest first. Requires the module's get_events route (module >= the 2026-07-07 build).",
+    inputSchema: { type: "object", properties: {
+      serial_number: { type: "string", description: "Filter to one device." },
+      type: { type: "string", enum: ["danger", "warning", "info"], description: "Filter by severity." },
+      limit: { type: "number", description: "Max events, 1-500. Default 100." },
+    }}},
+
+  { name: "get_munkireport_command_status",
+    description: "MDM command status distribution (failed/acknowledged/pending counts) from the module's command mirror — the public SimpleMDM API has no command-log endpoint, so this data exists only here.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_munkireport_dashboard_trend",
+    description: "Daily fleet trend snapshots (device/enrolled/supervised/FileVault/DEP/resource totals) up to 180 days back — historical data the SimpleMDM API cannot provide.",
+    inputSchema: { type: "object", properties: {
+      days: { type: "number", description: "Days of history, 1-180. Default 30." },
+    }}},
+
+  { name: "get_munkireport_supplemental_data",
+    description: "Per-device CROSS-MODULE supplemental detail: every enrichment source (FileVault status, Find My, AppleCare/warranty, profiles, managedinstalls, auto-discovered third-party modules) plus Option-B client-reporter facts, with per-source freshness states.",
+    inputSchema: { type: "object", required: ["serial_number"], properties: { serial_number: { type: "string" } }}},
+
+  { name: "get_munkireport_supplemental_status",
+    description: "Fleet-wide supplemental enrichment HEALTH: per-source freshness counts (fresh/stale/missing/refresh_failed/module_not_detected) and client-fact coverage. Warning-class data — refresh_failed and stale counts flag broken enrichment. Requires an admin (global) MunkiReport session.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_munkireport_client_facts",
+    description: "Option-B client-reporter facts for one device (typed values, reported_at, source, client version) — endpoint-local data (console user, uptime, munki last run, local FileVault) that neither the SimpleMDM API nor server-side sync can see. Requires an admin (global) MunkiReport session.",
+    inputSchema: { type: "object", required: ["serial_number"], properties: { serial_number: { type: "string" } }}},
+
+  { name: "get_munkireport_runner_status",
+    description: "Sync runner operational status: cron installation, Python runtime availability, runner config — the warning surface for 'syncs silently stopped'. Requires an admin (global) MunkiReport session.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "request_munkireport_sync",
+    description: "WRITE — Queue a module mirror sync run in MunkiReport (picked up by its cron/worker). Acts on the module only, never on SimpleMDM. Requires an admin (global) MunkiReport session.",
+    inputSchema: { type: "object", properties: {} } },
+
+  { name: "refresh_munkireport_supplemental",
+    description: "WRITE — Recompute the module's cross-module supplemental summaries (one device, or fleet-wide when serial_number is omitted). Local DB recompute only. Requires an admin (global) MunkiReport session.",
+    inputSchema: { type: "object", properties: {
+      serial_number: { type: "string", description: "Limit the refresh to one device." },
+    }}},
 
   { name: "get_api_coverage",
     description: "Read — Report which SimpleMDM capability areas this MCP server exposes (tool count per area, total tools, write vs read). Static introspection of the registered tool list.",
@@ -3345,6 +3391,26 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
     case "get_munkireport_device_resources":  return USE_LOCAL_APP ? api(`/enrichment/device/${encodeURIComponent(String(args.serial_number))}`) : munkiReport(`/get_device_resources/${encodeURIComponent(String(args.serial_number))}`);
     case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/get_supplemental_applecare_stats");
     case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/get_supplemental_overview_stats");
+    case "get_munkireport_alerts": {
+      const params = new URLSearchParams();
+      if (args.limit != null) params.set("limit", String(args.limit));
+      if (args.type != null) params.set("type", String(args.type));
+      const qs2 = params.size ? `?${params}` : "";
+      const serialSeg = args.serial_number != null ? `/${seg(args.serial_number, "serial_number")}` : "";
+      return munkiReport(`/get_events${serialSeg}${qs2}`);
+    }
+    case "get_munkireport_command_status":     return munkiReport("/get_command_status_stats");
+    case "get_munkireport_dashboard_trend":    return munkiReport(`/get_dashboard_trend${args.days != null ? `?days=${encodeURIComponent(String(args.days))}` : ""}`);
+    case "get_munkireport_supplemental_data":  return munkiReport(`/get_supplemental_data/${seg(args.serial_number, "serial_number")}`);
+    case "get_munkireport_supplemental_status": return munkiReport("/get_supplemental_status");
+    case "get_munkireport_client_facts":       return munkiReport(`/get_client_facts/${seg(args.serial_number, "serial_number")}`);
+    case "get_munkireport_runner_status":      return munkiReport("/get_runner_status");
+    case "request_munkireport_sync":
+      requireWrites();
+      return munkiReport("/request_sync");
+    case "refresh_munkireport_supplemental":
+      requireWrites();
+      return munkiReport(`/refresh_supplemental_summary${args.serial_number != null ? `/${seg(args.serial_number, "serial_number")}` : ""}`);
 
     case "run_fleet_audit": {
       const format = args.format as string | undefined ?? "all";
@@ -4087,6 +4153,7 @@ export const WRITE_TOOLS = new Set<string>([
   "send_enrollment_invitation", "delete_enrollment",
   "create_managed_app_config", "delete_managed_app_config", "push_managed_app_configs",
   "set_managed_app_config_schema",
+  "request_munkireport_sync", "refresh_munkireport_supplemental",
   "create_script", "update_script", "delete_script",
   "create_script_job", "cancel_script_job",
 ]);

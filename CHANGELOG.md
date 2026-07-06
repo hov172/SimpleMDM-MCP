@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-07-07
+
+Full MunkiReport-module coverage, from a complete inventory of the module's 49-route surface: nine new tools (189 → 198) targeting data that exists **only** in the module, headlined by alert events that previously had no consumer.
+
+### Added
+- **`get_munkireport_alerts`** — the module's 13 built-in alert/regression events (command failed, FileVault/supervision/firewall/SIP/activation-lock disabled, enrollment/ADE regressed, passcode noncompliant, device stale, action accepted/failed) plus custom rules, severity-filterable. These were written to MunkiReport's shared events table with **no read route anywhere** — the companion module gained `get_events` in its 2026-07-07 build for exactly this tool.
+- **`get_munkireport_command_status`** — MDM command status distribution from the module's command mirror; the public SimpleMDM API has no command-log endpoint.
+- **`get_munkireport_dashboard_trend`** — daily fleet trend snapshots up to 180 days back (`days` arg); historical data the API cannot provide.
+- **`get_munkireport_supplemental_data`** — per-device cross-module detail: every enrichment source plus Option-B client facts, with per-source freshness.
+- **`get_munkireport_supplemental_status`** — fleet enrichment health (stale/refresh_failed per source) — the warning surface for broken cross-module enrichment (admin session).
+- **`get_munkireport_client_facts`** — Option-B endpoint-local facts (console user, uptime, munki last run, local FileVault) for one device (admin session).
+- **`get_munkireport_runner_status`** — sync runner/cron/Python operational status: the "syncs silently stopped" warning surface (admin session).
+- **`request_munkireport_sync`** / **`refresh_munkireport_supplemental`** (WRITE, admin session) — queue a module mirror sync; recompute cross-module summaries. Both act on the module only, never on SimpleMDM.
+
+### Documentation
+- docs/tools.md documents the expanded auth requirements (which tools need an admin vs plain MunkiReport session) and the routes **deliberately not exposed** with reasons: `run_script` (server-side command execution), `clear_sync_runs` (history destruction), `api_devices` passthrough (duplicates this server's own writes), `save_config`, and the `ingest*`/`webhook` endpoints — plus an operator note that the module accepts its SimpleMDM API key as the sync token for `save_config`.
+
+
 ## [0.31.2] - 2026-07-07
 
 ### Fixed
