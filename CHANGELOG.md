@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.5] - 2026-07-06
+
+Second-pass review patch: an adversarial review of v0.30.4 plus a deep pass over previously unreviewed modules (Apple schema tooling, report support libraries, docs). No new tools; one tool description clarified.
+
+### Fixed
+- **v0.30.4's logs failure-threading was dead code on the live path**: `logsInputLive` built its failures list but never returned it, so a real per-device fetch failure still produced `Failed devices: 0`, a completeness attestation, and exit 0. The list is now returned, covered by an end-to-end test through the live input builder itself (mocked failing fetch) rather than synthetic injection.
+- Profile builder emitted `<string>` where Apple requires `<data>` for data-typed schema values (certificate bodies, VPN shared secrets — 15+ key paths in the shipped schema cache): payloads passed validation but built profiles that fail to install. Data values (including nested `childKeys`/`itemKeys`) now emit `<data>`. Also: XML-1.0-illegal control characters are stripped (they made the plist unparseable), and unsafe-range integers emit as `<real>` instead of invalid `<integer>1e+21</integer>`.
+- The schema sync script could silently replace the healthy 174-schema cache with the ~12 curated fallbacks when GitHub rate-limited the raw fetches. It now refuses to shrink an existing cache (new `--allow-shrink` to override), aborts when >20% of fetches fail, checks the git-trees `truncated` flag, and no longer swallows the total-bytes cap in fallback mode. The curated VPN fallback also registered identifier `VPN` instead of `com.apple.vpn.managed`, breaking the VPN payload builder after any fallback-written cache.
+- A truncated or corrupt SOFA cache file bricked every `--with-security` report with a raw `SyntaxError` for up to 24 h. Cache reads are now guarded (fall back to refetch), writes are atomic (temp + rename), and a feed without `OSVersions` is rejected instead of cached — previously it silently evaluated every device as "untracked" with zero CVE data.
+- `fetchDeviceGroups` was the one report fetcher with no 429 retry, and every report calls it up front — a single rate-limit hit aborted the whole run. Now routed through the retrying pagination helper.
+- The reports CLI matched flag names against *value* tokens, so a search value spelled `--confirm-all` satisfied the whole-fleet confirmation guard (and flag-shaped values were rejected as unknown flags). Value positions are now tracked and exempt.
+- A read starting immediately after a write could join a pre-write in-flight pagination and see stale data once; invalidation now detaches matching in-flight promises.
+
+### Documentation
+- `check_for_update` upgrade steps no longer say `git pull`, which fails for every pre-v0.30.4 clone after the history rewrite; they now use `git fetch && git reset --hard origin/main` with an explanatory note. The README gained the same upgrade guidance.
+- The README no longer recommends `npm install -g simplemdm-mcp` — the package is not published to npm and that command 404s. Source install is the recommended path; SECURITY.md scope updated accordingly.
+- `LOCAL_APP_MODE` docs and the keyless-mode error message now state exactly which tools work without `SIMPLEMDM_API_KEY` (the local-app-bridged ones), instead of over-promising (README) and under-promising (error message).
+- `get_battery_health_report` no longer claims cycle-count/max-capacity data requires MunkiReport (it reads SimpleMDM device attributes; MunkiReport battery data lives in `get_munkireport_device_resources`). `get_pending_commands` documents the family-pairing fallback's masking window.
+- `examples/claude-desktop-with-munkireport.json` gained the required `MUNKIREPORT_AUTH_HEADER_VALUE` placeholder — as shipped, copying it made every MunkiReport call throw.
+
 ## [0.30.4] - 2026-07-06
 
 Correctness and security patch from a full-codebase review: eleven fixes, no new tools, no tool-schema changes.
