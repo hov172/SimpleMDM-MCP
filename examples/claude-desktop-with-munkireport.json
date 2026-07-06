@@ -7,6 +7,7 @@
         "SIMPLEMDM_API_KEY": "your-api-key-here",
         "MUNKIREPORT_BASE_URL": "https://munkireport.example.com",
         "MUNKIREPORT_AUTH_HEADER_NAME": "X-SIMPLEMDM-API-KEY",
+        "MUNKIREPORT_AUTH_HEADER_VALUE": "your-munkireport-token-here",
         "SIMPLEMDM_FLEET_CONCURRENCY": "8"
       }
     }

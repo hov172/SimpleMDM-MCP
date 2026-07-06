@@ -23,7 +23,7 @@ Please **do not** file a public GitHub issue for security reports.
 ## What's in scope
 
 - The server process itself (`src/index.ts`, `src/localAppClient.ts`, `src/wipe.ts`)
-- The published npm package and Docker image build
+- The Docker image build (the package is not yet published to npm)
 - Default permission configuration and the write-gate logic
 - Input validation and URL path sanitization (`seg()`), request
   timeouts/retries, and upstream error-body truncation

@@ -73,12 +73,7 @@ security posture — with a query language like `'type:laptop os:<15 filevault:o
 
 ## Install
 
-### Option A — From npm (recommended)
-```bash
-npm install -g simplemdm-mcp
-```
-
-### Option B — From source
+### Option A — From source (recommended)
 ```bash
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
@@ -87,13 +82,21 @@ npm install
 npm run build
 ```
 
-### Option C — Docker container
+### Option B — Docker container
 ```bash
 git clone https://github.com/hov172/SimpleMDM-MCP
 cd SimpleMDM-MCP
 cp .env.example .env
 docker build -t simplemdm-mcp .
 ```
+
+> **Note:** the package is not yet published to npm — `npm install -g simplemdm-mcp`
+> will not work. Install from source or Docker.
+>
+> **Upgrading a clone from v0.30.3 or earlier:** the repository history was
+> rewritten at v0.30.4 (a committed log file containing tenant data was purged).
+> A plain `git pull` will fail — run
+> `git fetch origin && git reset --hard origin/main` or re-clone.
 
 Edit `.env` and set your required values before running the container.
 
@@ -177,20 +180,6 @@ Open `claude_desktop_config.json` in a text editor. If the file does not exist, 
 {
   "mcpServers": {
     "simplemdm": {
-      "command": "simplemdm-mcp",
-      "env": {
-        "SIMPLEMDM_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-If you installed from source instead of npm, replace `"simplemdm-mcp"` with `"node"` and add the full path as the first argument:
-```json
-{
-  "mcpServers": {
-    "simplemdm": {
       "command": "node",
       "args": ["/path/to/SimpleMDM-MCP/dist/index.js"],
       "env": {
@@ -236,13 +225,6 @@ The `claude` CLI has a built-in `mcp add` subcommand. Pick whichever transport m
 claude mcp add simplemdm \
   -e SIMPLEMDM_API_KEY=your-api-key-here \
   -- docker run --rm -i -v /absolute/path/to/SimpleMDM-MCP/reports:/app/reports simplemdm-mcp
-```
-
-**npm (global install):**
-```bash
-claude mcp add simplemdm \
-  -e SIMPLEMDM_API_KEY=your-api-key-here \
-  -- npx simplemdm-mcp
 ```
 
 **From source:**
@@ -898,7 +880,7 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `SIMPLEMDM_FLEET_CONCURRENCY` | No | `8` | Worker count for fleet-iteration analytics tools. Lower (`4`) if you see 429s; raise (`16`) only if your tenant tolerates it. |
 | `MAC_OS_ELIGIBILITY_OVERRIDE` | No | — | JSON object mapping model-prefix → max-macOS-major. Patches the built-in support table used by `get_os_eligibility` without redeploying. Example: `{"Mac16,":15,"MacBookPro18,":15}`. |
 | `CURRENT_SUPPORTED_OS_OVERRIDE` | No | — | JSON object overriding the currently-shipping major per platform (used as the OS-lag baseline by `get_compliance_violators`). Example: `{"mac":26,"ios":26,"ipad":26}`. Update on each Apple major release. |
-| `LOCAL_APP_MODE` | No | `false` | Set `true` to route requests through the optional Report-SimpleMDM local app bridge instead of calling the SimpleMDM API directly. When enabled, `SIMPLEMDM_API_KEY` is not required. |
+| `LOCAL_APP_MODE` | No | `false` | Set `true` to route bridged requests through the optional Report-SimpleMDM local app bridge. Only the bridged tools work **without** `SIMPLEMDM_API_KEY` (`get_fleet_summary`, `get_security_posture`, the `get_munkireport_*` tools, and the filevault report resource) — all other tools still call the SimpleMDM API directly and require the key. |
 | `LOCAL_APP_BASE_URL` | No | `http://127.0.0.1:49552` | Base URL of the local app bridge (used only when `LOCAL_APP_MODE=true`). |
 | `LOCAL_APP_TOKEN` | No | — | Bearer token for the local app bridge. **Required** when `LOCAL_APP_MODE=true`. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
