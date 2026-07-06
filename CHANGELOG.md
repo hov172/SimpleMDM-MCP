@@ -6,6 +6,33 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.30.4] - 2026-07-06
+
+Correctness and security patch from a full-codebase review: eleven fixes, no new tools, no tool-schema changes.
+
+### Security
+- Removed `mcp.log` — a committed MCP session transcript containing live tenant data (device-group names, device IDs, app inventory) — from the repository **and from all git history**. The history rewrite changed every commit SHA and tag from v0.4.0 onward: **existing clones must be re-cloned**. The one-off scratch scripts `full_scan.mjs`/`summarize.mjs` were untracked alongside it, and the `.gitignore` now covers all three.
+- Local-only planning docs (`docs/superpowers/`) can no longer ship in an npm tarball: `docs/.npmignore` excludes them even though `"docs"` is in the package `files` whitelist (npm packs from disk, not git; verified with `npm pack --dry-run`).
+
+### Fixed
+- `wipe_device` Return-to-Service was unusable: the arg validator compared `typeof` against the literal `"integer"`, so `wifi_network_id` — the only integer-typed parameter — was rejected for **every** input. Integer params now accept whole JS numbers and still reject fractions and strings.
+- Dynamic `generate_report` with the `posture` adapter produced entirely wrong security data: it fed normalized `DeviceRecord`s into `evaluateDevice()`, which reads raw API field names, so every device evaluated as `platform:"unknown"` with FileVault/SIP/Firewall passing vacuously and current OSes flagged end-of-life. The adapter now evaluates the raw device shape (same as the audit path) and keeps the resolved group name.
+- The logs (forensic/legal) export silently dropped devices whose log fetch failed while `summary.txt` hardcoded `Failed devices: 0` and the manifest attested completeness. Failures (including missing-serial skips) are now recorded in the report body, `summary.txt`, the manifest completeness disclosure (flips to `PARTIAL EXPORT`), and the CLI partial flag (exit 2 without `--allow-partial`).
+- Cache invalidation gaps broke the "write → read to verify" agent loop: per-device assignment writes (`assign_profile_to_device`, `uninstall_app`, …) and group-level app/profile pushes now invalidate the `/devices/{id}/…` sub-resource caches; `set_managed_app_config_schema` was the only write tool missing from the invalidation map entirely (a new test enforces full coverage). Separately, a pagination in flight when a write invalidated could re-cache pre-write data for a full TTL — paginations now snapshot a generation counter and skip caching if an invalidation landed mid-flight.
+- Battery normalization inverted the most critical reading: `"1%"` became 100% (treated as a 0-1 fraction) and `0%` was dropped outright, so the devices most in need of flagging were excluded from `get_storage_health` and `get_battery_health_report`. Percent-suffixed strings are now always percentages; only bare numbers strictly below 1 are treated as fractions.
+- `get_device_full_profile` with a `serial_number` silently fell back to the **first search hit** when no exact serial matched — returning a full dossier for the wrong device. It now errors, listing near matches.
+- `get_pending_commands` reported permanent false positives when `/logs` entries lack `command_uuid`: the fallback pairing key embedded the event name and timestamp, so a `…sent` entry could never be matched by its `…acknowledged` entry. Events now pair by device + command family.
+- Fleet tools in a keyless `LOCAL_APP_MODE` failed with an opaque `SimpleMDM 401`; they now fail fast naming `SIMPLEMDM_API_KEY` and the two tools that work without it.
+- `check_for_update` had no fetch timeout (a stalled GitHub connection hung the tool for minutes); now bounded at 10 s like every other outbound call.
+- Markdown tables in dynamic reports and the SOFA audit body now escape `|` in cell values, so a device named e.g. `Loaner | Library iPad` no longer splits its table row (CSVs were always correct).
+
+### Changed
+- Inventory test fixtures use the realistic `Apple Silicon` processor-architecture value instead of `arm64` (test-only; no behavior change).
+
+### Documentation
+- Corrected the version-bump skill's lockfile guidance (version lives in `package.json` **and** two spots in `package-lock.json`) and switched doc examples to the `type:mac` alias.
+- Documented that `dep_enrolled` (current DEP state, server tools) and `is_dep_enrollment` (enrollment channel, inventory `dep` column) are **distinct real API fields** — verified against 478 device snapshots — so neither should be "unified" into the other.
+
 ## [0.30.3] - 2026-06-26
 
 ### Fixed
