@@ -27,7 +27,8 @@ export const REGISTRY: Record<string, RegistryEntry> = {
       const scopeLabel = sel
         ? sel.kind === "group" ? `group "${sel.value}"`
           : sel.kind === "serial" ? `serial ${(sel.value as string[]).join(",")}`
-          : `last-seen ${sel.value}`
+          : sel.kind === "last-seen" ? `last-seen ${sel.value}`
+          : "whole fleet"
         : "whole fleet";
       return (
         `SOFA Audit ${input.dateStr}\nScope: ${scopeLabel}\n` +
@@ -55,7 +56,8 @@ export const REGISTRY: Record<string, RegistryEntry> = {
       const scopeLabel = sel
         ? sel.kind === "group" ? `group "${sel.value}"`
           : sel.kind === "serial" ? `serial ${(sel.value as string[]).join(",")}`
-          : `last-seen ${sel.value}`
+          : sel.kind === "last-seen" ? `last-seen ${sel.value}`
+          : "whole fleet"
         : "whole fleet";
       const undetermined = records.filter((r: any) => r.match_status === "unknown").length;
       const fleetCount: number | undefined = input.fleetCount;

@@ -218,3 +218,20 @@ test("classifySectionError: 422 not-enrolled is a limitation; 429/500 are failur
   assert.equal(classifySectionError("SimpleMDM /devices/1/users failed 500"), "failure");
   assert.equal(classifySectionError("fetch failed: ECONNRESET"), "failure");
 });
+
+// ── Whole-fleet scope label ────────────────────────────────────────────────────
+// Regression: the --all selector is {kind:"all", value:true}, and both summary
+// ternaries fell through to the last-seen branch, printing "Scope: last-seen true".
+
+test("inventory summaryText: --all scope prints 'whole fleet', not 'last-seen true'", () => {
+  const text = REGISTRY.inventory.summaryText(buildInventoryInput(), { scope: { kind: "all", value: true } });
+  assert.match(text, /Scope: whole fleet/);
+  assert.doesNotMatch(text, /last-seen true/);
+});
+
+test("audit summaryText: --all scope prints 'whole fleet', not 'last-seen true'", () => {
+  const input = { summary: { total: 3, withIssues: 1, osOutdated: 1, noFileVault: 0, noSip: 0, noFirewall: 0, xprotectOutdated: 0, xprotectCollected: false, unfixedCves: 0 }, dateStr: "2026-07-06" };
+  const text = REGISTRY.audit.summaryText(input, { scope: { kind: "all", value: true } });
+  assert.match(text, /Scope: whole fleet/);
+  assert.doesNotMatch(text, /last-seen true/);
+});
