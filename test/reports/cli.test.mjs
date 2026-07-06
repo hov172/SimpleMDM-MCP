@@ -519,3 +519,28 @@ test("a flag-shaped value is not rejected as an unknown flag", async () => {
     "value positions must be exempt from flag validation",
   );
 });
+
+// ── --findings-exclude (noise control) ─────────────────────────────────────────
+// assigned-app-missing was 98% of a 3,695-finding run, drowning the actionable
+// signals; the flag drops named finding types with an explicit summary note.
+
+test("inventory --findings-exclude drops the type and notes it in summary.txt", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "findings-excl-"));
+  try {
+    const stub = {
+      ...buildInventoryInput(),
+      findings: [
+        { type: "assigned-app-missing", status: "unknown", serial: "S1", name: "X", detail: "noise" },
+        { type: "assigned-app-missing", status: "unknown", serial: "S2", name: "Y", detail: "noise" },
+        { type: "device-stale", status: "flag", serial: "S3", name: "Z", detail: "not seen 30d" },
+      ],
+    };
+    await runCli(
+      ["inventory", "--serial", "ABC", "--format", "md", "--out", tmp, "--findings-exclude", "assigned-app-missing"],
+      { fetchInput: async () => stub },
+    );
+    const summary = readFileSync(join(tmp, "summary.txt"), "utf8");
+    assert.match(summary, /Findings: 1\b/, `summary must count only remaining findings:\n${summary}`);
+    assert.match(summary, /xcluded by flag: assigned-app-missing \(2\)/, "must disclose what was dropped");
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});

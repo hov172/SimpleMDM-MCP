@@ -44,6 +44,7 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 | `--no-apps` / `--no-profiles` / `--no-users` | skip a per-device section entirely (its CSV is skipped; a query referencing it errors) |
 | `--raw` | write `raw/devices.json` (redacted — see Secrets) |
 | `--allow-partial` | exit 0 despite failed per-device fetches (default exit 2 — see Completeness) |
+| `--findings-exclude <types>` | drop comma-listed finding types from the report (noise control); excluded counts are disclosed in `summary.txt` |
 | `--report-only` | write only the rendered report + `summary.txt` + `manifest.sha256` — plus `report-table.csv` for roster/flat styles; skips all data CSVs (`devices.csv`, rollups, findings, apps/profiles/users, assigned-*). Not valid with `--format csv` |
 | `--out <dir>` | output directory (default `reports/inventory-YYYY-MM-DD/`, auto-suffixed `-2`, `-3`… if it exists) |
 
@@ -141,7 +142,11 @@ a rollup table plus one compact table per type:
 ## Completeness model (partial data is never silent)
 
 Every per-device section (`apps`, `profiles`, `users`) tracks `ok` / `failed` /
-`skipped`. When a fetch **fails**:
+`skipped` / `unavailable`. A deterministic `422 device is not enrolled` (an
+unenrolled device still listed by `/devices` — no live MDM channel; retrying
+never helps) is recorded as a **known limitation** (`unavailable`): disclosed in
+`summary.txt`, but it does **not** mark the export PARTIAL — only transient
+failures (429/5xx/network) do. When a fetch **fails**:
 
 - query terms needing that section evaluate to **undetermined** — the device is included
   and flagged (`match_reasons` says why), never silently dropped or counted as a non-match;
@@ -336,3 +341,17 @@ The inventory report is one report in the **unified TypeScript report engine** u
 | `src/reports/domain/inventory-render.ts` | CSV row builders, rollups, findings, markdown dossier (incl. roster/flat tables) |
 | `src/reports/engine/{theme,document,dossier,extras}.ts` | shared rendering pipeline: A3/A4 theme + PDF, plus always-on bundle artifacts (`manifest.sha256`, `<dir>.zip`, and `report-table.xlsx` for roster/flat) |
 | `test/golden-parity.test.mjs` + the `test/golden/inventory/` fixtures | byte-compare the engine output against committed fixtures (no network) |
+
+
+## Comparing two runs (`diff`)
+
+```bash
+node dist/reports/cli.js diff reports/inventory-<older> reports/inventory-<newer>
+```
+
+Compares `devices.csv` + `findings.csv` between two run directories and writes
+`diff-vs-<older>.md` into the newer one: devices added/removed, meaningful field
+changes (OS, FileVault, SIP, firewall, group, supervision, …; volatile fields
+like `seen_at`/battery/storage are ignored), and findings new vs resolved.
+Purely local — no API calls. Also available as the `run_report_diff` MCP tool
+(both paths must live under `reports/`).

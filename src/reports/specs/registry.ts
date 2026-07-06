@@ -69,6 +69,9 @@ export const REGISTRY: Record<string, RegistryEntry> = {
         `Devices: ${records.length} matched (of ${rawById?.size ?? "?"} selected${fleetCount != null ? `, fleet ${fleetCount}` : ""})`,
         undetermined ? `Undetermined matches (included, flagged): ${undetermined}` : null,
         `Findings: ${findings.length}${unknownFindings ? ` (${unknownFindings} unknown)` : ""}`,
+        (input.findingsExcluded as any[] | undefined)?.length
+          ? `Findings excluded by flag: ${(input.findingsExcluded as any[]).map((x: any) => `${x.type} (${x.count})`).join(", ")}`
+          : null,
         findings.length
           ? `Findings by type: ${[...findings.reduce((m: Map<string, number>, f: any) => m.set(f.type, (m.get(f.type) ?? 0) + 1), new Map<string, number>())].map(([t, n]) => `${t} ${n}`).join(" | ")}`
           : null,
@@ -77,6 +80,10 @@ export const REGISTRY: Record<string, RegistryEntry> = {
           ? `Failed section fetches: ${failures.length} — export is PARTIAL`
           : "Failed section fetches: 0",
         ...failures.map((f: any) => `  failed: ${f.serial} ${f.section} — ${f.message}`),
+        (input.limitations as any[] | undefined)?.length
+          ? `Known device limitations (not failures): ${(input.limitations as any[]).length} — deterministic 422s (device not enrolled); retrying never helps`
+          : null,
+        ...((input.limitations as any[] | undefined) ?? []).map((f: any) => `  limitation: ${f.serial} ${f.section} — ${f.message}`),
         opts?.outDir ? `Output: ${opts.outDir}` : null,
       ];
       return lines.filter(Boolean).join("\n") + "\n";

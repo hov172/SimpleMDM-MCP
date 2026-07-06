@@ -56,6 +56,7 @@ export interface RunReportOpts {
   // logs-specific opts
   withSecurity?: boolean;
   withInventory?: boolean;
+  findingsExclude?: string[];
   // global opts
   noNetworkCache?: boolean;
   // audit-specific: PDF/HTML page size ("a3-landscape" roomy default | "a4-landscape" compact)
@@ -118,6 +119,18 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
     input.scopeLabel = scopeLabelOf(opts.scope, opts.search);
   }
 
+  // --findings-exclude: drop named finding types (noise control), disclosing the
+  // excluded counts in summary.txt rather than silently shrinking the report.
+  if (opts.findingsExclude?.length && Array.isArray(input.findings)) {
+    const excluded = new Set(opts.findingsExclude);
+    const counts = new Map<string, number>();
+    for (const f of input.findings as any[]) {
+      if (excluded.has(f.type)) counts.set(f.type, (counts.get(f.type) ?? 0) + 1);
+    }
+    input.findings = (input.findings as any[]).filter((f) => !excluded.has(f.type));
+    input.findingsExcluded = [...counts].map(([type, count]) => ({ type, count }));
+  }
+
   const dossier = entry.build(input, entryOpts);
   mkdirSync(opts.outDir, { recursive: true });
   const result = await dossier.write(opts.outDir, { format: opts.format, reportOnly: opts.reportOnly, ...entry.writeOpts });
@@ -157,8 +170,30 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const reportName = argv[0];
   if (!reportName || reportName.startsWith("--")) {
     throw new Error(
-      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs)",
+      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs)  |  diff <beforeDir> <afterDir>",
     );
+  }
+
+  // `diff <beforeDir> <afterDir>` — compare two inventory run directories.
+  // Purely local; writes diff-vs-<before>.md into the after directory.
+  if (reportName === "diff") {
+    const [dirBefore, dirAfter] = [argv[1], argv[2]];
+    if (!dirBefore || !dirAfter) throw new Error("Usage: diff <beforeDir> <afterDir>");
+    const { diffInventoryRuns, renderDiffMarkdown } = await import("./domain/diff.js");
+    const { basename } = await import("node:path");
+    const d = diffInventoryRuns(dirBefore, dirAfter);
+    const md = renderDiffMarkdown(d, dirBefore, dirAfter);
+    const name = `diff-vs-${basename(dirBefore)}.md`;
+    writeFileSync(join(dirAfter, name), md);
+    console.log(`Devices: +${d.devicesAdded.length} -${d.devicesRemoved.length} ~${d.changed.length} changed · Findings: +${d.findingsNew.length} new, ${d.findingsResolved.length} resolved`);
+    console.log(`  ${name}`);
+    return {
+      outDir: dirAfter,
+      files: [{ name, description: "Inventory diff report", rows: null, sha256: "" }],
+      manifestSha256: "",
+      skipped: [],
+      partial: false,
+    };
   }
   const entry = REGISTRY[reportName];
   if (!entry) {
@@ -174,7 +209,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   // satisfies has("--confirm-all") and bypasses the whole-fleet guard.
   const VALUE_FLAGS = new Set([
     "--serial", "--group", "--last-seen", "--format", "--out", "--report-detail",
-    "--search", "--report-style", "--sort", "--page-size",
+    "--search", "--report-style", "--sort", "--page-size", "--findings-exclude",
   ]);
   const valuePos = new Set<number>();
   for (let i = 0; i < flags.length; i++) {
@@ -196,7 +231,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   ]);
   const INVENTORY_ONLY_FLAGS = new Set([
     "--search", "--no-apps", "--no-profiles", "--no-users",
-    "--report-style", "--sort", "--allow-partial", "--raw",
+    "--report-style", "--sort", "--allow-partial", "--raw", "--findings-exclude",
   ]);
   const LOGS_ONLY_FLAGS = new Set([
     "--with-security", "--with-inventory",
@@ -298,6 +333,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const noProfiles = has("--no-profiles");
   const noUsers = has("--no-users");
   const allowPartial = has("--allow-partial");
+  const findingsExclude = (val("--findings-exclude") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const reportDetailRaw = val("--report-detail");
   const reportStyleRaw = val("--report-style");
   const sortRaw = val("--sort");
@@ -353,6 +389,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     sort,
     search: searchQuery,
     raw, withSecurity, withInventory, noNetworkCache, pageStyle,
+    findingsExclude: findingsExclude.length ? findingsExclude : undefined,
   }, { ...deps, log: deps?.log ?? console.log });
 }
 

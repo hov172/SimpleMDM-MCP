@@ -53,6 +53,12 @@ const nowIsoFn = () => new Date().toISOString();
 // Account name + license counts for the report header. Best-effort: a failure here
 // must never abort a report, so it degrades to null (the header simply omits the line).
 export interface AccountInfo { name: string; total: number | null; available: number | null }
+// A per-device section error is a known LIMITATION (deterministic, retrying
+// never helps) only for `422 not enrolled`; everything else is a real failure.
+export function classifySectionError(message: string): "limitation" | "failure" {
+  return /failed 422\b/.test(message) ? "limitation" : "failure";
+}
+
 async function fetchAccountSafe(apiKey: string): Promise<AccountInfo | null> {
   try {
     const { fetchAccount } = await import("../../../scripts/lib/simplemdm.mjs");
@@ -157,33 +163,42 @@ export async function inventoryInputLive(
   const records: any[] = selectedRaw.map((d: any) =>
     normalizeDevice(d, { dgMap, agNames, agAppsByDevice: agApps, models, profileAssign }));
 
-  // Per-device section fetches: skip sections requested via opts, track failures.
-  // Expected, non-transient failure: an UNENROLLED device (status "unenrolled",
-  // empty enrollment_channels) is still listed by /devices, but its per-device
-  // endpoints return `422 device is not enrolled` — there is no live MDM channel to
-  // query. We record it as a normal section failure, so a whole-fleet run that
-  // includes stale unenrolled devices is reported PARTIAL (exit 2 unless
-  // --allow-partial). Retrying does not help; scope with status:enrolled to avoid it.
-  // See docs/inventory.md → "Completeness model".
+  // Per-device section fetches: skip sections requested via opts; classify errors.
+  // A deterministic `422 device is not enrolled` (unenrolled device still listed by
+  // /devices — no live MDM channel to query) is a KNOWN LIMITATION: disclosed, but
+  // it must not permanently stamp every whole-fleet export PARTIAL. Transient
+  // errors (429/5xx/network) remain true failures that mark the export partial
+  // (exit 2 unless --allow-partial). See docs/inventory.md → "Completeness model".
   const failures: Array<{ serial: string; section: string; message: string }> = [];
+  const limitations: Array<{ serial: string; section: string; message: string }> = [];
+  const record = (r: any, section: "apps" | "profiles" | "users", e: unknown) => {
+    const message = (e as Error).message ?? String(e);
+    if (classifySectionError(message) === "limitation") {
+      r.sections[section] = "unavailable";
+      limitations.push({ serial: r.serial, section, message });
+    } else {
+      r.sections[section] = "failed";
+      failures.push({ serial: r.serial, section, message });
+    }
+  };
   for (const r of records) {
     if (opts.noApps) {
       r.sections.apps = "skipped";
     } else {
       try { r.apps = normalizeApps(await fetchDeviceApps(apiKey, r.id)); r.sections.apps = "ok"; }
-      catch (e) { r.sections.apps = "failed"; failures.push({ serial: r.serial, section: "apps", message: (e as Error).message ?? String(e) }); }
+      catch (e) { record(r, "apps", e); }
     }
     if (opts.noProfiles) {
       r.sections.profiles = "skipped";
     } else {
       try { r.profiles = normalizeProfiles(await fetchDeviceProfiles(apiKey, r.id)); r.sections.profiles = "ok"; }
-      catch (e) { r.sections.profiles = "failed"; failures.push({ serial: r.serial, section: "profiles", message: (e as Error).message ?? String(e) }); }
+      catch (e) { record(r, "profiles", e); }
     }
     if (opts.noUsers) {
       r.sections.users = "skipped";
     } else {
       try { r.users = normalizeUsers(await fetchDeviceUsers(apiKey, r.id)); r.sections.users = "ok"; }
-      catch (e) { r.sections.users = "failed"; failures.push({ serial: r.serial, section: "users", message: (e as Error).message ?? String(e) }); }
+      catch (e) { record(r, "users", e); }
     }
     r.match_reasons = "";
     r.match_status = "matched";
@@ -191,7 +206,7 @@ export async function inventoryInputLive(
   }
 
   const findings = inventoryFindings(records);
-  return { records, findings, dateStr: todayStr(), failures, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])), fleetCount: rawDevices.length, account: await fetchAccountSafe(apiKey) };
+  return { records, findings, dateStr: todayStr(), failures, limitations, rawById: new Map(selectedRaw.map((d: any) => [d.id, d])), fleetCount: rawDevices.length, account: await fetchAccountSafe(apiKey) };
 }
 
 // ── Logs ──────────────────────────────────────────────────────────────────────

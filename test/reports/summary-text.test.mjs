@@ -192,3 +192,29 @@ test("logs summaryText: zero failures still prints Failed devices: 0", () => {
   const text = REGISTRY.logs.summaryText(buildLogsInput(), {});
   assert.match(text, /Failed devices: 0/);
 });
+
+// ── Deterministic 422 limitations vs real failures ─────────────────────────────
+// The same unenrolled devices 422 on /users every run, permanently stamping
+// whole-fleet exports PARTIAL and eroding their evidentiary value. Known
+// limitations are disclosed separately and do NOT mark the export partial.
+
+test("inventory summaryText: known limitations are disclosed but not counted as failures", () => {
+  const input = buildInventoryInput();
+  input.failures = [];
+  input.limitations = [
+    { serial: "UNENROLLED1", section: "users", message: "SimpleMDM /devices/1118448/users failed 422 — device not enrolled" },
+  ];
+  const text = REGISTRY.inventory.summaryText(input, {});
+  assert.match(text, /Failed section fetches: 0/);
+  assert.doesNotMatch(text, /export is PARTIAL/);
+  assert.match(text, /Known device limitations \(not failures\): 1/);
+  assert.match(text, /UNENROLLED1 users/);
+});
+
+test("classifySectionError: 422 not-enrolled is a limitation; 429/500 are failures", async () => {
+  const { classifySectionError } = await import("../../dist/reports/cli/inputs.js");
+  assert.equal(classifySectionError("SimpleMDM /devices/1118448/users failed 422"), "limitation");
+  assert.equal(classifySectionError("SimpleMDM /devices/1/users failed 429"), "failure");
+  assert.equal(classifySectionError("SimpleMDM /devices/1/users failed 500"), "failure");
+  assert.equal(classifySectionError("fetch failed: ECONNRESET"), "failure");
+});
