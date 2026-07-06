@@ -187,6 +187,36 @@ test("securityPosture calls no mutating client method (read-only, 6th method)", 
   );
 });
 
+// Regression: securityPosture must evaluate the RAW device shape, not the normalized
+// DeviceRecord — evaluateDevice reads raw-API keys (product_name, filevault_enabled,
+// last_seen_at). Feeding it DeviceRecords made every device "unknown" platform with
+// all Mac security checks passing vacuously.
+test("securityPosture evaluates real device fields (platform, FileVault, findings)", async () => {
+  const stubFetchJson = async (url) => {
+    if (url.includes("macos")) return sofaMacos;
+    if (url.includes("ios")) return sofaIos;
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  const ds = new ServerDataSource(makeMockClient(rawDevices), 200, stubFetchJson);
+  const results = await ds.securityPosture({ kind: "all" });
+
+  assert.ok(results.every((r) => r.platform === "macOS"),
+    `all fixture devices are Macs; got platforms: ${results.map((r) => r.platform).join(", ")}`);
+  assert.ok(results.every((r) => r.lastSeen != null), "lastSeen must come through from last_seen_at");
+
+  const imac = results.find((r) => r.serial === "D25BBB222");
+  assert.ok(imac, "iMac fixture must be present");
+  assert.equal(imac.filevaultOk, false, "FileVault-off iMac must fail the FileVault check");
+  assert.ok(imac.findings.includes("FileVault disabled"), `findings: ${imac.findings.join("; ")}`);
+  assert.ok(imac.findings.includes("Firewall disabled"), `findings: ${imac.findings.join("; ")}`);
+
+  const mbp = results.find((r) => r.serial === "C02AAA111");
+  assert.ok(mbp, "MacBookPro fixture must be present");
+  assert.equal(mbp.filevaultOk, true);
+  assert.equal(mbp.hasFilevault, true, "hasFilevault must reflect raw filevault_enabled");
+  assert.equal(mbp.model, "MacBookPro18,1");
+});
+
 // 2.4c: logs() must not silently drop data when it hits the page cap while the API
 // still reports has_more — a forensic/legal export should error, not truncate quietly.
 test("logs() throws (not silently truncates) when the page cap is hit with has_more", async () => {

@@ -3,6 +3,7 @@ import type { DeviceRecord } from "../domain/inventory.js";
 import type { EvaluatedDevice } from "../domain/sofa-eval.js";
 import { normalizeDevice } from "../domain/inventory.js";
 import { buildMajorTables, evaluateDevice } from "../domain/sofa-eval.js";
+import { flatten } from "../../../scripts/lib/simplemdm.mjs";
 
 export type ClientFn = (path: string, opts?: RequestInit) => Promise<unknown>;
 
@@ -149,6 +150,11 @@ export class ServerDataSource implements DataSource {
     ]);
     const tables = buildMajorTables(macFeed as any, iosFeed as any);
     const devs = await this.devices(scope);
-    return devs.map((d) => evaluateDevice(d as unknown as Record<string, unknown>, tables));
+    // evaluateDevice reads the RAW API field names (product_name, filevault_enabled,
+    // last_seen_at, ...) — evaluate flatten(raw), same as the audit CLI path, and keep
+    // the resolved group name from the normalized record for display.
+    return devs.map((d) =>
+      evaluateDevice({ ...flatten(d.raw), device_group: d.device_group }, tables)
+    );
   }
 }
