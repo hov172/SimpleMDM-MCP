@@ -860,10 +860,10 @@ Destructive prompts (offboarding, stale cleanup) include explicit guards: the LL
 - Enrollment: read
 
 **With writes enabled** — add whichever write domains you need:
-- Devices: write (lock, sync, restart, shutdown, lost mode, OS update, script jobs)
+- Devices: write (lock, sync, restart, shutdown, lost mode, OS update, script jobs, inventory refresh, activation-lock disable, push message)
 - Assignment Groups: write (assign/unassign devices, push apps)
 
-Start with read-only. Add write permissions only if you need them, and only for the specific domains required.
+Start with read-only. Add write permissions only if you need them, and only for the specific domains required. Two independent gates apply: the server's `SIMPLEMDM_ALLOW_WRITES=true` env flag AND the key's SimpleMDM-side permission — a write tool answers "Write actions are disabled" when the env flag is off, and `SimpleMDM 403` when the key lacks the scope. Both messages tell you which gate to open.
 
 ---
 
