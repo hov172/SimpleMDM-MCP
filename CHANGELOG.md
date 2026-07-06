@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-07-06
+
+Tool-gap release from a usage- and API-surface analysis: seven new tools (182 → 189) and two report-quality changes. New endpoints were verified against the live tenant first — the three new device POSTs return 403 (missing API-key write scope), not 404, so enable the scopes in SimpleMDM Settings → API Keys to use them.
+
+### Added
+- **`download_custom_configuration_profile` / `download_custom_declaration`** — the `/download` endpoints were entirely unexposed: the server could not read (or back up) what a custom profile actually contains, and a deleted hand-crafted mobileconfig was unrecoverable. Live-verified (200, `application/x-apple-aspen-config`).
+- **`run_config_backup`** — disaster-recovery export of the tenant's reproducible configuration: every custom profile's downloaded mobileconfig, custom declarations, scripts (with content), assignment/device groups, and custom attributes, with a sha256 manifest, under `reports/config-backup-<timestamp>/`. Per-item download failures are recorded (`partial: true`) without aborting. Native SimpleMDM-built profiles have no download endpoint — metadata only.
+- **`refresh_device_inventory`** (`POST /devices/{id}/refresh`) — request fresh device info + app inventory after remediation instead of waiting for the next natural check-in. SimpleMDM throttles per device.
+- **`disable_activation_lock`** (standalone, destructive-annotated) and **`push_message`** (max 225 chars, requires the SimpleMDM mobile app) — reinstated: the routes exist (verified live; the June 6 "phantom endpoint" verdict was wrong — the message endpoint is `push_message`, not `send_message`).
+- **`run_report_diff`** + CLI `diff <before> <after>` — compare two inventory report runs: devices added/removed, meaningful field changes (OS, FileVault, SIP, firewall, group, …; volatile per-check-in fields ignored), findings new vs resolved. Answers "what changed since the last audit" — the same report had been re-run six times in a day for lack of it. Purely local; MCP tool paths restricted to `reports/`.
+
+### Changed
+- **`sync_device` description corrected**: it calls `POST /devices/{id}/push_apps` (re-push assigned apps) and never was a device check-in; the description now says so and points to `refresh_device_inventory`.
+- **Deterministic `422 device is not enrolled` per-device fetches are now known limitations, not failures**: disclosed in `summary.txt` (`sections` value `unavailable`) but no longer stamping every whole-fleet inventory export PARTIAL forever — two permanently unenrolled devices had marked every run since June 22. Transient errors (429/5xx/network) still mark the export PARTIAL (exit 2 without `--allow-partial`).
+- **`--findings-exclude <types>`** (CLI + `run_inventory_report` arg) — drop noisy finding types from the report (one type was 98% of a 3,695-finding run), with excluded counts disclosed in `summary.txt`.
+
 ## [0.30.5] - 2026-07-06
 
 Second-pass review patch: an adversarial review of v0.30.4 plus a deep pass over previously unreviewed modules (Apple schema tooling, report support libraries, docs). No new tools; one tool description clarified.
