@@ -46,21 +46,10 @@ export function flatten(d) {
 
 // id -> name map of all device groups.
 export async function fetchDeviceGroups(apiKey) {
-  if (!apiKey) throw new Error("Missing SIMPLEMDM_API_KEY");
+  // Route through getAll so 429s retry like every other fetcher — every report
+  // calls this up front, so a single rate-limit hit aborted the whole run.
   const map = new Map();
-  let after;
-  for (;;) {
-    const url = new URL(`${BASE}/device_groups`);
-    url.searchParams.set("limit", "100");
-    if (after) url.searchParams.set("starting_after", String(after));
-    const res = await fetch(url, { headers: { Authorization: authHeader(apiKey) } });
-    if (!res.ok) throw new Error(`SimpleMDM /device_groups failed ${res.status}`);
-    const page = await res.json();
-    const data = page.data ?? [];
-    for (const g of data) map.set(g.id, g.attributes?.name ?? String(g.id));
-    if (!page.has_more || data.length === 0) break;
-    after = data[data.length - 1].id;
-  }
+  for (const g of await getAll(apiKey, `/device_groups`)) map.set(g.id, g.attributes?.name ?? String(g.id));
   return map;
 }
 

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
 
 const FEEDS = {
@@ -12,24 +12,46 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// A feed without OSVersions would silently evaluate every device as "untracked"
+// with zero CVE data — refuse it rather than cache it as truth for 24h.
+function assertFeedShape(data, source) {
+  if (!data || !Array.isArray(data.OSVersions) || data.OSVersions.length === 0) {
+    throw new Error(`SOFA feed from ${source} has no OSVersions — refusing to use it`);
+  }
+  return data;
+}
+
+// Guarded read: a truncated/corrupt or wrong-shaped cache file returns null so
+// callers fall back to a fetch instead of throwing a raw SyntaxError until the
+// file ages out.
+function readCached(path) {
+  try {
+    return assertFeedShape(JSON.parse(readFileSync(path, "utf8")), path);
+  } catch {
+    return null;
+  }
+}
+
 // cacheDir: where to read/write cached copies; maxAgeMs: reuse cache if newer
 export async function loadSofa(cacheDir, { noCache = false, maxAgeMs = 86400000 } = {}) {
   const out = {};
   for (const [key, url] of Object.entries(FEEDS)) {
     const path = `${cacheDir}/sofa-${key}.json`;
-    let data;
+    let data = null;
     const fresh = !noCache && existsSync(path) && (Date.now() - statSync(path).mtimeMs) < maxAgeMs;
-    if (fresh) {
-      data = JSON.parse(readFileSync(path, "utf8"));
-    } else {
+    if (fresh) data = readCached(path);
+    if (!data) {
       try {
-        data = await fetchJson(url);
+        data = assertFeedShape(await fetchJson(url), url);
         mkdirSync(dirname(path), { recursive: true });
-        writeFileSync(path, JSON.stringify(data));
+        // Atomic temp+rename: a crash mid-write must not leave a truncated cache.
+        writeFileSync(`${path}.tmp`, JSON.stringify(data));
+        renameSync(`${path}.tmp`, path);
       } catch (err) {
-        if (existsSync(path)) {
+        const cached = existsSync(path) ? readCached(path) : null;
+        if (cached) {
           console.warn(`WARN: ${err.message} — using cached ${path}`);
-          data = JSON.parse(readFileSync(path, "utf8"));
+          data = cached;
         } else {
           throw err;
         }
