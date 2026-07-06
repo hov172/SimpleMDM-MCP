@@ -6,6 +6,9 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Documentation
+- README restructured for navigability (1,143 → ~614 lines): Quick Start now precedes Install; the three report sections are ~20-line summaries linking to their `docs/` deep dives (which are now the single source for flags/outputs/query reference — the "Say this to Claude" prompt tables moved there); Codex/ChatGPT/other-client walkthroughs moved to `examples/README.md`; the Claude Code permission templates moved to `docs/claude-code-permissions.md`; new `docs/README.md` index. No facts changed — content relocated to end the README-vs-docs dual maintenance that caused repeated drift.
+
 ## [0.31.1] - 2026-07-06
 
 Documentation deep-dive plus four small fixes. No new tools, no tool-schema changes.

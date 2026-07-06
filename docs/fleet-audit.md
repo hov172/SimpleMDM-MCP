@@ -70,6 +70,20 @@ command instead of cross-referencing spreadsheets by hand.
 
 ## Running it
 
+In Claude Code (inside this repo), the **`/audit`** skill maps your words to flags:
+
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"run a fleet security audit"* | whole fleet, all formats (default) |
+| *"run a security audit, CSV only"* | `--format csv` |
+| *"export the SOFA audit as a Word doc"* / *"…as a PDF"* | `--format docx` / `all` |
+| *"run a security audit on the Faculty group"* | `--group "Faculty"` (device **or** assignment group) |
+| *"audit serials C02ABC123, C02DEF456"* | `--serial C02ABC123,C02DEF456` |
+| *"audit the 25 most recently seen devices"* | `--last-seen 25` |
+| *"re-run the audit with a fresh SOFA feed"* | `--no-network-cache` |
+
+Scoped prompts (a group, serials, or "most recent N") also trim the **Vulnerability Check** to the OS versions those devices are on.
+
 In Claude Code, ask for it (the `/audit` skill runs the engine):
 
 > `/audit` · *"run a fleet security audit"* · *"export the SOFA report as a Word doc"*

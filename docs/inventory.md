@@ -20,6 +20,25 @@ Siblings: [`/audit`](fleet-audit.md) (fleet security posture vs SOFA) and
   real footer page numbers) with headless-Chrome fallback — the same shared engine
   pipeline (`src/reports/engine/`) as the other two reports.
 
+## Example prompts
+
+In Claude Code (inside this repo), the **`/inventory`** skill maps your words to flags:
+
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"inventory of all faculty and staff devices seen since 2025"* | `--search 'group:faculty,staff seen:>=2025-01-01'` |
+| *"which MacBooks are still on macOS 14 or older, excluding loaners?"* | `--search 'type:laptop os:<15 -group:loaners'` |
+| *"which devices are assigned Zoom but don't have it installed?"* | `--search 'assigned:zoom -app:zoom' --confirm-all` |
+| *"Intel Macs without FileVault, seen in the last 90 days"* | `--search 'arch:intel filevault:off seen:90d'` |
+| *"Macs with Remote Desktop enabled"* | `--search 'ard:on type:mac'` |
+| *"devices with less than 20 GB free"* | `--search 'storage:<20'` |
+| *"inventory the Library group with full app detail as a PDF"* | `--group "Library" --report-detail full --format all` |
+| *"full inventory of the 5 most recently seen devices"* | `--last-seen 5 --report-detail full` |
+| *"which devices haven't checked in for 90 days?"* | `--search '-seen:90d'` |
+| *"FileVault on but recovery key not escrowed"* | `--search 'filevault:on recoverykey:no'` |
+| *"who owns MAC address a4:83:e7…?"* | `--search 'mac:a4:83:e7*'` |
+| *"a roster of the faculty and staff machines I can hand to the department"* | `--search 'devicegroup:faculty,staff' --report-style roster` |
+
 ## CLI
 
 ```bash

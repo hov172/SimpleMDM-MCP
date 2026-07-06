@@ -27,6 +27,17 @@ and the in-process `generate_report` MCP tool (catalog mode `report: "logs"`). I
 
 ## Running it
 
+In Claude Code (inside this repo), the **`/logs-audit`** skill maps your words to flags:
+
+| Say this to Claude | What it runs |
+|--------------------|--------------|
+| *"export the activity logs for serial C02ABC123XYZ"* | `--serial C02ABC123XYZ` |
+| *"audit the Faculty group's device logs, with inventory and security"* | `--group "Faculty" --with-inventory --with-security` |
+| *"forensic log report for the 10 most recently seen devices, with security"* | `--last-seen 10 --with-security` |
+| *"include the full per-device event tables in the Faculty log report"* | `--group "Faculty" --report-detail full` |
+| *"save the logs export to reports/case-2026-06"* | `--out reports/case-2026-06` |
+| *"export device logs for the whole fleet"* (heavy — it will confirm first) | `--all --confirm-all` |
+
 In Claude Code, ask for it (the **`/logs-audit`** skill maps your words to flags):
 
 > *"export the logs for serial ABC123"* · *"build a forensic log report for the last 10 devices seen, with security"* · *"audit the LibLab group's device logs"*
