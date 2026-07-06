@@ -28,7 +28,9 @@ npm run dev      # runs src/index.ts via tsx (no build step)
 - Keep PRs focused. One logical change per PR makes review easy.
 - If you add a new MCP tool, update:
   - the tool definition + `case` handler in `src/index.ts`
-  - the Tools table in `README.md` under the right domain heading
+  - the per-domain tool tables in `docs/tools.md` under the right heading, AND the
+    tool-count line in **both** `README.md` and `docs/tools.md` (`test/toolCount.test.mjs`
+    enforces the documented count against the registry in both files)
   - the tool count in `README.md` (search for "tools covering the full SimpleMDM API surface")
   - a line in `CHANGELOG.md` under `[Unreleased]`
   - if it's a derived/aggregation tool, also add it to `docs/aggregation-tools-roadmap.md` with `[shipped]` and the appropriate tier
@@ -55,10 +57,14 @@ CI runs `npm run build` across the Node version matrix on every push and PR.
 
 Unit tests live in `test/` and run via Node's built-in `node:test` runner — no
 test framework dependency. The `test` script builds first and then runs
-`node --test test/*.mjs`, so tests always exercise the compiled `dist/` output.
+`node --test test/*.mjs test/reports/*.mjs`, so tests always exercise the compiled `dist/` output.
 
-Current coverage is scoped to pure helpers that can be tested without a live
-SimpleMDM tenant (see `test/wipe_device.test.mjs` for the pattern). If you add
+Coverage spans ~48 test files: pure helpers, tool dispatch with mocked `fetch`
+(`test/mock_api.test.mjs`), cache-invalidation coverage enforcement, the report
+engine (`test/reports/`), a golden-fixture parity suite (`test/golden/` — see its
+README; regenerate with `node test/golden/capture.mjs` after intentional output
+changes and commit the diff), and an MCP stdio smoke test. Nothing hits a live
+SimpleMDM tenant. If you add
 a helper that makes sense to test in isolation, prefer extracting it to a
 sibling module under `src/` and adding a `*.test.mjs` file. Do **not** add live
 API tests here — integration testing against SimpleMDM is manual and requires

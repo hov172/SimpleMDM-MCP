@@ -2,7 +2,7 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.18.0):** 28 derived tools shipped (added in 0.5.0). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
+> **Status (0.31.x):** 30 derived tools shipped (the original 28 from 0.5.0, plus later additions). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
 >
 > A complementary **[`/audit` command](../README.md#fleet-audit-audit)** (added in 0.10.0) bundles much of this fleet analytics into a one-shot, exportable SOFA-based macOS security report (CSV / Markdown / Word / PDF). It is now part of the unified TypeScript report engine (`dist/reports/cli.js`), exposed via the `/audit` skill, the `run_fleet_audit` MCP tool (host-side subprocess), and the in-process `generate_report` MCP tool. It talks directly to the SimpleMDM API + the SOFA feed.
 
@@ -73,9 +73,9 @@ Status legend per tool: `[shipped]` `[rejected]` `[deferred]`.
 |------|--------|-----|
 | `get_apps_by_publisher` | `[shipped]` | Surprisingly common ask; fast win on top of the existing iteration. |
 | Generic count/sum tools | `[deferred]` | Already covered by `get_fleet_summary` / `get_security_posture`. |
-| `export_to_csv` | `[deferred]` | Formatting belongs in the client. |
+| `export_to_csv` | `[superseded]` | Shipped via the unified report engine instead (`run_inventory_report` CSVs, `report-table.csv`/`.xlsx`). |
 | `ai_recommend_*` tools | `[deferred]` | That's what MCP **prompts** are for. |
-| `get_audit_log` | `[deferred]` | Only build if SimpleMDM exposes an audit endpoint. |
+| `get_audit_log` | `[shipped]` | The `/logs` feed is exposed: `list_logs` / `get_log` plus the full `run_device_logs_audit` forensic report. |
 | `get_random_device` / test utilities | `[deferred]` | Clutters the catalog. |
 
 ---
@@ -104,7 +104,7 @@ Drafted but removed before merge — would have produced misleading or empty out
 
 ### Caching
 - All list endpoints, `collectDevices()` fleet iterations, and per-device `collectInstalledApps()` calls are cached in-memory with a configurable TTL (default 5 min, `SIMPLEMDM_CACHE_TTL_MS`). Repeated calls within the TTL window return instantly from cache — zero API calls, minimal token usage.
-- Write operations automatically invalidate affected cache entries (80 of the 81 write tools are mapped to cache key prefixes in `INVALIDATION_MAP`; the lone exception is `set_managed_app_config_schema`). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
+- Write operations automatically invalidate affected cache entries (all 84 write tools are mapped to cache key prefixes in `INVALIDATION_MAP` — full coverage is enforced by `test/cacheInvalidation.test.mjs` since 0.30.4). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
 - Concurrent identical requests are deduplicated (stampede protection) so only one fetch runs.
 - Set `SIMPLEMDM_CACHE_TTL_MS=0` to disable caching entirely.
 
@@ -140,12 +140,12 @@ When adding a new tool, consider whether an empty/null result could be misinterp
 
 ## Testing strategy
 
-There is **no automated fixture suite** for the live SimpleMDM analytics tools — they hit a tenant, and recording fixtures for the full 181-tool surface is not yet justified by team size. Static tool-count checks, Apple schema helper tests, and the MCP stdio smoke test cover the local/non-tenant behavior.
+The report engine now has a **golden-fixture parity suite** (`test/golden/` + `golden-parity.test.mjs`) plus ~48 test files covering tool dispatch with mocked fetch, cache invalidation coverage, schema helpers, and the MCP stdio smoke test; `npm test` (build + full suite) is the gate. Live-tenant analytics remain exercised only against real tenants by design.
 
 Until that changes, the validation contract is:
 
 1. **Smoke test before each release.** From a tenant of >50 devices, invoke each newly-added tool and confirm the response shape and a non-empty result for the obvious cases. Track in a release checklist.
-2. **Schema check.** `tools/list` must always parse; `npm run build` (which runs `tsc`) is the only gate today.
+2. **Schema check.** `tools/list` must always parse; `npm test` (tsc build + the full `node --test` suite) is the gate.
 3. **Sparse-field verification.** For tools in the table above, manually inspect one device's raw record (`get_device`) to confirm the expected field is populated for your tenant before recommending the tool to others.
 
 Open work (not yet started):
@@ -159,14 +159,14 @@ Open work (not yet started):
 - **0.5.0**: 28 derived tools shipped. Minor bump (additive, no breaking changes).
 - **0.6.0**: Auto-pagination on all list tools, in-memory TTL cache with automatic write-invalidation, response slimming for heavy list endpoints, stable OS-lag baseline for `get_compliance_violators`.
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
-- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`181`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
+- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`189`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
 
 ---
 
 ## MCP context budget
 
-The catalog is now **181 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **189 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.

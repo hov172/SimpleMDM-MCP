@@ -16,13 +16,13 @@ Please include:
 - A description of the issue and its impact
 - Steps to reproduce (or a minimal proof of concept)
 - The version / commit SHA you observed it on
-- Your environment (Node version, install method — npm / Docker / source)
+- Your environment (Node version, install method — Docker / source)
 
 Please **do not** file a public GitHub issue for security reports.
 
 ## What's in scope
 
-- The server process itself (`src/index.ts`, `src/localAppClient.ts`, `src/wipe.ts`)
+- The server process itself — everything under `src/` (including the HTTP/auth layer `src/simplemdm-client.ts` and the report engine `src/reports/`, which writes files and spawns render subprocesses) and the runtime libraries under `scripts/lib/`
 - The Docker image build (the package is not yet published to npm)
 - Default permission configuration and the write-gate logic
 - Input validation and URL path sanitization (`seg()`), request

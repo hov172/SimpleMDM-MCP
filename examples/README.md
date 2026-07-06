@@ -20,7 +20,7 @@ All examples assume:
 
 - You have a SimpleMDM API key. Use a **read-only key** unless you need writes.
 - Replace `your-api-key-here` and any path placeholders before using.
-- The server binary path is `dist/index.js` after `npm run build`, or `node_modules/.bin/simplemdm-mcp` after `npm install -g simplemdm-mcp` (when published).
+- The server entry point is `dist/index.js` after `npm run build`. (The package is not yet published to npm, so there is no globally installable `simplemdm-mcp` binary.)
 
 ## See also
 

@@ -46,10 +46,11 @@ At most **one** selector; `--search` may stand alone or combine with a selector.
 | `--allow-partial` | exit 0 despite failed per-device fetches (default exit 2 — see Completeness) |
 | `--findings-exclude <types>` | drop comma-listed finding types from the report (noise control); excluded counts are disclosed in `summary.txt` |
 | `--report-only` | write only the rendered report + `summary.txt` + `manifest.sha256` — plus `report-table.csv` for roster/flat styles; skips all data CSVs (`devices.csv`, rollups, findings, apps/profiles/users, assigned-*). Not valid with `--format csv` |
-| `--out <dir>` | output directory (default `reports/inventory-YYYY-MM-DD/`, auto-suffixed `-2`, `-3`… if it exists) |
+| `--out <dir>` | output directory (default `reports/inventory-YYYYMMDD-HHMMSS/`; via the `run_inventory_report` MCP tool paths resolve under the install root) |
 
-Exit codes: `0` ok · `1` fatal · `2` argument/query error **or** partial data without
-`--allow-partial` · `3` selector matched nothing.
+Exit codes: `0` ok · `1` any fatal error (bad arguments/query, no devices matched,
+upstream failure) · `2` partial data (transient per-device fetch failures) without
+`--allow-partial`.
 
 ## The query language (`--search`)
 
@@ -160,24 +161,22 @@ exclusions due to incomplete data are disclosed in `summary.txt` and the dossier
 
 ### Unenrolled devices and `422 device is not enrolled`
 
-A common, **expected** source of partial runs is unenrolled devices. SimpleMDM still
-lists a device after it unenrolls (`status: unenrolled`, empty `enrollment_channels`),
-but its per-device endpoints (`/devices/<id>/users`, `installed_apps`, `profiles`)
-return `422 device is not enrolled` because there is no live MDM channel to query. The
-engine treats that 422 like any other section failure: the section is marked `failed`,
-the device is kept and flagged, and a whole-fleet `--all` run is reported **PARTIAL**
-(exit 2) even though every *enrolled* device fetched cleanly.
+SimpleMDM still lists a device after it unenrolls (`status: unenrolled`, empty
+`enrollment_channels`), but its per-device endpoints (`/devices/<id>/users`,
+`installed_apps`, `profiles`) return `422 device is not enrolled` — there is no live
+MDM channel to query, and **retrying never helps**.
 
-This is not a transient error and **retrying does not help** — there is genuinely no
-data to return until the device re-enrolls. For a fleet that carries stale unenrolled
-records, the practical options are:
+Since v0.31.0 the engine classifies that deterministic 422 as a **known device
+limitation**, not a failure: the section is marked `unavailable`, the device stays in
+the report (dependent query terms evaluate to undetermined, dependent findings to
+`unknown`), and `summary.txt` discloses each one under
+`Known device limitations (not failures)`. The export is **not** stamped PARTIAL and
+the run exits 0 — permanently unenrolled stragglers can no longer downgrade every
+whole-fleet export forever. Only **transient** errors (429/5xx/network) mark the export
+PARTIAL and exit 2 (suppress with `--allow-partial`).
 
-- **Accept it** — the PARTIAL banner and `summary.txt` correctly document that those
-  specific devices have no per-device data; everything else is complete.
-- **`--allow-partial`** — exit 0 and drop the failure-gating, when you expect some
-  unenrolled devices and don't want the run treated as a failure.
-- **Scope around them** — e.g. `--search 'status:enrolled'` (or a date filter like
-  `seen:>=…`) so unenrolled/stale devices are excluded from the per-device pass entirely.
+To exclude unenrolled records from the per-device pass entirely, scope with
+`--search 'status:enrolled'` or a `seen:>=…` date filter.
 
 ## Secrets
 

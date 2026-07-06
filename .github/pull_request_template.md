@@ -14,7 +14,7 @@
 
 - [ ] `npm run build` passes locally
 - [ ] Relevant entry added to `CHANGELOG.md` under `[Unreleased]`
-- [ ] README Tools table updated if tools were added/renamed/removed
+- [ ] `docs/tools.md` tables updated if tools were added/renamed/removed, and the tool-count line bumped in **both** README.md and docs/tools.md (`test/toolCount.test.mjs` enforces this)
 - [ ] No secrets, API keys, or real device serials in the diff or description
 - [ ] Breaking changes are called out explicitly below (if any)
 

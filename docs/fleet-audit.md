@@ -41,7 +41,7 @@ command instead of cross-referencing spreadsheets by hand.
    • XProtect baseline                                      • headline summary
                                                         ▼
                               CSV · Markdown · Word (docx) · PDF
-                              written to reports/audit-YYYY-MM-DD/  (gitignored)
+                     written to reports/audit-YYYY-MM-DD/ (MCP tool) or reports/audit-YYYYMMDD-HHMMSS/ (direct CLI)  (gitignored)
 ```
 
 ### Data sources
@@ -87,10 +87,11 @@ node dist/reports/cli.js audit --format all     # csv | md | docx | all  (defaul
 | `--format docx` | adds a Word document (needs `pandoc`) |
 | `--format all` | everything (default) |
 | `--serial A,B` | scope the audit to these devices (whole fleet if omitted) |
+| `--all` + `--confirm-all` | explicit whole-fleet form (equivalent to omitting a selector; `--all` alone errors without the acknowledgement) |
 | `--group "Name"` | scope to a **device or assignment** group (at most one selector) |
 | `--last-seen N` | scope to the N most recently seen devices |
 | `--page-size a3\|a4` | PDF/HTML page size: `a3` (default) = roomy A3-landscape; `a4` = compact A4-landscape that shrinks the wide All Devices table to fit a standard page |
-| `--out <dir>` | output directory (default `reports/audit-YYYY-MM-DD/`) |
+| `--out <dir>` | output directory (CLI default `reports/audit-YYYYMMDD-HHMMSS/`; the `run_fleet_audit` MCP tool defaults to `reports/audit-YYYY-MM-DD/` under the install root) |
 | `--report-only` | write only the rendered report + `summary.txt`; skip the data CSV exports (not valid with `--format csv`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
 
@@ -164,7 +165,7 @@ OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Out
 
 ## Output files
 
-Everything is written to `reports/audit-YYYY-MM-DD/`, which is **gitignored** — reports
+Everything is written to the output directory above, which is **gitignored** — reports
 contain live tenant data and are never committed.
 
 | File | Granularity | Contents |
@@ -179,6 +180,7 @@ contain live tenant data and are never committed.
 | `device-cves.csv` | per device | each device's full list of unfixed CVEs in one multi-line `cves` cell (`[exploited]` marks actively-exploited) |
 | `cve-devices.csv` | per CVE | the inverse: each CVE's affected device names/serials in one multi-line `devices` cell (`cve_id, fixed_in_version, os_track, actively_exploited, devices_exposed, devices`) |
 | `full-audit.md` | combined | the four sections + By Device Group, as Markdown |
+| `full-audit.html` | combined | styled HTML twin of the report (written on any non-csv format) |
 | `full-audit.docx` | combined | Word version (via pandoc) |
 | `full-audit.pdf` | combined | print-ready PDF, written automatically by `--format all` (WeasyPrint/Chrome) |
 | `manifest.sha256` | bundle | SHA-256 integrity manifest (sha256sum format) of every deliverable — always written on `--format all` |
@@ -233,7 +235,7 @@ XProtect version isn't exposed by the SimpleMDM device API, so the XProtect chec
 populate if you collect it into a custom attribute named `xprotect_version`. Until then
 XProtect reports `N/A (not set up)` (per device and in the headline) rather than a
 misleading `0`. A ready-to-run, no-secrets collector and the exact setup steps are
-staged in `reports/xprotect/STAGING.md`. Once values flow in, the audit compares each
+(e.g. a periodic per-Mac script that reads the local XProtect bundle version and writes it back through the SimpleMDM API). Once values flow in, the audit compares each
 device's value to SOFA's latest XProtect config: lower → *outdated*, non-numeric →
 *invalid*.
 

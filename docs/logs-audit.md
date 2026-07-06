@@ -54,7 +54,7 @@ node dist/reports/cli.js logs <selector> [flags]
 | `--with-security` | also run the SOFA evaluation on the selected devices (posture + CVEs) |
 | `--format <fmt>` | `csv` \| `md` \| `docx` \| `all` (default `all`) |
 | `--report-detail <lvl>` | per-device log detail in the report document: `summary` (aggregation + findings, default) \| `table` (full per-device event table) \| `full` (both). `logs.csv`/`raw-logs.json` always keep 100% regardless |
-| `--out <dir>` | output directory (default `reports/logs-audit-YYYY-MM-DD/`) |
+| `--out <dir>` | output directory (CLI default `reports/logs-YYYYMMDD-HHMMSS/`; the `run_device_logs_audit` MCP tool defaults to `reports/logs-audit-YYYY-MM-DD/` under the install root) |
 | `--report-only` | write only the rendered report + `summary.txt` + `manifest.csv`; skip the data exports (not valid with `--format csv`) |
 | `--allow-partial` | exit 0 even if some per-device log fetches failed (default exit 2 so partial data is never silent) |
 | `--confirm-all` | required acknowledgement for `--all` |
@@ -75,7 +75,7 @@ numbers and falls back to headless Chrome.
 
 ## Output files
 
-Everything is written to `reports/logs-audit-YYYY-MM-DD/` (which is **gitignored** —
+Everything is written to the output directory above (which is **gitignored** —
 exports contain live tenant data, serials, and event history, and are never committed):
 
 | File | Contents |
@@ -120,7 +120,12 @@ headless Chrome.
 - **Retention** — the `/logs` feed is retention-bounded; the earliest event per device
   (`logs-summary.csv` → `first_event_at_iso`) is the API's retention horizon, **not** the
   device's full lifetime history.
-- **Completeness** — every collection is fully paginated (`has_more=false` at export
+- **Partial exports are loud** — a device whose log fetch fails (or that has no
+  serial) is recorded as a failure: the report body gains a "PARTIAL EXPORT —
+  Collection Failures" section naming each device, `summary.txt` reports the real
+  `Failed devices:` count, the `manifest.csv` completeness disclosure flips to
+  `PARTIAL EXPORT`, and the CLI exits 2 unless `--allow-partial` is passed.
+- **Completeness** — for every device that was collected, every collection is fully paginated (`has_more=false` at export
   time); records are reproduced verbatim and all derived columns are additive.
 - **Integrity** — every output file (and every snapshot sidecar) is SHA-256-hashed in
   `manifest.csv`. Devices that fail collection are recorded there too, so a partial export

@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **189 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **189 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -121,7 +121,7 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 
 **Fleet analytics (derived — iterate the fleet)**
 
-These tools answer questions the raw API can't in a single call. They iterate every enrolled device under a bounded worker pool (`SIMPLEMDM_FLEET_CONCURRENCY`, default 8). Slow on large fleets but bounded; results are cached in-memory with a configurable TTL (default 5 min, see `SIMPLEMDM_CACHE_TTL_MS`). Full per-tool reference: [`docs/aggregation-tools-roadmap.md`](docs/aggregation-tools-roadmap.md).
+These tools answer questions the raw API can't in a single call. They iterate every enrolled device under a bounded worker pool (`SIMPLEMDM_FLEET_CONCURRENCY`, default 8). Slow on large fleets but bounded; results are cached in-memory with a configurable TTL (default 5 min, see `SIMPLEMDM_CACHE_TTL_MS`). Full per-tool reference: [`aggregation-tools-roadmap.md`](aggregation-tools-roadmap.md).
 
 | Tool | Description |
 |------|-------------|
@@ -156,7 +156,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 
 **MunkiReport enrichment (require MunkiReport configuration)**
 
-These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php) instance for data the SimpleMDM API doesn't expose. Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
+These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php) instance for data the SimpleMDM API doesn't expose. Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](../README.md#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
 
 | Tool | Description |
 |------|-------------|
@@ -188,10 +188,10 @@ All tools below modify fleet state. The API permission column tells you what the
 | `play_lost_mode_sound` / `update_lost_mode_location` | Devices: write |
 | `enable_remote_desktop` / `disable_remote_desktop` | Devices: write |
 | `enable_bluetooth` / `disable_bluetooth` | Devices: write |
-| `clear_passcode` | Devices: write |
-| `clear_restrictions_password` | Devices: write |
-| `clear_firmware_password` / `rotate_firmware_password` | Devices: write |
-| `clear_recovery_lock_password` / `rotate_recovery_lock_password` | Devices: write |
+| `clear_passcode` ⚠️ destructive | Devices: write |
+| `clear_restrictions_password` ⚠️ destructive | Devices: write |
+| `clear_firmware_password` ⚠️ destructive / `rotate_firmware_password` | Devices: write |
+| `clear_recovery_lock_password` ⚠️ destructive / `rotate_recovery_lock_password` | Devices: write |
 | `rotate_filevault_recovery_key` | Devices: write |
 | `rotate_admin_password` / `set_admin_password` | Devices: write |
 | `refresh_cellular_plans` | Devices: write — refresh a device's cellular/eSIM plans from the carrier's eSIM server (requires `esim_server_url`) |
@@ -199,7 +199,7 @@ All tools below modify fleet state. The API permission column tells you what the
 > **Notes on Device actions:**
 > - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed.
 > - **Disabling Activation Lock** can be done two ways: the standalone `disable_activation_lock` tool (`POST /devices/{id}/disable_activation_lock` — verified live 2026-07-06; requires the API key's write scope, 403 otherwise), or the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). Use `get_activation_lock_status` to check current state.
-> - **Sending device messages** is a SimpleMDM web-console action that depends on the SimpleMDM mobile app and is **not exposed by the public REST API** — there is no `send_message` endpoint. This server therefore does not provide `send_device_message`. (Removed in this release after live-API verification.)
+> - **Sending a device message** IS available via `push_message` (`POST /devices/{id}/push_message`, max 225 chars, delivered through the SimpleMDM mobile app; verified live 2026-07-06). Only the previously guessed endpoint name `send_message` was wrong — hence the earlier removal and the 0.31.0 reinstatement.
 > - **Safari Bookmarks**: SimpleMDM has no bookmarks-specific endpoint. Managed Safari bookmarks are an Apple **Declarative Device Management** configuration (`com.apple.configuration.safari.bookmarks`, iOS/macOS/visionOS **26+**). The `create_safari_bookmarks_declaration` tool builds that declaration from a simple `{title, url}` / nested-`folder` tree and delivers it via SimpleMDM's `/custom_declarations` API. Assign the resulting declaration to devices or groups to deploy.
 
 **Device CRUD**
@@ -208,16 +208,16 @@ All tools below modify fleet state. The API permission column tells you what the
 | `create_device` | Devices: write |
 | `update_device` | Devices: write |
 | `delete_device` ⚠️ destructive | Devices: write |
-| `delete_device_user` | Devices: write |
+| `delete_device_user` ⚠️ destructive | Devices: write |
 
 **Apps**
 | Tool | API Permission |
 |------|---------------|
-| `create_app` · `update_app` · `delete_app` | Apps: write |
+| `create_app` · `update_app` · `delete_app` ⚠️ destructive | Apps: write |
 | `uninstall_app` | Apps: write |
 | `update_installed_app` | Apps: write |
 | `request_app_management` | Apps: write |
-| `create_managed_app_config` · `delete_managed_app_config` | Apps: write |
+| `create_managed_app_config` · `delete_managed_app_config` ⚠️ destructive | Apps: write |
 | `push_managed_app_configs` | Apps: write |
 | `set_managed_app_config_schema` | Apps: write — Configure multiple options (diff and write) and push |
 
@@ -226,19 +226,19 @@ All tools below modify fleet state. The API permission column tells you what the
 |------|---------------|
 | `assign_profile_to_device` / `unassign_profile_from_device` | Profiles: write |
 | `assign_custom_profile_to_device` / `unassign_custom_profile_from_device` | Profiles: write |
-| `create_custom_configuration_profile` · `update_custom_configuration_profile` · `delete_custom_configuration_profile` | Profiles: write |
+| `create_custom_configuration_profile` · `update_custom_configuration_profile` · `delete_custom_configuration_profile` ⚠️ destructive | Profiles: write |
 
 **Declarations (DDM)**
 | Tool | API Permission |
 |------|---------------|
 | `assign_declaration_to_device` / `unassign_declaration_from_device` | Profiles: write |
-| `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` | Profiles: write — `create`/`update` accept optional `declaration_type` plus JSON `payload` |
+| `create_custom_declaration` · `update_custom_declaration` · `delete_custom_declaration` ⚠️ destructive | Profiles: write — `create`/`update` accept optional `declaration_type` plus JSON `payload` |
 | `create_safari_bookmarks_declaration` | Profiles: write — push managed Safari bookmarks (DDM; iOS/macOS/visionOS 26+) |
 
 **Assignment groups**
 | Tool | API Permission |
 |------|---------------|
-| `create_assignment_group` · `update_assignment_group` · `delete_assignment_group` | Assignment Groups: write |
+| `create_assignment_group` · `update_assignment_group` · `delete_assignment_group` ⚠️ destructive | Assignment Groups: write |
 | `clone_assignment_group` | Assignment Groups: write |
 | `assign_device_to_group` / `unassign_device_from_group` | Assignment Groups: write |
 | `assign_app_to_group` / `unassign_app_from_group` | Assignment Groups: write |
@@ -248,20 +248,20 @@ All tools below modify fleet state. The API permission column tells you what the
 **Custom attributes**
 | Tool | API Permission |
 |------|---------------|
-| `create_custom_attribute` · `update_custom_attribute` · `delete_custom_attribute` | Attributes: write |
+| `create_custom_attribute` · `update_custom_attribute` · `delete_custom_attribute` ⚠️ destructive | Attributes: write |
 | `set_device_attribute_value` · `set_group_attribute_value` | Attributes: write |
 | `set_attribute_for_multiple_devices` | Attributes: write |
 
 **Scripts**
 | Tool | API Permission |
 |------|---------------|
-| `create_script` · `update_script` · `delete_script` | Scripts: write |
+| `create_script` · `update_script` · `delete_script` ⚠️ destructive | Scripts: write |
 | `create_script_job` · `cancel_script_job` | Scripts: write |
 
 **Enrollment & DEP**
 | Tool | API Permission |
 |------|---------------|
-| `delete_enrollment` | Enrollment: write |
+| `delete_enrollment` ⚠️ destructive | Enrollment: write |
 | `send_enrollment_invitation` | Enrollment: write |
 | `sync_dep_server` | Enrollment: write |
 
