@@ -470,6 +470,9 @@ function validateCertificateSemantics(payload: Record<string, unknown>, issues: 
 
 function xmlEscape(value: unknown): string {
   return String(value)
+    // Characters illegal in XML 1.0 (C0 controls except tab/LF/CR) cannot be
+    // escaped — a plist containing them is unparseable. Strip them.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -481,10 +484,44 @@ function indent(level: number): string {
   return "  ".repeat(level);
 }
 
+// Marker for schema-declared `data` values (base64 strings) so plistValue can
+// emit <data> where Apple requires it — a cert body in <string> fails to install.
+class PlistData {
+  constructor(readonly base64: string) {}
+}
+
+// Walk a payload against its schema keys, wrapping data-typed string values
+// (including inside childKeys dicts and itemKeys array elements) in PlistData.
+function wrapDataValues(payload: Record<string, unknown>, keys: AppleSchemaKey[]): Record<string, unknown> {
+  const byName = new Map(keys.map(k => [k.name, k]));
+  const out: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(payload)) {
+    const key = byName.get(name);
+    if (!key || value == null) { out[name] = value; continue; }
+    if (key.type === "data" && typeof value === "string") { out[name] = new PlistData(value); continue; }
+    if (key.childKeys && typeof value === "object" && !Array.isArray(value)) {
+      out[name] = wrapDataValues(value as Record<string, unknown>, key.childKeys);
+      continue;
+    }
+    if (key.itemKeys && Array.isArray(value)) {
+      out[name] = value.map(v =>
+        typeof v === "object" && v !== null && !Array.isArray(v)
+          ? wrapDataValues(v as Record<string, unknown>, key.itemKeys!)
+          : v);
+      continue;
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
 function plistValue(value: unknown, level = 0): string {
+  if (value instanceof PlistData) return `${indent(level)}<data>${value.base64.replace(/\s+/g, "")}</data>`;
   if (typeof value === "string") return `${indent(level)}<string>${xmlEscape(value)}</string>`;
   if (typeof value === "boolean") return `${indent(level)}${value ? "<true/>" : "<false/>"}`;
-  if (typeof value === "number") return `${indent(level)}${Number.isInteger(value) ? `<integer>${value}</integer>` : `<real>${value}</real>`}`;
+  // Integers beyond safe range stringify in exponent notation, which is invalid
+  // inside <integer>; emit them as <real> instead.
+  if (typeof value === "number") return `${indent(level)}${Number.isSafeInteger(value) ? `<integer>${value}</integer>` : `<real>${value}</real>`}`;
   if (Array.isArray(value)) {
     if (value.length === 0) return `${indent(level)}<array/>`;
     return `${indent(level)}<array>\n${value.map(v => plistValue(v, level + 1)).join("\n")}\n${indent(level)}</array>`;
@@ -538,12 +575,16 @@ export function buildMobileconfig(args: {
     PayloadScope: args.scope === "User" ? "User" : "System",
     PayloadContent: args.payloads.map(raw => {
       const payload = parsePayload(raw);
+      // Wrap schema-declared data values so they render as <data>; validation
+      // above guarantees the PayloadType has a schema, but stay defensive.
+      const schema = SCHEMAS.find(s => s.kind === "profile" && s.identifier === payload.PayloadType);
+      const wrapped = schema ? wrapDataValues(payload, schema.keys) : payload;
       return {
         PayloadIdentifier: `${args.identifier}.${String(payload.PayloadType).replace(/^com\.apple\./, "")}`,
         PayloadUUID: randomUUID(),
         PayloadVersion: 1,
         PayloadDisplayName: String(payload.PayloadType),
-        ...payload,
+        ...wrapped,
       };
     }),
   };
