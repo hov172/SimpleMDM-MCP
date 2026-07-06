@@ -361,6 +361,13 @@ let cacheGeneration = 0;
 // (Exported for tests.)
 export function cacheInvalidate(...prefixes: string[]): void {
   cacheGeneration++;
+  // Detach matching in-flight paginations so a read starting after this write
+  // fetches fresh instead of joining a pre-write promise. (The detached
+  // pagination still resolves for its own callers; the generation counter
+  // already prevents it from re-caching.)
+  for (const key of inflight.keys()) {
+    if (prefixes.some(p => key.startsWith(p))) inflight.delete(key);
+  }
   const alsoDevices = prefixes.some(p => p === "/devices");
   const alsoApps = prefixes.some(p => p === "/apps" || p === "/installed_apps");
   for (const key of listCache.keys()) {
@@ -662,7 +669,7 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "get_pending_commands",
-    description: "Derived — devices with MDM commands sent but not acknowledged for over N hours. Reads the global /logs feed (no per-device fan-out) and pairs `*sent` events against `*acknowledged`/`*succeeded`/`*failed` events by device_id. Returns empty if /logs does not surface command events for your tenant.",
+    description: "Derived — devices with MDM commands sent but not acknowledged for over N hours. Reads the global /logs feed (no per-device fan-out) and pairs `*sent` events against `*acknowledged`/`*succeeded`/`*failed` events by command_uuid when present, else by device + command family (event name minus its verb). Caveat of the family fallback: repeated same-family commands collapse to one slot, so a newer acknowledgment can mask an older stuck command of the same type. Returns empty if /logs does not surface command events for your tenant.",
     inputSchema: { type: "object", properties: {
       min_age_hours: { type: "number", description: "Minimum age of the unacknowledged sent-event in hours. Default 4." },
       log_pages: { type: "number", description: "Pages of /logs to scan (100 entries each). Default 5." },
@@ -702,7 +709,7 @@ export const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_battery_health_report",
-    description: "Derived — battery rollup for laptops/iOS: current level, low-battery flag. Beyond level (cycle count, max-capacity %) requires MunkiReport integration; falls back gracefully when not available.",
+    description: "Derived — battery rollup for laptops/iOS: current level, low-battery flag. Cycle count and max-capacity % are read from SimpleMDM device attributes, which most tenants do not populate (they require MDM profile settings that enable battery health reporting — NOT MunkiReport; MunkiReport battery data lives in get_munkireport_device_resources). Falls back gracefully to level-only.",
     inputSchema: { type: "object", properties: {
       low_pct: { type: "number", description: "Threshold considered 'low'. Default 20." },
     }}},
@@ -3720,9 +3727,9 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
           // The server runs in a pinned, read-only Docker container and cannot update
           // itself; surface the host-side upgrade steps instead.
           upgrade: update_available ? {
-            note: "Run on the host (the container cannot self-update):",
+            note: "Run on the host (the container cannot self-update). NOTE: repo history was rewritten at v0.30.4 — clones from before that must use fetch+reset (or re-clone); a plain `git pull` will fail on divergent histories:",
             steps: [
-              "git -C <repo> pull",
+              "git -C <repo> fetch origin && git -C <repo> reset --hard origin/main",
               `docker build --build-arg VERSION=${latest} -t simplemdm-mcp:${latest} -t simplemdm-mcp:latest <repo>`,
               `point the MCP client config image at simplemdm-mcp:${latest}`,
               "stop the running simplemdm container, then reconnect the MCP server",

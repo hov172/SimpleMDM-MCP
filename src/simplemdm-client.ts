@@ -52,7 +52,8 @@ export async function simpleMDM(path: string, opts: RequestInit = {}): Promise<u
   if (!API_KEY) {
     throw new Error(
       "SIMPLEMDM_API_KEY is not set. This tool requires direct SimpleMDM API access; " +
-      "LOCAL_APP_MODE only serves get_fleet_summary and get_security_posture without an API key.",
+      "without an API key, LOCAL_APP_MODE serves only the local-app-bridged tools " +
+      "(get_fleet_summary, get_security_posture, the get_munkireport_* tools, and the filevault report resource).",
     );
   }
   const headers: Record<string, string> = {
