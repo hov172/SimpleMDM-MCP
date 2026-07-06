@@ -256,3 +256,10 @@ test("reportOnlyGate: data CSVs gated by --report-only; csv format conflicts", (
   assert.equal(conflict.writeData, false);
   assert.match(conflict.error, /--report-only/);
 });
+
+test("renderAuditMarkdown escapes pipes in device names (md table integrity)", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = [evaluateDevice({ id: 1, name: "Loaner | Library iPad", model: "Mac14,3", osVersion: "26.0" }, t)];
+  const md = renderAuditMarkdown(ev, aggregateCveDetail(ev, t), summarize(ev), t, "2026-06-07");
+  assert.match(md, /Loaner \\\| Library iPad/, "device-name pipes must be escaped in md tables");
+});

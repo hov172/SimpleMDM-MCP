@@ -15,3 +15,16 @@ test("renderMarkdown matches the established section/table format", () => {
   assert.match(md, /\| serial \| os \|\n\| --- \| --- \|\n\| C02 \| 15\.6 \|/);
   assert.match(md, /## Empty\n\n_none_/);
 });
+
+test("mdTable escapes pipes in cell values so rows keep their column count", () => {
+  const d = new Dossier({ title: "T", pageStyle: "a3-landscape" });
+  d.section("Devices").table(
+    [{ key: "name", header: "name" }, { key: "serial", header: "serial" }],
+    [{ name: "Loaner | Library iPad", serial: "S1" }],
+  );
+  const md = renderMarkdown(d.toDocument());
+  assert.match(md, /Loaner \\\| Library iPad/, "cell pipes must be escaped");
+  const row = md.split("\n").find((l) => l.includes("Loaner"));
+  const unescapedPipes = row.replace(/\\\|/g, "").split("|").length - 1;
+  assert.equal(unescapedPipes, 3, `row must keep 2 columns (3 delimiters); got: ${row}`);
+});

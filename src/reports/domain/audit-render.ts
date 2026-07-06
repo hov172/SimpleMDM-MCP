@@ -7,9 +7,11 @@ import {
   type EvaluatedDevice, type CveDetailRow, type AuditSummary, type SofaTables,
 } from "./sofa-eval.js";
 
+const mdEsc = (v: unknown): string => String(v ?? "").replace(/\|/g, "\\|");
+
 function mdTable(cols: string[], rows: Record<string, unknown>[]): string {
   const head = `| ${cols.join(" | ")} |\n| ${cols.map(() => "---").join(" | ")} |`;
-  const body = rows.map((r) => `| ${cols.map((c) => String(r[c] ?? "")).join(" | ")} |`).join("\n");
+  const body = rows.map((r) => `| ${cols.map((c) => mdEsc(r[c])).join(" | ")} |`).join("\n");
   return rows.length ? `${head}\n${body}` : "_none_";
 }
 

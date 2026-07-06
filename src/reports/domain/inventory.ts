@@ -307,6 +307,10 @@ export function normalizeDevice(
     sip: a.system_integrity_protection_enabled ?? null,
     firewall: a.firewall?.enabled ?? null,
     supervised: a.is_supervised ?? null,
+    // is_dep_enrollment (enrollment came via DEP/ADE) is a real API field distinct
+    // from dep_enrolled (currently DEP-enrolled, used by the MCP server tools);
+    // live tenants show them differing on re-enrolled devices. The inventory `dep`
+    // column reports the enrollment channel — do not "fix" this to dep_enrolled.
     dep: a.is_dep_enrollment ?? null,
     status: a.status ?? "",
     ard: a.remote_desktop_enabled ?? null,

@@ -1,9 +1,13 @@
 import type { Column, Row } from "./csv.js";
 import type { DocBlock, ReportDocument } from "./document.js";
 
+// Pipes in cell values (e.g. a device named "Loaner | Library iPad") would split
+// the md table row into extra columns; escape them like the domain renderers do.
+const mdEsc = (v: unknown): string => String(v ?? "").replace(/\|/g, "\\|");
+
 function mdTable(columns: Column[], rows: Row[]): string {
   const head = `| ${columns.map((c) => c.header).join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |`;
-  const body = rows.map((r) => `| ${columns.map((c) => String(r[c.key] ?? "")).join(" | ")} |`).join("\n");
+  const body = rows.map((r) => `| ${columns.map((c) => mdEsc(r[c.key])).join(" | ")} |`).join("\n");
   return rows.length ? `${head}\n${body}` : "_none_";
 }
 
