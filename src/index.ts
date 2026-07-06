@@ -178,6 +178,20 @@ async function munkiReport(route: string): Promise<unknown> {
   return res.json();
 }
 
+// Token-authenticated POST to the module's sync-token ingest endpoints. The
+// X-SimpleMDM-API-Key header is sent ONLY here — never on session reads — to
+// keep key exposure limited to the endpoint class designed to receive it.
+async function munkiReportIngest(route: string, body: unknown): Promise<unknown> {
+  if (!MR_BASE) throw new Error("MunkiReport not configured — set MUNKIREPORT_BASE_URL.");
+  const res = await fetchWithRetry("MunkiReport", `${MR_BASE}${MR_PREFIX}${route}`, {
+    method: "POST",
+    headers: { "X-SimpleMDM-API-Key": API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await throwForStatus("MunkiReport", res);
+  return res.json();
+}
+
 async function api(path: string, opts: RequestInit = {}): Promise<unknown> {
   return USE_LOCAL_APP ? localApp(path, opts) : simpleMDM(path, opts);
 }
@@ -477,6 +491,7 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
   update_account:                      [],
   request_munkireport_sync:            [],
   refresh_munkireport_supplemental:    [],
+  push_munkireport_findings:           [],
 };
 
 // Stampede guard: if multiple callers request the same path concurrently, only
@@ -1742,6 +1757,23 @@ export const TOOLS: Tool[] = [
     description: "WRITE — Recompute the module's cross-module supplemental summaries (one device, or fleet-wide when serial_number is omitted). Local DB recompute only. Requires an admin (global) MunkiReport session.",
     inputSchema: { type: "object", properties: {
       serial_number: { type: "string", description: "Limit the refresh to one device." },
+    }}},
+
+  { name: "push_munkireport_findings",
+    description: "WRITE — Push MCP-computed findings (SOFA CVE exposure, audit/diff deltas, stale/compliance detections) into MunkiReport, where they appear in the module's MCP Findings widget and get_mcp_findings. Authenticates with the sync token (the SimpleMDM API key the module already stores) — no MunkiReport session needed. replace=true (default) swaps out this source's previous findings so pushes reflect current state. Caps: 2000 findings, 2 MB. Requires the module's 2026-07-07+ build.",
+    inputSchema: { type: "object", required: ["source", "findings"], properties: {
+      source: { type: "string", description: "Findings namespace, e.g. 'sofa_audit' or 'inventory_diff' (a-z, 0-9, _, -; max 64)." },
+      findings: { type: "array", description: "Array of { serial_number?, finding_type, severity (danger|warning|info), message, data? }.", items: { type: "object" } },
+      replace: { type: "boolean", description: "Replace this source's previous findings (default true)." },
+    }}},
+
+  { name: "get_munkireport_mcp_findings",
+    description: "Read back MCP-pushed findings from the module (with per-severity totals). Filter by device, severity, or source. Plain MunkiReport session.",
+    inputSchema: { type: "object", properties: {
+      serial_number: { type: "string" },
+      severity: { type: "string", enum: ["danger", "warning", "info"] },
+      source: { type: "string" },
+      limit: { type: "number", description: "Max findings, 1-500. Default 100." },
     }}},
 
   { name: "get_api_coverage",
@@ -3411,6 +3443,34 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
     case "refresh_munkireport_supplemental":
       requireWrites();
       return munkiReport(`/refresh_supplemental_summary${args.serial_number != null ? `/${seg(args.serial_number, "serial_number")}` : ""}`);
+    case "push_munkireport_findings": {
+      requireWrites();
+      const source = String(args.source ?? "");
+      if (!/^[a-z0-9_-]{1,64}$/.test(source)) {
+        throw new Error("push_munkireport_findings: source must be 1-64 chars of a-z, 0-9, _, - (got \"" + source + "\").");
+      }
+      const findings = args.findings;
+      if (!Array.isArray(findings) || findings.length === 0) {
+        throw new Error("push_munkireport_findings: at least one finding is required.");
+      }
+      if (findings.length > 2000) {
+        throw new Error(`push_munkireport_findings: too many findings (${findings.length}; 2000 cap per push).`);
+      }
+      return munkiReportIngest("/ingest_mcp_findings", {
+        source,
+        replace: args.replace !== false,
+        findings,
+      });
+    }
+    case "get_munkireport_mcp_findings": {
+      const params = new URLSearchParams();
+      if (args.limit != null) params.set("limit", String(args.limit));
+      if (args.severity != null) params.set("severity", String(args.severity));
+      if (args.source != null) params.set("source", String(args.source));
+      const qs3 = params.size ? `?${params}` : "";
+      const serialSeg3 = args.serial_number != null ? `/${seg(args.serial_number, "serial_number")}` : "";
+      return munkiReport(`/get_mcp_findings${serialSeg3}${qs3}`);
+    }
 
     case "run_fleet_audit": {
       const format = args.format as string | undefined ?? "all";
@@ -4153,7 +4213,7 @@ export const WRITE_TOOLS = new Set<string>([
   "send_enrollment_invitation", "delete_enrollment",
   "create_managed_app_config", "delete_managed_app_config", "push_managed_app_configs",
   "set_managed_app_config_schema",
-  "request_munkireport_sync", "refresh_munkireport_supplemental",
+  "request_munkireport_sync", "refresh_munkireport_supplemental", "push_munkireport_findings",
   "create_script", "update_script", "delete_script",
   "create_script_job", "cancel_script_job",
 ]);

@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-07-07
+
+Closes the MCP→MunkiReport data gap: MCP-computed findings can now land in MunkiReport dashboards (two new tools, 198 → 200; companion module build 2026-07-07+ required).
+
+### Added
+- **`push_munkireport_findings`** (WRITE) — push MCP-computed findings (SOFA CVE exposure, audit/diff deltas, stale/compliance detections — data neither SimpleMDM nor MunkiReport produces alone) to the module's new `ingest_mcp_findings` endpoint. Sync-token authenticated (the SimpleMDM API key the module already stores), so no MunkiReport session is needed; `replace=true` by default so repeated pushes reflect current state; client-side caps mirrored from the module (2000 findings, validated source slug). The token header is sent **only** on this ingest path — session reads never carry the SimpleMDM key.
+- **`get_munkireport_mcp_findings`** — read back pushed findings with per-severity totals; filter by device, severity, or source.
+- Companion module additions (SimpleMDM-MunkiReport `d42fbb3`): `simplemdm_mcp_finding` table + migration, the two routes, and an **MCP Findings** dashboard widget.
+
+
 ## [0.32.0] - 2026-07-07
 
 Full MunkiReport-module coverage, from a complete inventory of the module's 49-route surface: nine new tools (189 → 198) targeting data that exists **only** in the module, headlined by alert events that previously had no consumer.

@@ -409,7 +409,7 @@ SimpleMDM-built profiles have no download endpoint, so they are captured as meta
 
 ## Tools
 
-The server registers **198 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 14 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **200 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 Apple schema helpers (`search_apple_device_management_schemas`, `get_apple_device_management_schema`, `validate_apple_payload`, `build_mobileconfig`, `build_custom_declaration_payload`, plus convenience builders for Wi-Fi, restrictions, SCEP/certificates, VPN, web clips, content filters, FileVault escrow, firewall, passcode, and software update settings) use `data/apple-device-management/schema-cache.json`, generated from Apple's public `apple/device-management` YAML schemas, with curated fallback data for high-value payloads. They do not call the third-party Apple Profile Builder site at runtime. See [`docs/apple-schema-helpers.md`](docs/apple-schema-helpers.md) for the search -> validate/build -> create SimpleMDM profile/declaration workflow and [`data/apple-device-management/README.md`](data/apple-device-management/README.md) for cache refresh/maintenance details.
 

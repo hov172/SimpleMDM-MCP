@@ -86,3 +86,54 @@ test("the two module actions are write-gated", async () => {
   assert.ok(WRITE_TOOLS.has("request_munkireport_sync"));
   assert.ok(WRITE_TOOLS.has("refresh_munkireport_supplemental"));
 });
+
+// ── v0.33.0: the MCP→module findings channel ──────────────────────────────────
+// push_munkireport_findings POSTs MCP-computed findings to the module's
+// sync-token-authenticated ingest_mcp_findings; get_munkireport_mcp_findings
+// reads them back. The push must carry the X-SimpleMDM-API-Key token header
+// and a JSON body; reads must NOT leak the token.
+
+const rich = [];
+const prevFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  rich.push({ url: String(url), method: opts?.method ?? "GET", body: opts?.body, headers: opts?.headers ?? {} });
+  return prevFetch(url, opts);
+};
+
+test("push_munkireport_findings POSTs the findings payload with the sync token", async () => {
+  rich.length = 0;
+  await handleTool("push_munkireport_findings", {
+    source: "sofa_audit",
+    findings: [
+      { serial_number: "C02X", finding_type: "cve-exposure", severity: "danger", message: "3 exploited CVEs unfixed" },
+      { finding_type: "fleet-os-lag", severity: "warning", message: "12% of Macs one major behind" },
+    ],
+  });
+  const call = rich.find((c) => c.url === `${BASE}/ingest_mcp_findings`);
+  assert.ok(call, `expected POST ${BASE}/ingest_mcp_findings; got: ${rich.map((c) => c.url).join(", ")}`);
+  assert.equal(call.method, "POST");
+  assert.equal(call.headers["X-SimpleMDM-API-Key"], "dummy-key", "sync token header required");
+  const body = JSON.parse(call.body);
+  assert.equal(body.source, "sofa_audit");
+  assert.equal(body.findings.length, 2);
+  assert.equal(body.replace, true, "replace defaults to true");
+});
+
+test("push_munkireport_findings is write-gated and validates input", async () => {
+  const { WRITE_TOOLS } = await import("../dist/index.js");
+  assert.ok(WRITE_TOOLS.has("push_munkireport_findings"));
+  await assert.rejects(() => handleTool("push_munkireport_findings", { source: "x", findings: [] }),
+    /at least one finding/i);
+  await assert.rejects(() => handleTool("push_munkireport_findings", { source: "Bad Source!", findings: [{ finding_type: "t", message: "m" }] }),
+    /source/i);
+});
+
+test("get_munkireport_mcp_findings reads back without the token header", async () => {
+  rich.length = 0;
+  await handleTool("get_munkireport_mcp_findings", { severity: "danger", limit: 25 });
+  const call = rich.find((c) => c.url.includes("/get_mcp_findings"));
+  assert.ok(call, `got: ${rich.map((c) => c.url).join(", ")}`);
+  assert.equal(call.url, `${BASE}/get_mcp_findings?limit=25&severity=danger`);
+  assert.equal(call.method, "GET");
+  assert.ok(!("X-SimpleMDM-API-Key" in call.headers), "reads must not leak the SimpleMDM key to MunkiReport");
+});

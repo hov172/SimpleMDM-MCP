@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **198 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 14 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **200 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -185,6 +185,8 @@ These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php
 | `get_munkireport_runner_status` | Sync runner/cron/Python operational status — the "syncs silently stopped" warning surface (admin session) |
 | `request_munkireport_sync` | Module: write — queue a mirror sync run (admin session; acts on the module, never SimpleMDM) |
 | `refresh_munkireport_supplemental` | Module: write — recompute cross-module summaries, one device or fleet-wide (admin session) |
+| `push_munkireport_findings` | Module: write — push MCP-computed findings (CVE exposure, audit deltas, …) into MunkiReport's MCP Findings widget; sync-token auth, no session needed (module 2026-07-07+ build) |
+| `get_munkireport_mcp_findings` | Read back MCP-pushed findings with per-severity totals |
 
 ## Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
 
