@@ -8,6 +8,8 @@ dist/
 # Local smoke-test / one-off scripts and their output
 .smoke.*
 .top_apps.*
+/full_scan.mjs
+/summarize.mjs
 .build.out
 .docker.out
 .verify.out
@@ -22,8 +24,9 @@ audit_export/
 # Brainstorming/planning design docs — local only, not published to the repo
 docs/superpowers/
 
-# Session scratch logs (Claude Code output-capture workaround) — root dotfile logs only
+# Session scratch logs (Claude Code output-capture workaround)
 /.*.log
+/mcp.log
 /test-result.log
 /.codex-adversarial-review.out
 .gstack/
