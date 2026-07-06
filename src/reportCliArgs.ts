@@ -48,6 +48,7 @@ export function buildInventoryCliArgs(args: Args): string[] {
   if (args.allow_partial === true) argv.push("--allow-partial");
   if (args.report_only === true) argv.push("--report-only");
   if (args.raw === true) argv.push("--raw");
+  if (args.findings_exclude) argv.push("--findings-exclude", String(args.findings_exclude));
   if (args.out_dir) argv.push("--out", String(args.out_dir));
   return argv;
 }

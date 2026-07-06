@@ -11,8 +11,9 @@ import {
   GetPromptRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
 import { validateWipeArgs, buildWipeBody } from "./wipe.js";
@@ -36,7 +37,7 @@ import {
   listAppleSchemas,
   validateApplePayload,
 } from "./appleSchemas.js";
-import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM } from "./simplemdm-client.js";
+import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -387,6 +388,9 @@ export const INVALIDATION_MAP: Record<string, string[]> = {
   lock_device:                         ["/devices"],
   wipe_device:                         ["/devices"],
   sync_device:                         ["/devices"],
+  refresh_device_inventory:            ["/devices"],
+  disable_activation_lock:             ["/devices"],
+  push_message:                        ["/devices"],
   restart_device:                      ["/devices"],
   shutdown_device:                     ["/devices"],
   refresh_cellular_plans:              ["/devices"],
@@ -872,8 +876,23 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "sync_device",
-    description: "WRITE — Force device to re-check in with SimpleMDM immediately.",
+    description: "WRITE — Re-push all assigned apps to the device (POST /push_apps). NOTE: this does not request a device check-in or inventory refresh — use refresh_device_inventory for that.",
     inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "refresh_device_inventory",
+    description: "WRITE — Request a refresh of the device's information and app inventory (POST /devices/{id}/refresh). Use after remediation so analytics tools see fresh data instead of waiting for the next natural check-in. SimpleMDM throttles this per device (429 when requested too often). Requires the API key to have the device-refresh write scope (403 otherwise).",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "disable_activation_lock",
+    description: "WRITE DESTRUCTIVE — Disable Activation Lock on a device WITHOUT wiping it (POST /devices/{id}/disable_activation_lock). Removes the theft-deterrent lock tied to the enrolling Apple ID; use for legitimate device turnover (departing owner, resale, re-provisioning). Check get_activation_lock_status first. Requires the API key write scope (403 otherwise).",
+    inputSchema: { type: "object", required: ["device_id"], properties: { device_id: { type: "string" } }}},
+
+  { name: "push_message",
+    description: "WRITE — Send a message to a device via the SimpleMDM mobile app (POST /devices/{id}/push_message). Max 225 characters. Only delivers on devices with the SimpleMDM app installed; returns an error otherwise. Requires the API key write scope (403 otherwise).",
+    inputSchema: { type: "object", required: ["device_id", "message"], properties: {
+      device_id: { type: "string" },
+      message: { type: "string", description: "Message text, max 225 characters." },
+    }}},
 
   { name: "restart_device",
     description: "WRITE — Remote restart. Device must be supervised.",
@@ -1360,6 +1379,10 @@ export const TOOLS: Tool[] = [
     description: "List all custom configuration profiles.",
     inputSchema: { type: "object", properties: {} } },
 
+  { name: "download_custom_configuration_profile",
+    description: "Download the actual mobileconfig XML content of a custom configuration profile. The list/get endpoints return metadata only — this is the only way to read (or back up) what a custom profile contains.",
+    inputSchema: { type: "object", required: ["profile_id"], properties: { profile_id: { type: "string" } }}},
+
   { name: "create_custom_configuration_profile",
     description: "WRITE — Create a new custom configuration profile by providing mobileconfig XML.",
     inputSchema: { type: "object", required: ["name", "mobileconfig"], properties: {
@@ -1401,6 +1424,10 @@ export const TOOLS: Tool[] = [
   { name: "list_custom_declarations",
     description: "List all custom DDM declarations.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "download_custom_declaration",
+    description: "Download the raw content of a custom DDM declaration (the list endpoint returns metadata only).",
+    inputSchema: { type: "object", required: ["declaration_id"], properties: { declaration_id: { type: "string" } }}},
 
   { name: "get_custom_declaration",
     description: "Detail for a single declaration including type, identifier, scope, and activation predicate.",
@@ -1702,6 +1729,19 @@ export const TOOLS: Tool[] = [
       out_dir: { type: "string", description: "Custom output directory path." },
     }}},
 
+  { name: "run_config_backup",
+    description: "Disaster-recovery export of the tenant's reproducible configuration: custom configuration profiles (actual downloaded mobileconfig XML), custom declarations (downloaded content), scripts (with content), assignment groups, device groups, custom attributes, and native-profile metadata. Writes files plus a sha256 manifest under reports/config-backup-<timestamp>/ (local only, never committed). Read-only against the API. Note: native SimpleMDM-built profiles have no download endpoint — only their metadata is captured.",
+    inputSchema: { type: "object", properties: {
+      out_dir: { type: "string", description: "Custom output directory path. Default reports/config-backup-<timestamp>." },
+    }}},
+
+  { name: "run_report_diff",
+    description: "Compare two local inventory report run directories and report what CHANGED between them: devices added/removed, meaningful field changes (OS, FileVault, SIP, firewall, group, …; volatile per-check-in fields ignored), and findings new vs resolved. Answers 'what changed since the last audit' without re-reading thousands of findings. Writes diff-vs-<before>.md into the after directory. Both paths must be under reports/. Purely local — no API calls.",
+    inputSchema: { type: "object", required: ["before_dir", "after_dir"], properties: {
+      before_dir: { type: "string", description: "Older report run directory (under reports/), e.g. reports/inventory-20260611-090000." },
+      after_dir: { type: "string", description: "Newer report run directory (under reports/)." },
+    }}},
+
   { name: "run_inventory_report",
     description: "Runs the unified report engine CLI (node dist/reports/cli.js inventory) as a host-side subprocess; searchable fleet inventory of devices, apps, profiles, and security posture, with deployment-gap findings. Writes CSVs and a md/html/docx/pdf dossier. For in-process generation use generate_report.",
     inputSchema: { type: "object", properties: {
@@ -1716,6 +1756,7 @@ export const TOOLS: Tool[] = [
       report_style: { type: "string", enum: ["dossier", "roster", "flat"], description: "'dossier' (default) = audit style with rollups/findings/per-device facts; 'roster' = people-facing list grouped into device-group sections; 'flat' = one single table, device_group as a column — the spreadsheet-like hand-off view. Roster and flat also write report-table.csv, a CSV twin of the report's device rows." },
       sort: { type: "string", description: "Row order for roster/flat styles: seen|name|serial|model|os|group|year, optionally :asc or :desc (e.g. 'seen:desc' = most recently seen first). Defaults: roster oldest-seen first per group; flat by device group then last seen." },
       allow_partial: { type: "boolean", description: "Treat partial per-device data as success (otherwise the run reports partial data as a failure)." },
+      findings_exclude: { type: "string", description: "Comma-separated finding types to drop from the report (noise control), e.g. 'assigned-app-missing'. Excluded counts are disclosed in summary.txt." },
       report_only: { type: "boolean", description: "Write only the rendered report + summary + manifest (plus report-table.csv for roster/flat styles); skip the data CSV exports. Not valid with format 'csv'." },
       raw: { type: "boolean", description: "Also write redacted raw device JSON (secrets are always redacted)." },
       out_dir: { type: "string", description: "Custom output directory path." },
@@ -2826,6 +2867,20 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
     case "sync_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/push_apps`, { method: "POST" });
+    case "refresh_device_inventory":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/refresh`, { method: "POST" });
+    case "disable_activation_lock":
+      requireWrites();
+      return api(`/devices/${seg(args.device_id, "device_id")}/disable_activation_lock`, { method: "POST" });
+    case "push_message": {
+      requireWrites();
+      const msg = String(args.message ?? "");
+      if (msg.length === 0 || msg.length > 225) {
+        throw new Error(`push_message: message must be 1-225 characters (got ${msg.length}).`);
+      }
+      return api(`/devices/${seg(args.device_id, "device_id")}/push_message`, { method: "POST", body: j({ message: msg }) });
+    }
     case "restart_device":
       requireWrites();
       return api(`/devices/${seg(args.device_id, "device_id")}/restart`, { method: "POST" });
@@ -3132,6 +3187,11 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const r = await collectAllPages<AnyRecord>("/custom_configuration_profiles");
       return { data: slimRelationships(r.data), has_more: r.has_more };
     }
+    case "download_custom_configuration_profile": {
+      const id = seg(args.profile_id, "profile_id");
+      const { content, contentType } = await simpleMDMText(`/custom_configuration_profiles/${id}/download`);
+      return { profile_id: String(args.profile_id), content_type: contentType, content };
+    }
     case "create_custom_configuration_profile":
       requireWrites();
       return api("/custom_configuration_profiles", { method: "POST", body: j({ name: args.name, mobileconfig: args.mobileconfig, user_scope: args.user_scope, attribute_support: args.attribute_support }) });
@@ -3154,6 +3214,11 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       return { data: slimRelationships(r.data), has_more: r.has_more };
     }
     case "get_custom_declaration": return api(`/custom_declarations/${seg(args.declaration_id, "declaration_id")}`);
+    case "download_custom_declaration": {
+      const id = seg(args.declaration_id, "declaration_id");
+      const { content, contentType } = await simpleMDMText(`/custom_declarations/${id}/download`);
+      return { declaration_id: String(args.declaration_id), content_type: contentType, content };
+    }
     case "create_custom_declaration":
       requireWrites();
       return api("/custom_declarations", { method: "POST", body: j({ name: args.name, declaration_type: args.declaration_type, payload: args.payload, reinstall_after_os_update: args.reinstall_after_os_update, user_scope: args.user_scope }) });
@@ -3388,6 +3453,108 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
           stderr: err.stderr,
         };
       }
+    }
+
+    case "run_config_backup": {
+      const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+      const outDir = typeof args.out_dir === "string" && args.out_dir ? String(args.out_dir) : `reports/config-backup-${ts}`;
+      const errors: Array<{ item: string; error: string }> = [];
+      const manifestFiles: Array<{ file: string; bytes: number; sha256: string }> = [];
+      const safeName = (v: unknown) => String(v ?? "unnamed").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 60);
+      const writeEntry = (rel: string, content: string) => {
+        const full = join(outDir, rel);
+        mkdirSync(dirname(full), { recursive: true });
+        writeFileSync(full, content);
+        manifestFiles.push({ file: rel, bytes: Buffer.byteLength(content), sha256: createHash("sha256").update(content).digest("hex") });
+      };
+
+      // Custom profiles: the only copy of hand-crafted mobileconfig content.
+      const profs = await collectAllPages<AnyRecord>("/custom_configuration_profiles");
+      for (const p of profs.data) {
+        try {
+          const { content } = await simpleMDMText(`/custom_configuration_profiles/${encodeURIComponent(String(p.id))}/download`);
+          writeEntry(`custom-profiles/${p.id}-${safeName(p.attributes?.name)}.mobileconfig`, content);
+        } catch (e) {
+          errors.push({ item: `custom_configuration_profile ${p.id} (${p.attributes?.name ?? ""})`, error: formatError(e) });
+        }
+      }
+      const decls = await collectAllPages<AnyRecord>("/custom_declarations");
+      for (const d of decls.data) {
+        try {
+          const { content } = await simpleMDMText(`/custom_declarations/${encodeURIComponent(String(d.id))}/download`);
+          writeEntry(`custom-declarations/${d.id}-${safeName(d.attributes?.name)}.json`, content);
+        } catch (e) {
+          errors.push({ item: `custom_declaration ${d.id} (${d.attributes?.name ?? ""})`, error: formatError(e) });
+        }
+      }
+
+      // Full-record JSON exports (scripts carry their content in the record;
+      // native profiles have no download endpoint — metadata only).
+      const jsonExports: Array<[string, string]> = [
+        ["/scripts", "scripts.json"],
+        ["/assignment_groups", "assignment-groups.json"],
+        ["/device_groups", "device-groups.json"],
+        ["/custom_attributes", "custom-attributes.json"],
+        ["/profiles", "profiles-metadata.json"],
+      ];
+      const counts: Record<string, number> = {
+        custom_profiles: profs.data.length,
+        custom_declarations: decls.data.length,
+      };
+      for (const [path, file] of jsonExports) {
+        try {
+          const r = await collectAllPages<AnyRecord>(path);
+          counts[file.replace(/[-.]/g, "_").replace(/_json$/, "").replace(/_metadata$/, "")] = r.data.length;
+          writeEntry(file, JSON.stringify(r.data, null, 2));
+        } catch (e) {
+          errors.push({ item: path, error: formatError(e) });
+        }
+      }
+
+      writeEntry("manifest.json", JSON.stringify({
+        generated_at: new Date().toISOString(),
+        counts,
+        errors,
+        files: manifestFiles,
+      }, null, 2));
+      // Re-read to include the manifest itself in the returned file list only.
+      return {
+        out_dir: outDir,
+        counts,
+        files: manifestFiles.length,
+        errors,
+        partial: errors.length > 0,
+        note: "Local-only export (reports/ is gitignored, never committed). Native SimpleMDM-built profiles are captured as metadata only — the API has no download endpoint for them.",
+      };
+    }
+
+    case "run_report_diff": {
+      // Restrict to reports/ so this cannot be used to read arbitrary paths.
+      const inReports = (p: unknown, label: string): string => {
+        const raw = String(p ?? "");
+        const full = resolve(raw);
+        const root = resolve("reports");
+        if (full !== root && !full.startsWith(root + "/")) {
+          throw new Error(`${label} must be a directory under reports/ (got "${raw}")`);
+        }
+        return full;
+      };
+      const beforeDir = inReports(args.before_dir, "before_dir");
+      const afterDir = inReports(args.after_dir, "after_dir");
+      const { diffInventoryRuns, renderDiffMarkdown } = await import("./reports/domain/diff.js");
+      const { basename } = await import("node:path");
+      const d = diffInventoryRuns(beforeDir, afterDir);
+      const markdown = renderDiffMarkdown(d, beforeDir, afterDir);
+      const mdName = `diff-vs-${basename(beforeDir)}.md`;
+      writeFileSync(join(afterDir, mdName), markdown);
+      return {
+        before_dir: String(args.before_dir), after_dir: String(args.after_dir),
+        devices_added: d.devicesAdded, devices_removed: d.devicesRemoved,
+        changed: d.changed,
+        findings_new_count: d.findingsNew.length, findings_resolved_count: d.findingsResolved.length,
+        counts_before: d.countsBefore, counts_after: d.countsAfter,
+        diff_file: mdName, markdown,
+      };
     }
 
     case "run_inventory_report": {
@@ -3881,7 +4048,7 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
 export const WRITE_TOOLS = new Set<string>([
   "update_account",
   "create_device", "update_device", "delete_device", "delete_device_user",
-  "lock_device", "wipe_device", "sync_device", "restart_device", "shutdown_device", "refresh_cellular_plans",
+  "lock_device", "wipe_device", "sync_device", "refresh_device_inventory", "disable_activation_lock", "push_message", "restart_device", "shutdown_device", "refresh_cellular_plans",
   "unenroll_device", "clear_passcode", "clear_restrictions_password", "update_os",
   "enable_lost_mode", "disable_lost_mode", "play_lost_mode_sound", "update_lost_mode_location",
   "clear_firmware_password", "rotate_firmware_password",
@@ -3914,6 +4081,7 @@ export const WRITE_TOOLS = new Set<string>([
 
 const DESTRUCTIVE = new Set<string>([
   "wipe_device",
+  "disable_activation_lock",
   "unenroll_device",
   "delete_device",
   "delete_device_user",

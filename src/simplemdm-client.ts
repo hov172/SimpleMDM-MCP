@@ -45,6 +45,21 @@ export async function throwForStatus(upstream: string, res: Response): Promise<n
   throw new HttpError(upstream, res.status, excerpt);
 }
 
+// Raw-content GET for the /download endpoints, which return file bodies
+// (mobileconfig XML, declaration JSON) rather than the {data} JSON envelope.
+export async function simpleMDMText(path: string): Promise<{ content: string; contentType: string }> {
+  if (!API_KEY) {
+    throw new Error(
+      "SIMPLEMDM_API_KEY is not set. This tool requires direct SimpleMDM API access; " +
+      "without an API key, LOCAL_APP_MODE serves only the local-app-bridged tools " +
+      "(get_fleet_summary, get_security_posture, the get_munkireport_* tools, and the filevault report resource).",
+    );
+  }
+  const res = await fetchWithRetry("SimpleMDM", `${BASE}${path}`, { headers: { Authorization: AUTH_HEADER } });
+  if (!res.ok) await throwForStatus("SimpleMDM", res);
+  return { content: await res.text(), contentType: res.headers.get("content-type") ?? "" };
+}
+
 export async function simpleMDM(path: string, opts: RequestInit = {}): Promise<unknown> {
   // Fail fast with the actual cause. Startup permits a missing key in
   // LOCAL_APP_MODE, but only the two local-app tools work without one — every

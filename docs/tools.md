@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **182 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **189 tools** covering the full SimpleMDM API surface (28 derived fleet-analytics tools added in 0.5.0, 5 MunkiReport enrichment tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -16,6 +16,8 @@ The server registers **182 tools** covering the full SimpleMDM API surface (28 d
 | `run_fleet_audit` | Run the SOFA macOS security audit via the unified report engine CLI (`node dist/reports/cli.js audit`) as a host-side subprocess; writes CSV/md/html/docx/pdf to `reports/` and returns a text summary. Supports `page_size: a3\|a4`. |
 | `run_device_logs_audit` | Run the forensic device-logs audit via the unified report engine CLI (`node dist/reports/cli.js logs`) as a host-side subprocess; writes dossiers + CSVs to `reports/` and returns a text summary |
 | `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary |
+| `run_report_diff` | Compare two local inventory report run dirs (both under `reports/`): devices added/removed, meaningful field changes, findings new vs resolved; writes `diff-vs-<before>.md` into the after dir. Purely local — no API calls |
+| `run_config_backup` | Disaster-recovery export: downloads every custom profile's mobileconfig + custom declarations, plus scripts/groups/attributes records, with a sha256 manifest, to `reports/config-backup-<ts>/` |
 | `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs) and return `WriteResult` metadata (out_dir + per-file sha256). Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
 
 **Apple schema helpers**
@@ -70,6 +72,8 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 | `list_profiles` | All profiles |
 | `get_profile` | Single profile detail |
 | `list_custom_configuration_profiles` | Custom `.mobileconfig` profiles |
+| `download_custom_configuration_profile` | Download the actual mobileconfig XML of a custom profile (list/get return metadata only) |
+| `download_custom_declaration` | Download the raw content of a custom DDM declaration |
 | `list_custom_declarations` | DDM declarations |
 | `get_custom_declaration` | Single DDM declaration detail |
 
@@ -174,6 +178,9 @@ All tools below modify fleet state. The API permission column tells you what the
 | `restart_device` | Devices: write |
 | `shutdown_device` | Devices: write |
 | `wipe_device` ⚠️ destructive | Devices: write — supports `preserve_data_plan`, `disable_activation_lock`, `disallow_proximity_setup`, `return_to_service` (+ integer `wifi_network_id`), `obliteration_behavior`, `clear_custom_attributes`, `unassign_direct_profiles`, `preserve_managed_apps` (iOS 17+ — keeps managed apps installed through a wipe) |
+| `refresh_device_inventory` | Devices: write — request a device info + app inventory refresh (`POST /devices/{id}/refresh`; SimpleMDM throttles per device; needs the API-key refresh scope) |
+| `disable_activation_lock` ⚠️ destructive | Devices: write — disable Activation Lock WITHOUT wiping (`POST /devices/{id}/disable_activation_lock`; needs the API-key write scope) |
+| `push_message` | Devices: write — send a message (max 225 chars) via the SimpleMDM mobile app (`POST /devices/{id}/push_message`) |
 | `unenroll_device` ⚠️ destructive | Devices: write |
 | `update_os` | Devices: write |
 | `set_time_zone` | Devices: write |
@@ -191,7 +198,7 @@ All tools below modify fleet state. The API permission column tells you what the
 
 > **Notes on Device actions:**
 > - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed.
-> - **Disabling Activation Lock** is done through the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). The SimpleMDM public API exposes **no standalone "disable Activation Lock" endpoint**, so this server intentionally does not provide a separate `disable_activation_lock` tool. Use `get_activation_lock_status` to check current state.
+> - **Disabling Activation Lock** can be done two ways: the standalone `disable_activation_lock` tool (`POST /devices/{id}/disable_activation_lock` — verified live 2026-07-06; requires the API key's write scope, 403 otherwise), or the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). Use `get_activation_lock_status` to check current state.
 > - **Sending device messages** is a SimpleMDM web-console action that depends on the SimpleMDM mobile app and is **not exposed by the public REST API** — there is no `send_message` endpoint. This server therefore does not provide `send_device_message`. (Removed in this release after live-API verification.)
 > - **Safari Bookmarks**: SimpleMDM has no bookmarks-specific endpoint. Managed Safari bookmarks are an Apple **Declarative Device Management** configuration (`com.apple.configuration.safari.bookmarks`, iOS/macOS/visionOS **26+**). The `create_safari_bookmarks_declaration` tool builds that declaration from a simple `{title, url}` / nested-`folder` tree and delivers it via SimpleMDM's `/custom_declarations` API. Assign the resulting declaration to devices or groups to deploy.
 
