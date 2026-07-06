@@ -69,7 +69,7 @@ const CURATED_FALLBACKS = [
     key("PayloadContent", "string", { required: true }),
     key("PayloadCertificateFileName", "string"),
   ]),
-  schema("profile", "mdm/profiles/com.apple.vpn.managed.yaml", "VPN", "VPN", "Configures managed VPN settings.", ["iOS", "iPadOS", "macOS", "tvOS", "visionOS"], [
+  schema("profile", "mdm/profiles/com.apple.vpn.managed.yaml", "com.apple.vpn.managed", "VPN", "Configures managed VPN settings.", ["iOS", "iPadOS", "macOS", "tvOS", "visionOS"], [
     key("UserDefinedName", "string", { required: true }),
     key("VPNType", "string", { required: true, enumValues: ["VPN", "IPSec", "IKEv2", "AlwaysOn"] }),
     key("VPNSubType", "string"),
@@ -137,18 +137,20 @@ Options:
   --source-dir <dir>  Read local Apple-style YAML fixtures/files instead of network
   --no-fallback       Fail instead of adding curated fallback schemas on errors
   --dry-run           Validate and print a summary without writing
+  --allow-shrink      Permit overwriting an existing cache with fewer schemas
   --help              Show this help
 `;
 }
 
 function parseArgs(argv) {
-  const args = { ref: DEFAULT_REF, out: DEFAULT_OUT, offline: false, fallback: true, dryRun: false, sourceDir: "" };
+  const args = { ref: DEFAULT_REF, out: DEFAULT_OUT, offline: false, fallback: true, dryRun: false, sourceDir: "", allowShrink: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
     } else if (arg === "--offline") args.offline = true;
+    else if (arg === "--allow-shrink") args.allowShrink = true;
     else if (arg === "--no-fallback") args.fallback = false;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--ref") args.ref = requireValue(argv, ++i, arg);
@@ -264,6 +266,8 @@ async function listRemoteSchemaPaths(ref) {
   const text = await fetchText(apiTreeUrl(ref), MAX_TREE_BYTES);
   const body = JSON.parse(text);
   if (!Array.isArray(body.tree)) throw new Error("GitHub tree response missing tree array.");
+  // A truncated listing would silently drop schemas from the cache.
+  if (body.truncated) throw new Error("GitHub tree response is truncated — refusing a partial schema list.");
   return body.tree
     .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
     .map((entry) => entry.path)
@@ -489,13 +493,20 @@ async function buildCache(args) {
       try {
         const text = await fetchText(rawUrl(args.ref, sourcePath), MAX_RAW_BYTES);
         fetchedBytes += Buffer.byteLength(text, "utf8");
-        if (fetchedBytes > MAX_TOTAL_BYTES) throw new Error(`Total fetched content exceeded ${MAX_TOTAL_BYTES} byte cap.`);
         schemas.push(parseAppleYaml(text, sourcePath));
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         if (!args.fallback) throw error;
         warnings.push(`${sourcePath}: ${reason}`);
       }
+      // Outside the try so fallback mode cannot swallow the cap: stop fetching,
+      // do not silently discard content.
+      if (fetchedBytes > MAX_TOTAL_BYTES) throw new Error(`Total fetched content exceeded ${MAX_TOTAL_BYTES} byte cap.`);
+    }
+    // A degraded upstream (rate-limited raw fetches) must not quietly collapse
+    // the cache to the curated fallbacks — abort when failures dominate.
+    if (args.fallback && sourcePaths.length > 0 && warnings.length > sourcePaths.length * 0.2) {
+      throw new Error(`${warnings.length}/${sourcePaths.length} schema fetches failed — refusing to write a degraded cache.`);
     }
     if (args.fallback) schemas = mergeFallbacks(schemas);
   }
@@ -531,6 +542,15 @@ async function main() {
     return;
   }
   const out = path.resolve(repoRoot, args.out);
+  // Never silently replace a healthy cache with a smaller one — that is the
+  // signature of a degraded run, not of Apple removing schemas.
+  if (!args.allowShrink) {
+    let existingCount = null;
+    try { existingCount = JSON.parse(await readFile(out, "utf8")).schemas?.length ?? null; } catch { /* absent or unreadable */ }
+    if (existingCount != null && cache.schemas.length < existingCount) {
+      throw new Error(`Refusing to shrink ${path.relative(repoRoot, out)} from ${existingCount} to ${cache.schemas.length} schemas (pass --allow-shrink to override).`);
+    }
+  }
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, json, "utf8");
   console.log(`Wrote ${cache.schemas.length} Apple schemas to ${path.relative(repoRoot, out)}`);
