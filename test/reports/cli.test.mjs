@@ -493,3 +493,29 @@ test("inventory --search with device-scoped prefilter no --confirm-all → passe
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ── Flag/value confusion (guard bypass) ────────────────────────────────────────
+// has() must not match VALUE tokens: {search: "--confirm-all"} produced argv
+// [--search, --confirm-all] and satisfied the whole-fleet confirmation guard.
+
+test("a flag-shaped --search VALUE does not satisfy the --confirm-all fleet guard", async () => {
+  await assert.rejects(
+    () => runCli(
+      ["inventory", "--search", "--confirm-all", "--format", "md"],
+      { fetchInput: async () => ({}) },
+    ),
+    /confirm.?all/i,
+    "a value token spelled --confirm-all must not count as the flag",
+  );
+});
+
+test("a flag-shaped value is not rejected as an unknown flag", async () => {
+  await assert.rejects(
+    () => runCli(
+      ["inventory", "--serial", "S1", "--search", "--weird-token", "--format", "md"],
+      { fetchInput: async () => ({}) },
+    ),
+    (err) => !/unknown flag/i.test(err.message),
+    "value positions must be exempt from flag validation",
+  );
+});

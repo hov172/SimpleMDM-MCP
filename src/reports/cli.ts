@@ -168,11 +168,24 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   }
 
   const flags = argv.slice(1);
+
+  // Track which argv positions are VALUES (the token after a value-taking flag).
+  // Without this, a value spelled like a flag — e.g. --search "--confirm-all" —
+  // satisfies has("--confirm-all") and bypasses the whole-fleet guard.
+  const VALUE_FLAGS = new Set([
+    "--serial", "--group", "--last-seen", "--format", "--out", "--report-detail",
+    "--search", "--report-style", "--sort", "--page-size",
+  ]);
+  const valuePos = new Set<number>();
+  for (let i = 0; i < flags.length; i++) {
+    if (valuePos.has(i)) continue;
+    if (VALUE_FLAGS.has(flags[i]) && i + 1 < flags.length) valuePos.add(i + 1);
+  }
   const val = (name: string): string | null => {
-    const i = flags.indexOf(name);
+    const i = flags.findIndex((f, idx) => f === name && !valuePos.has(idx));
     return i >= 0 && i + 1 < flags.length ? flags[i + 1] : null;
   };
-  const has = (name: string): boolean => flags.includes(name);
+  const has = (name: string): boolean => flags.some((f, idx) => f === name && !valuePos.has(idx));
 
   // ── Per-report flag validation ────────────────────────────────────────────────
   // Define allowed flags per report
@@ -204,8 +217,10 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     AUDIT_ONLY_FLAGS.forEach((f) => allowedForReport.add(f));
   }
 
-  // Validate flags: must be either known and allowed for this report, or rejected with guidance
-  for (const f of flags) {
+  // Validate flags: must be either known and allowed for this report, or rejected
+  // with guidance. Value positions are data, not flags — skip them.
+  for (const [i, f] of flags.entries()) {
+    if (valuePos.has(i)) continue;
     if (f.startsWith("--")) {
       if (!allowedForReport.has(f)) {
         if (INVENTORY_ONLY_FLAGS.has(f)) {

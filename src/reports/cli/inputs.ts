@@ -262,5 +262,5 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
     const tables = buildMajorTables(macFeed, iosFeed);
     security = { tables, evald: bundles.map((b: any) => evaluateDevice(flatten(b.device), tables)) };
   }
-  return { bundles, dateStr: todayStr(), nowIso: nowIsoFn(), security, account: await fetchAccountSafe(apiKey) };
+  return { bundles, failures, dateStr: todayStr(), nowIso: nowIsoFn(), security, account: await fetchAccountSafe(apiKey) };
 }
