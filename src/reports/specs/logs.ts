@@ -29,7 +29,18 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
   const fr = findingRows(bundles), snapFiles = statusSnapshotFiles(bundles);
 
   // Render body; thread --report-detail to control per-device log verbosity.
-  const bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail, reportOnly: false, account: input.account ?? null });
+  let bodyMd = renderDetailedReport(bundles, null, dateStr, {}, { detail, reportOnly: false, account: input.account ?? null });
+
+  // Forensic integrity: devices whose log collection failed must be disclosed in the
+  // report body itself, not just the summary — this dossier is a legal export.
+  const failures: Array<{ serial: string; section: string; message: string }> = input.failures ?? [];
+  if (failures.length) {
+    bodyMd += [
+      "", "## ⚠ PARTIAL EXPORT — Collection Failures", "",
+      `Log collection FAILED for ${failures.length} device(s). This dossier covers only the devices listed above.`, "",
+      ...failures.map((f) => `- ${f.serial} (${f.section}): ${f.message}`), "",
+    ].join("\n");
+  }
 
   const d = new Dossier({
     title: "",
@@ -83,6 +94,6 @@ export function buildLogsDossier(input: any, opts: LogsBuildOpts = {}): Dossier 
   }
 
   // Bespoke manifest (with disclosures) — engine auto-manifest suppressed via manifest:false.
-  d.dataFile("manifest.csv", toCsv(cols(MANIFEST_COLUMNS), manifestRows(meta, nowIso)));
+  d.dataFile("manifest.csv", toCsv(cols(MANIFEST_COLUMNS), manifestRows(meta, nowIso, failures)));
   return d;
 }

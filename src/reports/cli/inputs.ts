@@ -228,10 +228,17 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
     ({ fetchDeviceApps, fetchDeviceProfiles, fetchDeviceUsers } = await import("../../../scripts/lib/simplemdm.mjs"));
   }
 
+  // Forensic integrity: a device that can't be collected must be RECORDED as a
+  // failure, not silently dropped — summary, report body, manifest disclosure and
+  // the CLI partial flag (exit 2) all key off this list.
   const bundles: any[] = [];
+  const failures: Array<{ serial: string; section: string; message: string }> = [];
   for (const device of selected) {
     const serial: string | undefined = device.attributes?.serial_number;
-    if (!serial) continue;
+    if (!serial) {
+      failures.push({ serial: `device_id:${device.id}`, section: "logs", message: "device has no serial_number; logs cannot be fetched" });
+      continue;
+    }
     try {
       const bundle: any = { device, logs: await fetchDeviceLogs(apiKey, serial) };
       if (opts?.withInventory) {
@@ -242,6 +249,7 @@ export async function logsInputLive(scope: LegacySelector, ctx: Ctx, opts: LogsI
       bundles.push(bundle);
     } catch (e) {
       console.warn(`logs: failed to fetch logs for ${serial}: ${(e as Error).message}`);
+      failures.push({ serial, section: "logs", message: (e as Error).message ?? String(e) });
     }
   }
 

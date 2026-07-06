@@ -70,3 +70,17 @@ test("buildLogsDossier raw-logs.json redacts secret device attributes", async ()
     assert.ok(raw.includes("[REDACTED set=yes]"), "raw-logs.json must contain [REDACTED set=yes] sentinel");
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
+
+test("buildLogsDossier surfaces collection failures in report.md and manifest.csv", async () => {
+  const input = buildLogsInput();
+  input.failures = [{ serial: "FAIL1", section: "logs", message: "SimpleMDM /logs failed 429" }];
+  const out = mkdtempSync(join(tmpdir(), "logs-fail-"));
+  try {
+    await buildLogsDossier(input, {}).write(out, { format: "md", reportOnly: false, manifest: false });
+    const md = readFileSync(join(out, "report.md"), "utf8");
+    assert.match(md, /PARTIAL/i, "report body must flag the export as partial");
+    assert.match(md, /FAIL1/, "report body must name the failed device");
+    const manifest = readFileSync(join(out, "manifest.csv"), "utf8");
+    assert.match(manifest, /PARTIAL/i, "manifest completeness disclosure must flip to partial");
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});

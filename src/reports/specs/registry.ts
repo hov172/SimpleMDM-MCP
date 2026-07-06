@@ -122,7 +122,10 @@ export const REGISTRY: Record<string, RegistryEntry> = {
             ? `Findings: ${fr.length} across ${new Set(fr.map((r: any) => r.serial_number)).size} device(s)${opts?.reportOnly ? "" : " — see findings.csv"}`
             : null;
         })(),
-        `Failed devices: 0`,
+        (input.failures as any[] | undefined)?.length
+          ? `Failed devices: ${(input.failures as any[]).length} — export is PARTIAL`
+          : `Failed devices: 0`,
+        ...((input.failures as any[] | undefined) ?? []).map((f: any) => `  failed: ${f.serial} ${f.section} — ${f.message}`),
         opts?.outDir ? `Output: ${opts.outDir}` : null,
       ];
       return lines.filter(Boolean).join("\n") + "\n";

@@ -372,3 +372,23 @@ test("renderDetailedReport: report-only wording drops references to CSV/JSON art
   assert.match(ro, /report-only export/i);
   assert.match(ro, /re-run without --report-only/i);
 });
+
+test("manifestRows completeness disclosure flips to PARTIAL when failures are present", () => {
+  const files = [{ file: "logs.csv", description: "events", record_scope: "3 events", data_row_count: 3, bytes: 100, sha256: "abc" }];
+  const failures = [{ serial: "FAIL1", section: "logs", message: "SimpleMDM /logs failed 429" }];
+  const rows = manifestRows(files, "2026-06-09T12:00:00-04:00", failures);
+  const completeness = rows.find((r) => /completeness/i.test(r.file));
+  assert.ok(completeness, "completeness disclosure must still be present");
+  assert.match(completeness.description, /PARTIAL/i, "must disclose the export is partial");
+  assert.match(completeness.description, /FAIL1/, "must name the failed device");
+  assert.doesNotMatch(completeness.description, /All collections returned has_more=false/,
+    "must not attest completeness when devices failed");
+});
+
+test("manifestRows without failures keeps the completeness attestation", () => {
+  const files = [{ file: "logs.csv", description: "events", record_scope: "3 events", data_row_count: 3, bytes: 100, sha256: "abc" }];
+  const rows = manifestRows(files, "2026-06-09T12:00:00-04:00");
+  const completeness = rows.find((r) => /completeness/i.test(r.file));
+  assert.match(completeness.description, /has_more=false/);
+  assert.doesNotMatch(completeness.description, /PARTIAL/i);
+});

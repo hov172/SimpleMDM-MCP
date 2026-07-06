@@ -140,7 +140,7 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   const partial = !opts.allowPartial && Boolean((input.failures as any[] | undefined)?.length);
   if (partial) {
     console.warn(
-      `inventory: ${(input.failures as any[]).length} per-device section fetch(es) failed` +
+      `${opts.report}: ${(input.failures as any[]).length} per-device fetch(es) failed` +
       ` (use --allow-partial to suppress this warning)`,
     );
   }

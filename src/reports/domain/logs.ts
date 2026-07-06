@@ -210,9 +210,19 @@ export const DISCLOSURES = [
   { file: "(disclosure: completeness)", description: "All collections returned has_more=false at export time. Records reproduced verbatim; derived columns are additive and clearly named." },
 ];
 
-export function manifestRows(fileMetas: any[], generatedAt: string): any[] {
+export interface CollectionFailure { serial: string; section: string; message: string }
+
+export function manifestRows(fileMetas: any[], generatedAt: string, failures: CollectionFailure[] = []): any[] {
   const rows = fileMetas.map((m) => ({ ...m, generated_at: generatedAt }));
-  for (const d of DISCLOSURES) rows.push({ file: d.file, description: d.description, record_scope: "", data_row_count: "", bytes: "", sha256: "", generated_at: generatedAt });
+  for (const d of DISCLOSURES) {
+    // The completeness attestation only holds for devices that were actually collected.
+    // With failures, the export is PARTIAL and the manifest must say so, not attest.
+    const description = failures.length && /completeness/.test(d.file)
+      ? `PARTIAL EXPORT: log collection FAILED for ${failures.length} device(s): ${failures.map((f) => f.serial).join(", ")}. ` +
+        `Collections for the devices included returned has_more=false at export time. Records reproduced verbatim; derived columns are additive and clearly named.`
+      : d.description;
+    rows.push({ file: d.file, description, record_scope: "", data_row_count: "", bytes: "", sha256: "", generated_at: generatedAt });
+  }
   return rows;
 }
 

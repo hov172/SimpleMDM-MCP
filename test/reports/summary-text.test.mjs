@@ -173,3 +173,22 @@ test("inventory summaryText: baseline lines still present (regression guard)", (
   assert.ok(text.includes("Findings:"), "Findings line");
   assert.ok(text.includes("Failed section fetches: 0"), "Failed section fetches line");
 });
+
+// ── Failure threading (logs export must never claim zero failures it didn't verify) ──
+
+test("logs summaryText: reports real failed-device count and PARTIAL marker", () => {
+  const input = buildLogsInput();
+  input.failures = [
+    { serial: "FAIL1", section: "logs", message: "SimpleMDM /logs failed 429" },
+    { serial: "FAIL2", section: "logs", message: "SimpleMDM /logs failed 429" },
+  ];
+  const text = REGISTRY.logs.summaryText(input, {});
+  assert.match(text, /Failed devices: 2 — export is PARTIAL/);
+  assert.match(text, /failed: FAIL1 logs — SimpleMDM \/logs failed 429/);
+  assert.doesNotMatch(text, /Failed devices: 0/);
+});
+
+test("logs summaryText: zero failures still prints Failed devices: 0", () => {
+  const text = REGISTRY.logs.summaryText(buildLogsInput(), {});
+  assert.match(text, /Failed devices: 0/);
+});
