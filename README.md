@@ -501,7 +501,7 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `LOCAL_APP_BASE_URL` | No | `http://127.0.0.1:49552` | Base URL of the local app bridge (used only when `LOCAL_APP_MODE=true`). |
 | `LOCAL_APP_TOKEN` | No | — | Bearer token for the local app bridge. **Required** when `LOCAL_APP_MODE=true`. |
 | `LOCAL_APP_TIMEOUT_MS` | No | `15000` | Timeout when using the optional Report-SimpleMDM local app bridge. |
-| `MUNKIREPORT_BASE_URL` | No | — | Base URL of your MunkiReport instance (e.g. `https://munkireport.example.com`). Required for `get_munkireport_*` tools when not using the local app bridge. |
+| `MUNKIREPORT_BASE_URL` | No | — | Base URL of your MunkiReport instance (e.g. `https://munkireport.example.com`). Required for `get_munkireport_*` tools when not using the local app bridge. The instance must run the [SimpleMDM-MunkiReport module](https://github.com/hov172/SimpleMDM-MunkiReport), which provides the `/module/simplemdm/…` routes these tools call. |
 | `MUNKIREPORT_MODULE_PREFIX` | No | `/module/simplemdm` | Path prefix for the MunkiReport simplemdm module endpoints. |
 | `MUNKIREPORT_AUTH_HEADER_NAME` | No | — | HTTP header name for MunkiReport authentication (e.g. `Authorization`). |
 | `MUNKIREPORT_AUTH_HEADER_VALUE` | No | — | HTTP header value for MunkiReport authentication (e.g. `Bearer <token>`). |

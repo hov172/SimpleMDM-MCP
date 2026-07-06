@@ -156,7 +156,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 
 **MunkiReport enrichment (require MunkiReport configuration)**
 
-These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php) instance for data the SimpleMDM API doesn't expose. Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](../README.md#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
+These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php) instance running the **[SimpleMDM-MunkiReport module](https://github.com/hov172/SimpleMDM-MunkiReport)** — the module provides the `/module/simplemdm/…` routes these tools call (the server's default `MUNKIREPORT_MODULE_PREFIX` is `/module/simplemdm`); a vanilla MunkiReport without it returns 404 for every call. Configure via `MUNKIREPORT_BASE_URL` and auth env vars (see [Environment variables](../README.md#environment-variables)), or via the optional Report-SimpleMDM local app bridge (`LOCAL_APP_TIMEOUT_MS`).
 
 | Tool | Description |
 |------|-------------|

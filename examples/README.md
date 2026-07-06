@@ -8,7 +8,7 @@ Sample MCP client configurations and a query cookbook for SimpleMDM-MCP.
 |------|---------|
 | [`claude-desktop.json`](claude-desktop.json) | Drop-in `mcpServers` block for Claude Desktop. Read-only by default. |
 | [`claude-desktop-with-writes.json`](claude-desktop-with-writes.json) | Same as above, with `SIMPLEMDM_ALLOW_WRITES=true`. Writes still prompt per call via MCP annotations. |
-| [`claude-desktop-with-munkireport.json`](claude-desktop-with-munkireport.json) | Adds MunkiReport enrichment so `get_munkireport_*` tools resolve to your MR instance. |
+| [`claude-desktop-with-munkireport.json`](claude-desktop-with-munkireport.json) | Adds MunkiReport enrichment so `get_munkireport_*` tools resolve to your MR instance. | Requires the [SimpleMDM-MunkiReport module](https://github.com/hov172/SimpleMDM-MunkiReport) installed in the MunkiReport instance.
 | [`claude-code-add.sh`](claude-code-add.sh) | One-line `claude mcp add` invocation. |
 | [`codex.toml`](codex.toml) | Codex CLI MCP server configuration. |
 | [`docker-run.sh`](docker-run.sh) | `docker run` with version-tagged build. |
