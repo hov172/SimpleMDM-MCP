@@ -1679,23 +1679,23 @@ export const TOOLS: Tool[] = [
   // MUNKIREPORT ENRICHMENT
   // ══════════════════════════════════════════════════════════════════════════
   { name: "get_munkireport_sync_health",
-    description: "Sync health telemetry from the MunkiReport simplemdm module.",
+    description: "Sync-run state and telemetry from the SimpleMDM-MunkiReport module (module's own sync data; no cross-module content).",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_munkireport_compliance",
-    description: "Fleet compliance stats from the MunkiReport simplemdm module.",
+    description: "Fleet compliance stats from the SimpleMDM-MunkiReport module, computed over its SimpleMDM-synced device table (status, supervision, FileVault, OS). Note: this is the SimpleMDM-reported FileVault field, not the cross-module filevault_status value.",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_munkireport_device_resources",
-    description: "Per-device connected-resource context from the MunkiReport module.",
+    description: "Per-device connected-resource context (profiles, apps, groups, scripts) from the SimpleMDM-MunkiReport module's own synced resource map.",
     inputSchema: { type: "object", required: ["serial_number"], properties: { serial_number: { type: "string" } }}},
 
   { name: "get_munkireport_apple_care",
-    description: "AppleCare coverage stats from the MunkiReport module.",
+    description: "AppleCare/warranty coverage stats — CROSS-MODULE data: the SimpleMDM-MunkiReport module reads the third-party MunkiReport warranty module's table (graceful zeros when that module isn't installed).",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_munkireport_supplemental_overview",
-    description: "Supplemental fleet overview from the MunkiReport module.",
+    description: "Supplemental fleet overview — CROSS-MODULE data aggregated from other installed MunkiReport modules (built-in sources: filevault_status, findmymac, warranty/AppleCare, profile, managedinstalls; arbitrary serial-keyed third-party modules are auto-discovered). Graceful zeros for sources whose module isn't installed.",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_api_coverage",

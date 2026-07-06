@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.31.2] - 2026-07-07
+
+### Fixed
+- **4 of the 5 `get_munkireport_*` tools called routes the SimpleMDM-MunkiReport module doesn't serve** (404 on every call): three used a phantom `/simplemdm/data/…` shape that doubled the module prefix, and `sync_health` guessed a method name the module implements as `get_sync_telemetry`. All five now call the module's real public controller methods (`get_compliance_stats`, `get_supplemental_applecare_stats`, `get_supplemental_overview_stats`, `get_sync_telemetry`, `get_device_resources`) — verified against the module source; a new test pins the exact URLs. Found by a cross-repo contract check; never hit live because these tools had not been exercised against a real module.
+
+### Documentation
+- The five MunkiReport tool descriptions now state what each actually returns, verified in the module source: `supplemental_overview` and `apple_care` carry **cross-module data** aggregated from other installed MunkiReport modules (built-in sources `filevault_status`, `findmymac`, `warranty`, `profile`, `managedinstalls`, plus auto-discovery of any serial-keyed third-party module table; graceful zeros when absent), while `compliance`, `device_resources`, and `sync_health` return the module's own SimpleMDM-synced data — including the nuance that `compliance`'s FileVault field is the SimpleMDM-reported one, not the cross-module `filevault_status` value. Same detail added to docs/tools.md.
+
+
 ### Documentation
 - README restructured for navigability (1,143 → ~614 lines): Quick Start now precedes Install; the three report sections are ~20-line summaries linking to their `docs/` deep dives (which are now the single source for flags/outputs/query reference — the "Say this to Claude" prompt tables moved there); Codex/ChatGPT/other-client walkthroughs moved to `examples/README.md`; the Claude Code permission templates moved to `docs/claude-code-permissions.md`; new `docs/README.md` index. No facts changed — content relocated to end the README-vs-docs dual maintenance that caused repeated drift.
 
