@@ -3337,11 +3337,14 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       return api(`/script_jobs/${seg(args.job_id, "job_id")}`, { method: "DELETE" });
 
     // ── MunkiReport enrichment ────────────────────────────────────────────────
-    case "get_munkireport_sync_health":       return USE_LOCAL_APP ? api("/enrichment/sync_health")          : munkiReport("/data/sync_health");
-    case "get_munkireport_compliance":        return USE_LOCAL_APP ? api("/enrichment/compliance")            : munkiReport("/simplemdm/data/compliance_stats");
+    // Direct-mode routes are the SimpleMDM-MunkiReport module's public controller
+    // methods (MunkiReport routes modules as /module/<name>/<method>) — verified
+    // against the module source; the old "/simplemdm/data/…" shapes were phantom.
+    case "get_munkireport_sync_health":       return USE_LOCAL_APP ? api("/enrichment/sync_health")          : munkiReport("/get_sync_telemetry");
+    case "get_munkireport_compliance":        return USE_LOCAL_APP ? api("/enrichment/compliance")            : munkiReport("/get_compliance_stats");
     case "get_munkireport_device_resources":  return USE_LOCAL_APP ? api(`/enrichment/device/${encodeURIComponent(String(args.serial_number))}`) : munkiReport(`/get_device_resources/${encodeURIComponent(String(args.serial_number))}`);
-    case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/simplemdm/data/apple_care_stats");
-    case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/simplemdm/data/supplemental_overview");
+    case "get_munkireport_apple_care":        return USE_LOCAL_APP ? api("/enrichment/apple_care")            : munkiReport("/get_supplemental_applecare_stats");
+    case "get_munkireport_supplemental_overview": return USE_LOCAL_APP ? api("/enrichment/supplemental_overview") : munkiReport("/get_supplemental_overview_stats");
 
     case "run_fleet_audit": {
       const format = args.format as string | undefined ?? "all";
