@@ -1738,15 +1738,15 @@ export const TOOLS: Tool[] = [
     inputSchema: { type: "object", required: ["serial_number"], properties: { serial_number: { type: "string" } }}},
 
   { name: "get_munkireport_supplemental_status",
-    description: "Fleet-wide supplemental enrichment HEALTH: per-source freshness counts (fresh/stale/missing/refresh_failed/module_not_detected) and client-fact coverage. Warning-class data — refresh_failed and stale counts flag broken enrichment. Requires an admin (global) MunkiReport session.",
+    description: "Fleet-wide supplemental enrichment HEALTH: per-source freshness counts (fresh/stale/missing/refresh_failed/module_not_detected) and client-fact coverage. Warning-class data — refresh_failed and stale counts flag broken enrichment. Session or sync-token header auth.",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_munkireport_client_facts",
-    description: "Option-B client-reporter facts for one device (typed values, reported_at, source, client version) — endpoint-local data (console user, uptime, munki last run, local FileVault) that neither the SimpleMDM API nor server-side sync can see. Requires an admin (global) MunkiReport session.",
+    description: "Option-B client-reporter facts for one device (typed values, reported_at, source, client version) — endpoint-local data (console user, uptime, munki last run, local FileVault) that neither the SimpleMDM API nor server-side sync can see. Session or sync-token header auth (module 2026-07-08+).",
     inputSchema: { type: "object", required: ["serial_number"], properties: { serial_number: { type: "string" } }}},
 
   { name: "get_munkireport_runner_status",
-    description: "Sync runner operational status: cron installation, Python runtime availability, runner config — the warning surface for 'syncs silently stopped'. Requires an admin (global) MunkiReport session.",
+    description: "Sync runner operational status: cron installation, Python runtime availability, runner config — the warning surface for 'syncs silently stopped'. Session or sync-token header auth (module 2026-07-08+).",
     inputSchema: { type: "object", properties: {} } },
 
   { name: "request_munkireport_sync",
@@ -1768,7 +1768,7 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "get_munkireport_mcp_findings",
-    description: "Read back MCP-pushed findings from the module (with per-severity totals). Filter by device, severity, or source. Plain MunkiReport session.",
+    description: "Read back MCP-pushed findings from the module (with per-severity totals). Filter by device, severity, or source. Session or sync-token header auth (module 2026-07-08+).",
     inputSchema: { type: "object", properties: {
       serial_number: { type: "string" },
       severity: { type: "string", enum: ["danger", "warning", "info"] },
