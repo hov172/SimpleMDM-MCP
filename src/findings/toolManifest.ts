@@ -1,7 +1,7 @@
 // GENERATED — classification of every tool registered in src/index.ts (as of 2026-07-10)
 // against the PRD's tool-eligibility matrix (docs/superpowers/specs/2026-07-10-findings-middleware-phase4-design.md).
 // Do not hand-edit the classification of an existing tool without updating the design doc's table.
-// A completeness test (test/findings/toolManifest.test.mjs) fails if a registered tool has no entry here.
+// A completeness test (test/toolManifest.test.mjs) fails if a registered tool has no entry here.
 
 export type ToolType = "audit" | "compliance" | "health_check" | "inventory" | "action" | "config_write" | "read_only_query" | "reporting_export";
 
