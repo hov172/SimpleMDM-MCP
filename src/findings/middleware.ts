@@ -3,6 +3,7 @@ import type { ToolFindingAdapter } from "./toolManifest.js";
 import type { McpFinding } from "../reports/domain/findings-map.js";
 import { munkiReportIngest } from "../munkiReportClient.js";
 import { loadFindingsConfig } from "./config.js";
+import { enqueue } from "./retryQueue.js";
 
 const SEVERITY_RANK: Record<"danger" | "warning" | "info", number> = { danger: 3, warning: 2, info: 1 };
 
@@ -84,7 +85,7 @@ export async function afterToolCall(
     return;
   }
 
-  try {
+  const ingestBody = {
     // replace:true reflects current state WITHIN this tool's own source namespace
     // (mcp_auto_<toolName>) -- cross-tool/manual-run isolation is already fully
     // provided by every tool having its own distinct source string, so replace
@@ -92,14 +93,27 @@ export async function afterToolCall(
     // Without this, repeated interactive calls to the same tool would each add a
     // fresh finding set under a new scan_id and never resolve stale ones (a
     // previously-flagged device that's since fixed would stay "open" forever).
-    await munkiReportIngest("/ingest_mcp_findings", {
-      source: `mcp_auto_${toolName}`,
-      scan_id: `mcp_auto_${toolName}_${Date.now()}`,
-      replace: true,
-      findings,
-    });
+    source: `mcp_auto_${toolName}`,
+    scan_id: `mcp_auto_${toolName}_${Date.now()}`,
+    replace: true,
+    findings,
+  };
+
+  try {
+    await munkiReportIngest("/ingest_mcp_findings", ingestBody);
     log(`[findings auto-publish] ${toolName}: published ${findings.length} finding(s)`);
   } catch (e) {
     log(`[findings auto-publish] ${toolName}: publish failed, tool response unaffected: ${(e as Error).message}`);
+    // Best-effort durable retry queue (opt-in via MCP_FINDINGS_QUEUE_DIR) -- see
+    // docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md §2.
+    // Additive only: when queueDir is unset this is a no-op and behavior is
+    // exactly the log-and-drop it's always been.
+    if (config.queueDir) {
+      try {
+        await enqueue({ route: "/ingest_mcp_findings", body: ingestBody });
+      } catch (queueErr) {
+        log(`[findings auto-publish] ${toolName}: failed to enqueue for retry: ${(queueErr as Error).message}`);
+      }
+    }
   }
 }

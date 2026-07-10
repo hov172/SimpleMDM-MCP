@@ -11,6 +11,9 @@ export interface FindingsConfig {
   // tool only auto-publishes if its name is in this set. Non-inventory tool types are
   // unaffected by this set.
   inventoryOptIn: Set<string>;
+  // MCP_FINDINGS_QUEUE_DIR -- null (unset) means the on-disk retry queue is
+  // disabled entirely, matching retryQueue.ts's "opt-in persistence" posture.
+  queueDir: string | null;
 }
 
 const VALID_MODES: readonly PublishMode[] = ["auto", "manual", "disabled", "dry_run"];
@@ -34,5 +37,8 @@ export function loadFindingsConfig(): FindingsConfig {
       .filter(Boolean),
   );
 
-  return { enabled, mode, minSeverity, inventoryOptIn };
+  const rawQueueDir = process.env.MCP_FINDINGS_QUEUE_DIR;
+  const queueDir = rawQueueDir && rawQueueDir.trim() ? rawQueueDir : null;
+
+  return { enabled, mode, minSeverity, inventoryOptIn, queueDir };
 }

@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 process.env.SIMPLEMDM_TEST_MODE = "true";
 process.env.SIMPLEMDM_API_KEY = "dummy-key";
@@ -25,6 +27,7 @@ function resetEnv(overrides = {}) {
   delete process.env.MCP_PUBLISH_MODE;
   delete process.env.MCP_PUBLISH_MIN_SEVERITY;
   delete process.env.MCP_PUBLISH_INVENTORY_TOOLS;
+  delete process.env.MCP_FINDINGS_QUEUE_DIR;
   Object.assign(process.env, overrides);
 }
 
@@ -174,6 +177,47 @@ test("a publish failure is caught and does not throw", async () => {
   await assert.doesNotReject(() => afterToolCall("get_stale_devices", STALE_DEVICES_RESULT, (m) => logs.push(m)));
   assert.ok(logs.some((l) => /fail/i.test(l)));
   globalThis.fetch = realFetch;
+});
+
+// Persistent on-disk retry queue (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §2): a failed publish additionally enqueues the same payload when MCP_FINDINGS_QUEUE_DIR is set,
+// and behavior is completely unchanged (log-and-drop only) when it's unset.
+const QUEUE_DIR = path.resolve("reports/.scratch/retry-queue-middleware-test");
+
+test("a publish failure enqueues to the retry queue when MCP_FINDINGS_QUEUE_DIR is set", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto", MCP_FINDINGS_QUEUE_DIR: QUEUE_DIR });
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  rich.length = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
+    return realFetch(url);
+  };
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  globalThis.fetch = realFetch;
+
+  const files = await fs.readdir(QUEUE_DIR);
+  assert.equal(files.length, 1, "expected the failed publish payload to be enqueued");
+  const enqueued = JSON.parse(await fs.readFile(path.join(QUEUE_DIR, files[0]), "utf8"));
+  assert.equal(enqueued.route, "/ingest_mcp_findings");
+  assert.equal(enqueued.body.source, "mcp_auto_get_stale_devices");
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  delete process.env.MCP_FINDINGS_QUEUE_DIR;
+});
+
+test("a publish failure does NOT enqueue anything when MCP_FINDINGS_QUEUE_DIR is unset (unchanged log-and-drop behavior)", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  rich.length = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
+    return realFetch(url);
+  };
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  globalThis.fetch = realFetch;
+
+  await assert.rejects(() => fs.access(QUEUE_DIR), "no queue dir should be created when MCP_FINDINGS_QUEUE_DIR is unset");
 });
 
 // Inventory-tool opt-in publishing (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
