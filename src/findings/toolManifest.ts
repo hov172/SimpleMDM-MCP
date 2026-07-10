@@ -12,6 +12,11 @@ export interface ToolFindingAdapter {
   severity: "danger" | "warning" | "info";
   serialField: string | null;
   conditionField?: string;
+  // If set, only emit a finding when row[conditionField] is one of these string
+  // values -- for fields that are a string enum, not a boolean (e.g. a "warning"
+  // field with values like "ok"/"renew_soon"/"expired"). If conditionField is set
+  // but conditionValues is not, falls back to plain truthiness of row[conditionField].
+  conditionValues?: string[];
   messageTemplate: string;
 }
 
@@ -100,7 +105,7 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
     ] },
   "get_certificate_expiration_audit": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
-      { resultField: "", findingType: "certificate_expiring", category: "Certificates", severity: "warning", serialField: null, conditionField: "warning", messageTemplate: "APNs certificate for {apple_id} expires in {days_until_expiry} days" },
+      { resultField: "", findingType: "certificate_expiring", category: "Certificates", severity: "warning", serialField: null, conditionField: "warning", conditionValues: ["renew_soon", "renew_now", "expired"], messageTemplate: "APNs certificate for {apple_id} expires in {days_until_expiry} days ({warning})" },
     ] },
   "get_compliance_violators": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
@@ -237,7 +242,7 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "set_attribute_for_multiple_devices": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_device_attribute_value": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_group_attribute_value": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "set_managed_app_config_schema": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "set_managed_app_config_schema": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_time_zone": { toolType: "action", publishable: true, supportsAutoPublish: false },
   "shutdown_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
   "sync_dep_server": { toolType: "config_write", publishable: false, supportsAutoPublish: false },

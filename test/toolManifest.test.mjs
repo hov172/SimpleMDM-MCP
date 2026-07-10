@@ -44,11 +44,16 @@ test("get_storage_health has two independent adapters (two distinct finding kind
   assert.deepStrictEqual(fields, ["low_battery_devices", "low_disk_devices"]);
 });
 
-test("get_certificate_expiration_audit uses resultField '' (whole-result adapter) with a conditionField", () => {
+test("get_certificate_expiration_audit uses resultField '' (whole-result adapter) with a conditionValues gate, not plain truthiness", () => {
   const entry = TOOL_MANIFEST["get_certificate_expiration_audit"];
   assert.equal(entry.adapters.length, 1);
   assert.equal(entry.adapters[0].resultField, "");
   assert.equal(entry.adapters[0].conditionField, "warning");
+  // warning is a string enum ("ok"|"renew_soon"|"renew_now"|"expired"|"unknown"), never falsy --
+  // a review caught that plain truthiness would have fired on every scan. conditionValues fixes this.
+  assert.deepStrictEqual(entry.adapters[0].conditionValues, ["renew_soon", "renew_now", "expired"]);
+  assert.ok(!entry.adapters[0].conditionValues.includes("ok"), "a healthy cert must not trigger a finding");
+  assert.ok(!entry.adapters[0].conditionValues.includes("unknown"), "missing expiry data must not trigger a finding");
   assert.equal(entry.adapters[0].serialField, null);
 });
 
