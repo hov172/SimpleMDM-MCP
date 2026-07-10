@@ -81,6 +81,14 @@ test("osStatus outdated (not eol) → no os_eol finding", () => {
   assert.ok(!findings.some((f) => f.finding_type === "os_eol"));
 });
 
+test("osStatus untracked → os_eol/OS/danger (dossier treats untracked as EOL too)", () => {
+  const findings = evaluatedDeviceToFindings(baseDevice({ osStatus: "untracked" }));
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].finding_type, "os_eol");
+  assert.equal(findings[0].category, "OS");
+  assert.equal(findings[0].severity, "danger");
+});
+
 test("multiple simultaneous failures → one finding per failed check, all with the same serial_number", () => {
   const findings = evaluatedDeviceToFindings(baseDevice({
     filevaultOk: false, sipOk: false, cvesBehind: 2, exploitedBehind: 0, osStatus: "eol",

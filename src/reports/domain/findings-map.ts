@@ -41,7 +41,7 @@ export function evaluatedDeviceToFindings(device: EvaluatedDevice): McpFinding[]
       data: { cves_behind: device.cvesBehind, exploited_behind: exploited },
     });
   }
-  if (device.osStatus === "eol") {
+  if (device.osStatus === "eol" || device.osStatus === "untracked") {
     out.push({
       serial_number, finding_type: "os_eol", category: "OS", severity: "danger",
       message: `OS version ${device.osVersion} is end-of-life (latest supported: ${device.latestMinor ?? "unknown"}).`,
