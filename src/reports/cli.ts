@@ -9,6 +9,7 @@ import type { LegacySelector, Ctx } from "./cli/inputs.js";
 import { loadEnvKey } from "./cli/inputs.js";
 import { munkiReportIngest } from "../munkiReportClient.js";
 import { evaluatedDeviceToFindings } from "./domain/findings-map.js";
+import { runFindingsCli } from "../findings/cli.js";
 
 // Human-readable scope label for the report header (e.g. "--all", "--serial C02…",
 // "search (whole fleet)"). Mirrors the legacy inventory header wording.
@@ -195,7 +196,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const reportName = argv[0];
   if (!reportName || reportName.startsWith("--")) {
     throw new Error(
-      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs)  |  diff <beforeDir> <afterDir>",
+      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs)  |  diff <beforeDir> <afterDir>  |  findings <status|retry|dry-run|validate>",
     );
   }
 
@@ -220,6 +221,23 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
       partial: false,
     };
   }
+  // `findings <status|retry|dry-run|validate>` — operational subcommands for the
+  // findings-publishing middleware (docs/superpowers/specs/2026-07-10-findings-
+  // phase4-followups-design.md §3). Not a WriteResult-producing report — handled
+  // entirely in src/findings/cli.ts and returned as a stub WriteResult here,
+  // following the same early-return pattern the `diff` branch above established.
+  if (reportName === "findings") {
+    const log = deps?.log ?? console.log;
+    await runFindingsCli(argv.slice(1), log);
+    return {
+      outDir: "",
+      files: [],
+      manifestSha256: "",
+      skipped: [],
+      partial: false,
+    };
+  }
+
   const entry = REGISTRY[reportName];
   if (!entry) {
     throw new Error(

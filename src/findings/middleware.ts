@@ -7,26 +7,66 @@ import { enqueue } from "./retryQueue.js";
 
 const SEVERITY_RANK: Record<"danger" | "warning" | "info", number> = { danger: 3, warning: 2, info: 1 };
 
-function resolveField(result: unknown, field: string): unknown {
+// Exported for reuse by the `findings dry-run` CLI subcommand (src/findings/cli.ts),
+// which needs the exact same row-resolution/template-substitution logic afterToolCall
+// uses, applied to an operator-supplied fixture instead of a live tool result.
+export function resolveField(result: unknown, field: string): unknown {
   if (field === "") return result;
   if (result == null || typeof result !== "object") return undefined;
   return (result as Record<string, unknown>)[field];
 }
 
-function rowsFromAdapter(result: unknown, adapter: ToolFindingAdapter): Record<string, unknown>[] {
+export function rowsFromAdapter(result: unknown, adapter: ToolFindingAdapter): Record<string, unknown>[] {
   const value = resolveField(result, adapter.resultField);
   if (Array.isArray(value)) return value as Record<string, unknown>[];
   if (value && typeof value === "object") return [value as Record<string, unknown>];
   return [];
 }
 
-function substituteTemplate(template: string, row: Record<string, unknown>): string {
+export function substituteTemplate(template: string, row: Record<string, unknown>): string {
   return template.replace(/\{(\w+)\}/g, (_match, field) => {
     const v = row[field];
     if (Array.isArray(v)) return v.join(", ");
     if (v === null || v === undefined) return "";
     return String(v);
   });
+}
+
+// Shared adapter-transform core: applies severity filtering, row resolution,
+// conditionField/conditionValues gating, and messageTemplate substitution.
+// Used by afterToolCall (live tool results) and by the `findings dry-run` CLI
+// subcommand (operator-supplied fixtures) so both paths stay in lockstep.
+export function findingsFromAdapters(
+  adapters: ToolFindingAdapter[],
+  result: unknown,
+  minSeverity: "danger" | "warning" | "info",
+): McpFinding[] {
+  const findings: McpFinding[] = [];
+  for (const adapter of adapters) {
+    if (SEVERITY_RANK[adapter.severity] < SEVERITY_RANK[minSeverity]) continue;
+    for (const row of rowsFromAdapter(result, adapter)) {
+      if (adapter.conditionField) {
+        const v = row[adapter.conditionField];
+        if (adapter.conditionValues) {
+          if (typeof v !== "string" || !adapter.conditionValues.includes(v)) continue;
+        } else if (!v) {
+          continue;
+        }
+      }
+      const finding: McpFinding = {
+        finding_type: adapter.findingType,
+        category: adapter.category,
+        severity: adapter.severity,
+        message: substituteTemplate(adapter.messageTemplate, row),
+      };
+      if (adapter.serialField) {
+        const serial = row[adapter.serialField];
+        if (typeof serial === "string" && serial) finding.serial_number = serial;
+      }
+      findings.push(finding);
+    }
+  }
+  return findings;
 }
 
 // Runs after a tool call has already produced its return value. Never throws --
@@ -50,31 +90,7 @@ export async function afterToolCall(
   // types are unaffected -- this check is scoped to toolType === "inventory" only.
   if (entry.toolType === "inventory" && !config.inventoryOptIn.has(toolName)) return;
 
-  const findings: McpFinding[] = [];
-  for (const adapter of entry.adapters) {
-    if (SEVERITY_RANK[adapter.severity] < SEVERITY_RANK[config.minSeverity]) continue;
-    for (const row of rowsFromAdapter(result, adapter)) {
-      if (adapter.conditionField) {
-        const v = row[adapter.conditionField];
-        if (adapter.conditionValues) {
-          if (typeof v !== "string" || !adapter.conditionValues.includes(v)) continue;
-        } else if (!v) {
-          continue;
-        }
-      }
-      const finding: McpFinding = {
-        finding_type: adapter.findingType,
-        category: adapter.category,
-        severity: adapter.severity,
-        message: substituteTemplate(adapter.messageTemplate, row),
-      };
-      if (adapter.serialField) {
-        const serial = row[adapter.serialField];
-        if (typeof serial === "string" && serial) finding.serial_number = serial;
-      }
-      findings.push(finding);
-    }
-  }
+  const findings: McpFinding[] = findingsFromAdapters(entry.adapters, result, config.minSeverity);
 
   if (findings.length === 0) return;
 
