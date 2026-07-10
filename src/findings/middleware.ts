@@ -43,6 +43,12 @@ export async function afterToolCall(
   const entry = TOOL_MANIFEST[toolName];
   if (!entry || !entry.publishable || !entry.supportsAutoPublish || !entry.adapters?.length) return;
 
+  // Inventory tools are PRD-classified "Optional, off by default" -- MCP_PUBLISH_MODE=auto
+  // alone must not start publishing this category. An inventory-type tool is only eligible
+  // once its name is explicitly opted in via MCP_PUBLISH_INVENTORY_TOOLS. Non-inventory tool
+  // types are unaffected -- this check is scoped to toolType === "inventory" only.
+  if (entry.toolType === "inventory" && !config.inventoryOptIn.has(toolName)) return;
+
   const findings: McpFinding[] = [];
   for (const adapter of entry.adapters) {
     if (SEVERITY_RANK[adapter.severity] < SEVERITY_RANK[config.minSeverity]) continue;

@@ -24,6 +24,7 @@ function resetEnv(overrides = {}) {
   delete process.env.MUNKIREPORT_ENABLED;
   delete process.env.MCP_PUBLISH_MODE;
   delete process.env.MCP_PUBLISH_MIN_SEVERITY;
+  delete process.env.MCP_PUBLISH_INVENTORY_TOOLS;
   Object.assign(process.env, overrides);
 }
 
@@ -173,6 +174,65 @@ test("a publish failure is caught and does not throw", async () => {
   await assert.doesNotReject(() => afterToolCall("get_stale_devices", STALE_DEVICES_RESULT, (m) => logs.push(m)));
   assert.ok(logs.some((l) => /fail/i.test(l)));
   globalThis.fetch = realFetch;
+});
+
+// Inventory-tool opt-in publishing (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §1): mode=auto alone must not publish an inventory-type tool -- it must also be named
+// in MCP_PUBLISH_INVENTORY_TOOLS. get_unmanaged_apps has a real adapter (severity: info),
+// so lower MCP_PUBLISH_MIN_SEVERITY to "info" in these cases to isolate the opt-in gate
+// from severity filtering.
+const UNMANAGED_APPS_RESULT = {
+  apps: [{ bundle_identifier: "com.example.foo", name: "Foo", count: 12 }],
+};
+
+test("an opted-in inventory tool publishes in auto mode", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    MCP_PUBLISH_INVENTORY_TOOLS: "get_unmanaged_apps",
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
+  assert.ok(call, "expected a publish call for an opted-in inventory tool");
+  const body = JSON.parse(call.body);
+  assert.equal(body.source, "mcp_auto_get_unmanaged_apps");
+  assert.equal(body.findings.length, 1);
+  assert.equal(body.findings[0].finding_type, "unmanaged_app");
+  assert.match(body.findings[0].message, /Foo/);
+});
+
+test("a non-opted-in inventory tool does NOT publish in auto mode, even though it has a real adapter", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    // MCP_PUBLISH_INVENTORY_TOOLS deliberately unset/empty -- no inventory tool opted in.
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")), "an inventory tool must not auto-publish unless explicitly opted in");
+});
+
+test("an opt-in list naming a DIFFERENT inventory tool does not enable this one", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    MCP_PUBLISH_INVENTORY_TOOLS: "get_orphaned_apps,get_lost_mode_devices",
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")), "opt-in is per-tool-name, not fleet-wide");
+});
+
+test("the inventory opt-in gate does not affect a non-inventory tool (get_stale_devices still publishes unconditionally in auto mode)", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
+  rich.length = 0;
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
+  assert.ok(call, "non-inventory tools must be unaffected by MCP_PUBLISH_INVENTORY_TOOLS being unset");
 });
 
 test("get_compliance_violators' array-valued {failures} field is joined with ', ' in the message", async () => {

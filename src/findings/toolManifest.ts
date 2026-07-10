@@ -2,6 +2,46 @@
 // against the PRD's tool-eligibility matrix (docs/superpowers/specs/2026-07-10-findings-middleware-phase4-design.md).
 // Do not hand-edit the classification of an existing tool without updating the design doc's table.
 // A completeness test (test/toolManifest.test.mjs) fails if a registered tool has no entry here.
+//
+// Inventory-tool adapters (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §1). Inventory tools are PRD-classified "Optional, off by default" -- these adapters exist in
+// the manifest but never auto-publish unless the tool name is also in the
+// MCP_PUBLISH_INVENTORY_TOOLS allowlist (see src/findings/config.ts, gated in middleware.ts).
+// All inventory adapters use severity: "info" (never danger/warning) since none represent a
+// compliance violation, only an FYI worth tracking if an operator opts in. Row shapes verified
+// against real src/index.ts handlers this session, not assumed.
+//
+// Wired (genuine pre-filtered per-row/per-object shape, worth a finding):
+//   - get_unmanaged_apps        -- apps not in the managed catalog, installed on >= N devices
+//   - get_app_coverage          -- devices missing a specific app (same shape as
+//                                  get_devices_missing_profile, which already has an adapter)
+//   - get_assignment_group_drift -- (group, device) pairs missing expected group apps
+//   - get_inactive_assignment_groups -- groups with zero devices assigned
+//   - get_lost_mode_devices     -- devices currently in Lost Mode
+//   - get_orphaned_apps         -- catalog apps not assigned to any group
+//   - get_orphaned_profiles     -- custom profiles not assigned to any group
+//   - get_user_attribution      -- devices with no value for the queried custom attribute
+//
+// Skipped (no adapter -- adapters omitted, supportsAutoPublish: false), with reason:
+//   - get_app_version_drift    -- `installs` is EVERY device with the app installed, not
+//                                  pre-filtered/conditionable to just the drifted (minority-
+//                                  version) subset; a conditionField needs a row-level field,
+//                                  but "is this the minority version" requires comparing each
+//                                  row against the tool's own version_distribution aggregate,
+//                                  which the generic middleware can't do. (Design doc listed this
+//                                  as a candidate "or whatever the real field is" -- confirmed by
+//                                  reading source that no such per-row field exists.)
+//   - get_app_size_footprint   -- pure ranking/leaderboard (bytes per app), no violation signal
+//   - get_apps_by_publisher    -- pure ranking/leaderboard, no violation signal
+//   - get_top_installed_apps   -- pure ranking/leaderboard, no violation signal
+//   - get_network_summary      -- devices array is NOT pre-filtered (every enrolled device),
+//                                  no per-row problem indicator to condition on
+//   - get_recently_enrolled    -- informational "what's new" listing, not a problem signal
+//   - get_fleet_summary        -- pure aggregate percentages/counts, no per-row shape at all
+//                                  (same precedent as get_security_posture)
+//   - get_device_full_profile  -- single-device on-demand dossier lookup, not a fleet scan
+//   - get_dep_device_status    -- single-device on-demand lookup keyed by an input serial,
+//                                  not a fleet scan producing a recurring finding
 
 export type ToolType = "audit" | "compliance" | "health_check" | "inventory" | "action" | "config_write" | "read_only_query" | "reporting_export";
 
@@ -88,7 +128,10 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "get_activation_lock_status": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_api_coverage": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_app": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "get_app_coverage": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_app_coverage": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "missing_devices", findingType: "app_coverage_gap", category: "Inventory", severity: "info", serialField: "serial", messageTemplate: "{name} does not have the required app installed" },
+    ] },
   "get_app_install_failures": { toolType: "health_check", publishable: true, supportsAutoPublish: true,
     adapters: [
       { resultField: "failures", findingType: "app_install_failure", category: "Applications", severity: "warning", serialField: null, messageTemplate: "{app_name} install {status} on device {device_id}" },
@@ -98,7 +141,10 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "get_apple_device_management_schema": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_apps_by_publisher": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
   "get_assignment_group": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "get_assignment_group_drift": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_assignment_group_drift": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "drift", findingType: "assignment_group_drift", category: "Inventory", severity: "info", serialField: null, messageTemplate: "Device {device_id} in group {group_name} is missing app(s): {missing}" },
+    ] },
   "get_battery_health_report": { toolType: "health_check", publishable: true, supportsAutoPublish: true,
     adapters: [
       { resultField: "devices", findingType: "battery_health", category: "Battery", severity: "warning", serialField: "serial", messageTemplate: "{name} flagged: {reason}" },
@@ -147,10 +193,16 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
     ] },
   "get_fleet_summary": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
   "get_group_attribute_values": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "get_inactive_assignment_groups": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_inactive_assignment_groups": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "groups", findingType: "inactive_assignment_group", category: "Inventory", severity: "info", serialField: null, messageTemplate: "Assignment group {name} (id {id}) has no devices assigned" },
+    ] },
   "get_installed_app": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_log": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "get_lost_mode_devices": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_lost_mode_devices": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "devices", findingType: "lost_mode_device", category: "Inventory", severity: "info", serialField: "serial", messageTemplate: "{name} is currently in Lost Mode" },
+    ] },
   "get_managed_app_config_templates": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_munkireport_alerts": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_munkireport_apple_care": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
@@ -166,8 +218,14 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "get_munkireport_supplemental_status": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_munkireport_sync_health": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_network_summary": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
-  "get_orphaned_apps": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
-  "get_orphaned_profiles": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_orphaned_apps": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "apps", findingType: "orphaned_app", category: "Inventory", severity: "info", serialField: null, messageTemplate: "App {name} (id {id}) is not assigned to any assignment group" },
+    ] },
+  "get_orphaned_profiles": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "profiles", findingType: "orphaned_profile", category: "Inventory", severity: "info", serialField: null, messageTemplate: "Profile {name} (id {id}) is not assigned to any assignment group" },
+    ] },
   "get_os_eligibility": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
       { resultField: "devices", findingType: "os_upgrade_available", category: "OS", severity: "info", serialField: "serial", conditionField: "upgrade_available", messageTemplate: "{name} is eligible for a macOS upgrade" },
@@ -197,8 +255,14 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
       { resultField: "devices", findingType: "supervision_drift", category: "Compliance", severity: "warning", serialField: "serial", messageTemplate: "{name} is DEP-enrolled but not supervised" },
     ] },
   "get_top_installed_apps": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
-  "get_unmanaged_apps": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
-  "get_user_attribution": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
+  "get_unmanaged_apps": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "apps", findingType: "unmanaged_app", category: "Inventory", severity: "info", serialField: null, messageTemplate: "{name} installed on {count} device(s), not in the managed app catalog" },
+    ] },
+  "get_user_attribution": { toolType: "inventory", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "unattributed", findingType: "unattributed_device", category: "Inventory", severity: "info", serialField: "serial", messageTemplate: "{device_name} has no user attribution value set" },
+    ] },
   "list_app_installs": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_apps": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_assignment_groups": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
