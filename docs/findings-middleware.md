@@ -26,10 +26,10 @@ caller — it's logged (and optionally queued for retry, see below), not thrown.
 
 | Tool category | Publishes by default? | Notes |
 |---|---|---|
-| **Compliance / Health-check** (`get_compliance_violators`, `get_stale_devices`, `get_certificate_expiration_audit`, …) | Yes, in `auto` mode | ~13 tools with a per-row/per-object adapter, verified against each tool's real return shape |
+| **Compliance / Health-check** (`get_compliance_violators`, `get_stale_devices`, `get_certificate_expiration_audit`, …) | Yes, in `auto` mode | 14 tools with a per-row/per-object adapter, verified against each tool's real return shape. 5 of them (`get_dep_unassigned`, `get_device_user_count_outliers`, `get_enrollment_token_audit`, `get_os_eligibility`, `get_pending_commands`) only emit `severity: "info"` findings, so they publish nothing at the default `MCP_PUBLISH_MIN_SEVERITY=warning` — set it to `info` to include them. |
 | **Inventory** (`get_unmanaged_apps`, `get_app_coverage`, `get_orphaned_apps`, …) | No — opt-in only | See `MCP_PUBLISH_INVENTORY_TOOLS` below. All findings are `severity: "info"`. |
-| **Action** (`lock_device`, `wipe_device`, `restart_device`, …) | Only on **failure** | Publishes a single `severity: "danger"` finding when the action genuinely fails against SimpleMDM (a non-2xx API response) — never on success (there's no "healthy" state for an action), and never for a client/config error (bad arguments, `SIMPLEMDM_ALLOW_WRITES` unset) that never reached the network. |
-| **Audit** (`run_fleet_audit`, `run_device_logs_audit`) | Only via the existing `--publish`/`scan_id` flag | Unchanged, separate code path (`src/reports/domain/findings-map.ts`) — not part of this middleware. |
+| **Action** (`lock_device`, `wipe_device`, `restart_device`, …) | Only on **failure** | Publishes a single `severity: "danger"` finding when the action genuinely fails against SimpleMDM (a non-2xx API response) — never on success (there's no "healthy" state for an action), and never for a client/config error (bad arguments, `SIMPLEMDM_ALLOW_WRITES` unset) that never reached the network. Failure findings use their own source namespace `mcp_auto_action_<toolName>` (not `mcp_auto_<toolName>`), category `Action Failure`, finding type `action_failed_<toolName>`. |
+| **Audit** (`run_fleet_audit`) | Only via the existing `publish`/`scan_id` params (CLI `--publish`/`--scan-id`) | Unchanged, separate code path (`src/reports/domain/findings-map.ts`) — not part of this middleware. `run_device_logs_audit` (the `logs` report) has no findings-publish path at all. |
 | Config-write / Read-only query / Reporting-export | Never | No per-tool "issue" signal to publish. |
 
 Run `node dist/reports/cli.js findings validate` any time to confirm every
@@ -41,8 +41,8 @@ subcommands](#cli-subcommands) below) — useful after adding a new tool.
 | Variable | Default | Description |
 |---|---|---|
 | `MUNKIREPORT_ENABLED` | `false` | Master switch. `false` means the middleware never runs, regardless of the other settings below. |
-| `MCP_PUBLISH_MODE` | `manual` | `auto` — publish eligible findings automatically. `dry_run` — log what *would* publish, never actually push. `manual` — middleware never fires; the existing explicit `push_munkireport_findings` / `audit --publish` paths remain how you publish. `disabled` — same as `manual`, unconditionally. |
-| `MCP_PUBLISH_MIN_SEVERITY` | `warning` | Skip findings below this severity (`danger` > `warning` > `info`). Action-tool failures are always `danger`, so this threshold can't filter them out. |
+| `MCP_PUBLISH_MODE` | `manual` | `auto` — publish eligible findings automatically. `dry_run` — log what *would* publish, never actually push. `manual` — middleware never fires; the existing explicit `push_munkireport_findings` / `audit --publish` paths remain how you publish. `disabled` — same as `manual`, unconditionally. Values are case-insensitive; an unrecognized value silently falls back to `manual` (it is not an error). |
+| `MCP_PUBLISH_MIN_SEVERITY` | `warning` | Skip findings below this severity (`danger` > `warning` > `info`). Action-tool failures are always `danger`, so this threshold can't filter them out. Case-insensitive; an unrecognized value silently falls back to `warning`. |
 | `MCP_PUBLISH_INVENTORY_TOOLS` | *(empty)* | Comma-separated allowlist of inventory tool names to opt into auto-publish (e.g. `get_unmanaged_apps,get_orphaned_apps`). `MCP_PUBLISH_MODE=auto` alone never starts publishing this category — a tool must also be named here. |
 | `MCP_FINDINGS_QUEUE_DIR` | *(unset)* | Path to a directory for the persistent on-disk retry queue (see below). Unset means the queue is disabled — a failed publish is just logged, matching the original best-effort behavior. |
 

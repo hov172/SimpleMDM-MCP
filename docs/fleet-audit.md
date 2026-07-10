@@ -108,6 +108,8 @@ node dist/reports/cli.js audit --format all     # csv | md | docx | all  (defaul
 | `--out <dir>` | output directory (CLI default `reports/audit-YYYYMMDD-HHMMSS/`; the `run_fleet_audit` MCP tool defaults to `reports/audit-YYYY-MM-DD/` under the install root) |
 | `--report-only` | write only the rendered report + `summary.txt`; skip the data CSV exports (not valid with `--format csv`) |
 | `--no-network-cache` | ignore the cached SOFA feed and refetch |
+| `--publish` | after the dossier is written, push the audit's per-check findings to MunkiReport (`source: sofa_audit`; requires `MUNKIREPORT_BASE_URL`). A publish failure is logged and never fails the report. Exposed on the `run_fleet_audit` MCP tool as the `publish` param. |
+| `--scan-id <id>` | group the published findings under this scan id (default: `scan_mcp_audit_<timestamp>`; only meaningful with `--publish`). MCP tool param: `scan_id`. |
 
 By default the audit covers the **whole fleet**. The optional selectors above scope it to a
 subset; `--group` understands both legacy **device groups** and **assignment groups** (the same

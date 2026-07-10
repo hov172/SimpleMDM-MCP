@@ -41,6 +41,19 @@ This MCP server runs locally and uses the API key you configure. The key is
 serials, OS versions, etc.) are relayed through the LLM provider as part of
 the conversation.
 
+If you configure the optional MunkiReport integration (`MUNKIREPORT_BASE_URL`),
+there is a second outbound channel: the server sends fleet data (device serials,
+finding messages, severities) to **your** MunkiReport instance — via the
+`push_munkireport_findings` tool, `audit --publish`, or the findings
+auto-publish middleware (see
+[`docs/findings-middleware.md`](docs/findings-middleware.md)). On the
+`ingest_mcp_findings` path **only**, the SimpleMDM API key is transmitted as the
+sync-token header (`X-SimpleMDM-API-Key`) to authenticate against the
+[SimpleMDM-MunkiReport module](https://github.com/hov172/SimpleMDM-MunkiReport),
+which already stores that key. Session-authenticated reads never carry the key.
+Point `MUNKIREPORT_BASE_URL` only at a MunkiReport instance you operate and
+trust, ideally over HTTPS.
+
 If you suspect a key has been exposed:
 
 1. Rotate it immediately in SimpleMDM → Settings → API Keys.

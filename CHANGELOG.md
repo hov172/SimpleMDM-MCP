@@ -8,18 +8,22 @@ All notable changes to this project are documented here. Format follows
 
 ## [0.34.0] - 2026-07-10
 
-Completes PRD Phase 4 (findings auto-publish middleware): the four items
-deferred from the initial middleware slice. See
+Ships PRD Phase 4 (findings auto-publish middleware) end-to-end: the core
+middleware and tool manifest, the four items deferred from the initial slice,
+and a findings-publish path for the fleet audit. See
 [`docs/findings-middleware.md`](docs/findings-middleware.md) for the full
 picture (config, per-tool-category behavior, retry queue, CLI). No
 MunkiReport-php changes.
 
 ### Added
+- **Findings auto-publish middleware** — after every tool call, a manifest classifying all 200 registered tools (`src/findings/toolManifest.ts`) decides whether the result becomes MunkiReport findings, pushed over the same `ingest_mcp_findings` wire contract as `push_munkireport_findings` (`source: mcp_auto_<toolName>`, `replace: true` so repeated calls reflect current state). 14 compliance/health-check tools carry per-row adapters that publish in `auto` mode. Off by default: gated behind `MUNKIREPORT_ENABLED`, `MCP_PUBLISH_MODE` (`auto`/`manual`/`disabled`/`dry_run`), and `MCP_PUBLISH_MIN_SEVERITY`.
+- **Audit findings publish** — `--publish`/`--scan-id` flags on the audit CLI and matching `publish`/`scan_id` params on the `run_fleet_audit` MCP tool push the audit's per-check findings to MunkiReport (`source: sofa_audit`, separate `src/reports/domain/findings-map.ts` path); a publish failure is logged and never fails the report itself.
+- **`scan_id` param on `push_munkireport_findings`** — group pushed findings under a caller-chosen scan id (plus a documented `category` field).
 - **Inventory-tool opt-in publishing** — 8 inventory tools (`get_unmanaged_apps`, `get_app_coverage`, `get_assignment_group_drift`, `get_inactive_assignment_groups`, `get_lost_mode_devices`, `get_orphaned_apps`, `get_orphaned_profiles`, `get_user_attribution`) gain `severity: "info"` findings adapters, gated behind a new `MCP_PUBLISH_INVENTORY_TOOLS` allowlist so `MCP_PUBLISH_MODE=auto` alone never starts publishing this category unasked.
 - **Persistent on-disk retry queue** — `MCP_FINDINGS_QUEUE_DIR` durably queues failed publish payloads (instead of just logging and dropping them) so they survive a process restart and can be replayed later.
 - **`findings status|retry|dry-run|validate` CLI subcommands** (`node dist/reports/cli.js findings …`) — inspect current config/queue state, drain the retry queue, preview an adapter's output against a sample fixture, and catch tool/manifest drift with a nonzero exit code.
 - **Action-tool failure-detection findings** — all ~39 action-type tools (`lock_device`, `wipe_device`, `restart_device`, …) now auto-publish a single `severity: "danger"` finding when the action genuinely fails against the SimpleMDM API (a real `HttpError`), never on success and never for a client/config error (bad arguments, writes disabled) that never reached the network.
-- `docs/findings-middleware.md` — new dedicated doc covering the whole findings auto-publish middleware (this slice plus the original Phase 4 middleware, `MUNKIREPORT_ENABLED`/`MCP_PUBLISH_MODE`/`MCP_PUBLISH_MIN_SEVERITY`), which had shipped without public documentation until now.
+- `docs/findings-middleware.md` — new dedicated doc covering the whole findings auto-publish middleware: eligibility by tool category, all `MUNKIREPORT_ENABLED`/`MCP_PUBLISH_*`/`MCP_FINDINGS_QUEUE_DIR` config, the retry queue, and the `findings` CLI.
 
 ## [0.33.0] - 2026-07-07
 
