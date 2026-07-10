@@ -119,6 +119,29 @@ test("push_munkireport_findings POSTs the findings payload with the sync token",
   assert.equal(body.replace, true, "replace defaults to true");
 });
 
+test("push_munkireport_findings forwards scan_id when provided", async () => {
+  rich.length = 0;
+  await handleTool("push_munkireport_findings", {
+    source: "sofa_audit",
+    scan_id: "scan_mcp_audit_20260710",
+    findings: [{ finding_type: "os_eol", severity: "danger", message: "EOL" }],
+  });
+  const call = rich.find((c) => c.url === `${BASE}/ingest_mcp_findings`);
+  const body = JSON.parse(call.body);
+  assert.equal(body.scan_id, "scan_mcp_audit_20260710");
+});
+
+test("push_munkireport_findings omits scan_id from the body when not provided", async () => {
+  rich.length = 0;
+  await handleTool("push_munkireport_findings", {
+    source: "sofa_audit",
+    findings: [{ finding_type: "os_eol", severity: "danger", message: "EOL" }],
+  });
+  const call = rich.find((c) => c.url === `${BASE}/ingest_mcp_findings`);
+  const body = JSON.parse(call.body);
+  assert.ok(!("scan_id" in body), "scan_id must be absent, not null/undefined, when not provided");
+});
+
 test("push_munkireport_findings is write-gated and validates input", async () => {
   const { WRITE_TOOLS } = await import("../dist/index.js");
   assert.ok(WRITE_TOOLS.has("push_munkireport_findings"));

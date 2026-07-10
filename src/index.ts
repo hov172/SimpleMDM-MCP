@@ -1748,7 +1748,8 @@ export const TOOLS: Tool[] = [
     description: "WRITE — Push MCP-computed findings (SOFA CVE exposure, audit/diff deltas, stale/compliance detections) into MunkiReport, where they appear in the module's MCP Findings widget and get_mcp_findings. Authenticates with the sync token (the SimpleMDM API key the module already stores) — no MunkiReport session needed. replace=true (default) swaps out this source's previous findings so pushes reflect current state. Caps: 2000 findings, 2 MB. Requires the module's 2026-07-07+ build.",
     inputSchema: { type: "object", required: ["source", "findings"], properties: {
       source: { type: "string", description: "Findings namespace, e.g. 'sofa_audit' or 'inventory_diff' (a-z, 0-9, _, -; max 64)." },
-      findings: { type: "array", description: "Array of { serial_number?, finding_type, severity (danger|warning|info), message, data? }.", items: { type: "object" } },
+      scan_id: { type: "string", description: "Groups this push under one scan for get_mcp_scan_status's per-source last-scan summary. Omit to let the module auto-generate one." },
+      findings: { type: "array", description: "Array of { serial_number?, finding_type, category?, severity (danger|warning|info), message, data? }. category groups findings for get_mcp_finding_stats's by_category breakdown, e.g. 'FileVault', 'SIP', 'Firewall', 'XProtect', 'Compliance', 'OS'.", items: { type: "object" } },
       replace: { type: "boolean", description: "Replace this source's previous findings (default true)." },
     }}},
 
@@ -3441,11 +3442,13 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       if (findings.length > 2000) {
         throw new Error(`push_munkireport_findings: too many findings (${findings.length}; 2000 cap per push).`);
       }
-      return munkiReportIngest("/ingest_mcp_findings", {
+      const body: Record<string, unknown> = {
         source,
         replace: args.replace !== false,
         findings,
-      });
+      };
+      if (args.scan_id != null) body.scan_id = String(args.scan_id);
+      return munkiReportIngest("/ingest_mcp_findings", body);
     }
     case "get_munkireport_mcp_findings": {
       const params = new URLSearchParams();
