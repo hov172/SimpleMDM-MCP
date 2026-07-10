@@ -31,8 +31,12 @@ const FAKE_AUDIT_INPUT = {
   cveDetail: [], summary: {}, dateStr: "2026-07-10", scoped: false, account: null,
 };
 
+// Under reports/ (gitignored, same shape the CLI writes to in production) rather
+// than /tmp — sandboxed CI environments can sweep /tmp mid-run, and this test's
+// failure case deliberately waits out fetchWithRetry's real backoff (~7s),
+// long enough to race such a sweep.
 const baseOpts = (extra) => ({
-  report: "audit", scope: null, format: "md", outDir: "/tmp/mcp-publish-test", reportOnly: true,
+  report: "audit", scope: null, format: "md", outDir: "reports/mcp-publish-test", reportOnly: true,
   ...extra,
 });
 
