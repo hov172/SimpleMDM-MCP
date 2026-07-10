@@ -7,6 +7,8 @@ import { REGISTRY } from "./specs/registry.js";
 import { writeReportExtras } from "./engine/extras.js";
 import type { LegacySelector, Ctx } from "./cli/inputs.js";
 import { loadEnvKey } from "./cli/inputs.js";
+import { munkiReportIngest } from "../munkiReportClient.js";
+import { evaluatedDeviceToFindings } from "./domain/findings-map.js";
 
 // Human-readable scope label for the report header (e.g. "--all", "--serial C02…",
 // "search (whole fleet)"). Mirrors the legacy inventory header wording.
@@ -61,6 +63,9 @@ export interface RunReportOpts {
   noNetworkCache?: boolean;
   // audit-specific: PDF/HTML page size ("a3-landscape" roomy default | "a4-landscape" compact)
   pageStyle?: "a3-landscape" | "a4-landscape";
+  // audit-specific: push derived findings to MunkiReport after the dossier writes
+  publish?: boolean;
+  scanId?: string;
 }
 
 export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<WriteResult> {
@@ -134,6 +139,26 @@ export async function runReport(opts: RunReportOpts, deps?: CliDeps): Promise<Wr
   const dossier = entry.build(input, entryOpts);
   mkdirSync(opts.outDir, { recursive: true });
   const result = await dossier.write(opts.outDir, { format: opts.format, reportOnly: opts.reportOnly, ...entry.writeOpts });
+
+  // Audit-only: derive per-check findings from the same typed evaluation data
+  // the dossier just rendered from, and push them to MunkiReport. Never lets a
+  // publish failure take down report generation — the files above are already
+  // on disk and are the primary deliverable.
+  if (opts.report === "audit" && opts.publish) {
+    const ev = (input as { ev?: unknown }).ev;
+    const findings = Array.isArray(ev) ? (ev as Parameters<typeof evaluatedDeviceToFindings>[0][]).flatMap(evaluatedDeviceToFindings) : [];
+    const scanId = opts.scanId ?? `scan_mcp_audit_${opts.outDir.match(/(\d{8}-\d{6})/)?.[1] ?? Date.now()}`;
+    if (findings.length === 0) {
+      log("publish: no findings to push (fleet is clean)");
+    } else {
+      try {
+        await munkiReportIngest("/ingest_mcp_findings", { source: "sofa_audit", scan_id: scanId, replace: true, findings });
+        log(`publish: pushed ${findings.length} finding(s) to MunkiReport as scan_id ${scanId}`);
+      } catch (e) {
+        log(`publish failed: ${(e as Error).message} — report files were still written to ${opts.outDir}`);
+      }
+    }
+  }
 
   // Write summary.txt if the registry entry provides a summaryText function
   if (entry.summaryText) {
@@ -209,7 +234,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   // satisfies has("--confirm-all") and bypasses the whole-fleet guard.
   const VALUE_FLAGS = new Set([
     "--serial", "--group", "--last-seen", "--format", "--out", "--report-detail",
-    "--search", "--report-style", "--sort", "--page-size", "--findings-exclude",
+    "--search", "--report-style", "--sort", "--page-size", "--findings-exclude", "--scan-id",
   ]);
   const valuePos = new Set<number>();
   for (let i = 0; i < flags.length; i++) {
@@ -237,7 +262,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     "--with-security", "--with-inventory", "--allow-partial",
   ]);
   const AUDIT_ONLY_FLAGS = new Set([
-    "--page-size",
+    "--page-size", "--publish", "--scan-id",
   ]);
 
   // Build the set of allowed flags for this report
@@ -344,6 +369,8 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const noNetworkCache = has("--no-network-cache");
   // Audit-only: --page-size a3|a4 (accepts the long form too).
   const pageSizeRaw = val("--page-size");
+  const publish = has("--publish");
+  const scanIdRaw = val("--scan-id");
 
   // ── Validate wired flags ───────────────────────────────────────────────────
   if (reportStyleRaw !== null && reportStyleRaw !== undefined && !["flat", "roster"].includes(reportStyleRaw)) {
@@ -390,6 +417,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
     search: searchQuery,
     raw, withSecurity, withInventory, noNetworkCache, pageStyle,
     findingsExclude: findingsExclude.length ? findingsExclude : undefined,
+    publish, scanId: scanIdRaw ?? undefined,
   }, { ...deps, log: deps?.log ?? console.log });
 }
 
