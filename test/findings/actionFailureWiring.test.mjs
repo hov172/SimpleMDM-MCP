@@ -6,14 +6,28 @@
 // rather than duplicating the handler's try/catch logic in the test.
 process.env.SIMPLEMDM_TEST_MODE = "true";
 process.env.SIMPLEMDM_API_KEY = "test-dummy-key";
-// Disabling writes (default) is exactly what makes lock_device throw from inside
-// handleTool without any network call -- requireWrites() throws before api() is reached.
-delete process.env.SIMPLEMDM_ALLOW_WRITES;
+// Writes must be ENABLED so lock_device reaches the real api() call and fails
+// with a genuine HttpError (a non-2xx SimpleMDM response) -- onToolError only
+// treats HttpError as an operational failure worth a finding (see the review
+// fix in middleware.ts: requireWrites()/validateWipeArgs()/seg() throw plain
+// Errors for client-error/bad-argument/config cases BEFORE any network call,
+// and those must NOT generate a "danger" fleet finding).
+process.env.SIMPLEMDM_ALLOW_WRITES = "true";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
+// A 404 (never retried by fetchWithRetry, unlike 429/5xx) so throwForStatus
+// raises an HttpError immediately -- a stand-in for a real SimpleMDM failure
+// (e.g. device not found), without a live network call.
+globalThis.fetch = async () => ({
+  ok: false,
+  status: 404,
+  headers: { get: () => null },
+  text: async () => "device not found",
+});
 
 const { server } = await import("../../dist/index.js");
 
@@ -61,7 +75,7 @@ test("a validateArgs failure (missing required arg) returns isError:true and doe
   assert.ok(!logs.some((l) => /\[findings dry-run\]/.test(l)), "onToolError must not fire for a validateArgs (client-error) failure");
 });
 
-test("a handleTool failure (requireWrites throws) returns isError:true and DOES invoke onToolError", async () => {
+test("a handleTool failure (real HttpError from SimpleMDM) returns isError:true and DOES invoke onToolError", async () => {
   resetFindingsEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "dry_run" });
   const client = await connectedClient();
   let result, logs;
@@ -75,10 +89,35 @@ test("a handleTool failure (requireWrites throws) returns isError:true and DOES 
   assert.equal(result.isError, true);
   assert.equal(result.content.length, 1);
   assert.equal(result.content[0].type, "text");
-  assert.match(result.content[0].text, /^Error: Write actions are disabled\./);
+  assert.match(result.content[0].text, /^Error: SimpleMDM 404/);
   assert.ok(
     logs.some((l) => /\[findings dry-run\] lock_device: would publish 1 failure finding/.test(l)),
-    "onToolError must fire for a real handleTool (operational) failure",
+    "onToolError must fire for a real upstream HttpError failure",
+  );
+});
+
+test("a handleTool failure that is a client/bad-args error (validateWipeArgs), not an HttpError, does NOT invoke onToolError", async () => {
+  // SIMPLEMDM_ALLOW_WRITES is captured into a module-level const at import time,
+  // so it can't be toggled per-test here -- instead use wipe_device's own
+  // validateWipeArgs() bad-argument guard (return_to_service:true requires
+  // wifi_network_id), which throws a plain Error from inside handleTool
+  // AFTER requireWrites() passes but BEFORE any api()/network call is made --
+  // exactly the "client error, no network attempted" case the fix targets.
+  resetFindingsEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "dry_run" });
+  const client = await connectedClient();
+  let result, logs;
+  try {
+    logs = await withCapturedStderr(async () => {
+      result = await client.callTool({ name: "wipe_device", arguments: { device_id: "42", return_to_service: true } });
+    });
+  } finally {
+    await client.close();
+  }
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /wifi_network_id/);
+  assert.ok(
+    !logs.some((l) => /\[findings dry-run\]/.test(l)),
+    "onToolError must not fire for a non-HttpError handleTool failure (client/bad-args error, no network call attempted)",
   );
 });
 

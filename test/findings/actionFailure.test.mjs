@@ -16,6 +16,7 @@ globalThis.fetch = (...args) => fetchImpl(...args);
 
 const { onToolError } = await import("../../dist/findings/middleware.js");
 const { TOOL_MANIFEST } = await import("../../dist/findings/toolManifest.js");
+const { HttpError } = await import("../../dist/simplemdm-client.js");
 
 function resetEnv(overrides = {}) {
   delete process.env.MUNKIREPORT_ENABLED;
@@ -67,7 +68,7 @@ test("spot-check representative entityIdField mapping per entity type", () => {
 test("onToolError builds the correct finding shape for a device-scoped tool", async () => {
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
   rich.length = 0;
-  await onToolError("lock_device", { device_id: "42" }, new Error("SimpleMDM 422: device is offline"));
+  await onToolError("lock_device", { device_id: "42" }, new HttpError("SimpleMDM", 422, "device is offline"));
   const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
   assert.ok(call, "expected a publish call");
   const body = JSON.parse(call.body);
@@ -78,7 +79,7 @@ test("onToolError builds the correct finding shape for a device-scoped tool", as
   assert.equal(finding.finding_type, "action_failed_lock_device");
   assert.equal(finding.category, "Action Failure");
   assert.equal(finding.severity, "danger");
-  assert.match(finding.message, /device action "lock_device" failed: SimpleMDM 422: device is offline/);
+  assert.match(finding.message, /device action "lock_device" failed: SimpleMDM 422/);
   assert.deepStrictEqual(finding.data, { device_id: "42" });
   assert.ok(!("serial_number" in finding), "no serial_number -- resolving device_id to serial is out of scope");
 });
@@ -86,55 +87,55 @@ test("onToolError builds the correct finding shape for a device-scoped tool", as
 test("onToolError builds the correct finding shape for a group-scoped tool", async () => {
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
   rich.length = 0;
-  await onToolError("push_apps_to_group", { group_id: "7" }, new Error("SimpleMDM 500: internal error"));
+  await onToolError("push_apps_to_group", { group_id: "7" }, new HttpError("SimpleMDM", 500, "internal error"));
   const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
   assert.ok(call);
   const body = JSON.parse(call.body);
   assert.equal(body.source, "mcp_auto_action_push_apps_to_group");
   const finding = body.findings[0];
   assert.equal(finding.finding_type, "action_failed_push_apps_to_group");
-  assert.match(finding.message, /assignment group action "push_apps_to_group" failed: SimpleMDM 500: internal error/);
+  assert.match(finding.message, /assignment group action "push_apps_to_group" failed: SimpleMDM 500/);
   assert.deepStrictEqual(finding.data, { group_id: "7" });
 });
 
 test("onToolError omits `data` for a null-entityIdField tool (request_munkireport_sync)", async () => {
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
   rich.length = 0;
-  await onToolError("request_munkireport_sync", {}, new Error("connection refused"));
+  await onToolError("request_munkireport_sync", {}, new HttpError("MunkiReport", 502, "connection refused"));
   const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
   assert.ok(call);
   const body = JSON.parse(call.body);
   const finding = body.findings[0];
   assert.equal(finding.finding_type, "action_failed_request_munkireport_sync");
-  assert.match(finding.message, /MunkiReport sync job action "request_munkireport_sync" failed: connection refused/);
+  assert.match(finding.message, /MunkiReport sync job action "request_munkireport_sync" failed: MunkiReport 502/);
   assert.ok(!("data" in finding), "data must be omitted entirely when entityIdField is null");
 });
 
 test("onToolError omits `data` when the entityIdField is absent from args (e.g. optional serial_number omitted)", async () => {
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
   rich.length = 0;
-  await onToolError("refresh_munkireport_supplemental", {}, new Error("db locked"));
+  await onToolError("refresh_munkireport_supplemental", {}, new HttpError("MunkiReport", 500, "db locked"));
   const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
   assert.ok(call);
   const finding = JSON.parse(call.body).findings[0];
   assert.ok(!("data" in finding), "data must be omitted when the arg field is not present");
 });
 
-test("onToolError safely extracts a message from a non-Error thrown value", async () => {
+// onToolError only builds a finding for a genuine HttpError (a real upstream
+// SimpleMDM/MunkiReport API failure) -- see the review fix above. A plain
+// string, object, null, or undefined thrown value is exactly the shape of a
+// client-error/bad-argument/config throw (requireWrites()/validateWipeArgs()/
+// seg() etc. all throw plain Errors, not HttpError), so onToolError must
+// safely no-op for all of these rather than publish a misleading finding.
+test("onToolError safely no-ops (never throws, never publishes) for a non-HttpError thrown value", async () => {
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
   rich.length = 0;
-  await onToolError("lock_device", { device_id: "1" }, "a plain string error");
-  const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
-  assert.ok(call);
-  const finding = JSON.parse(call.body).findings[0];
-  assert.match(finding.message, /a plain string error/);
-});
-
-test("onToolError never throws even for a wildly malformed error value", async () => {
-  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
+  await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, "a plain string error"));
+  await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, new Error("plain Error, not HttpError")));
   await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, { weird: "object", circular: undefined }));
   await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, null));
   await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, undefined));
+  assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")), "no non-HttpError value should ever publish a finding");
 });
 
 // ─── Gating ──────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ test("enabled + mode=dry_run — logs but never calls ingest_mcp_findings", asyn
   resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "dry_run" });
   rich.length = 0;
   const logs = [];
-  await onToolError("lock_device", { device_id: "1" }, new Error("boom"), (m) => logs.push(m));
+  await onToolError("lock_device", { device_id: "1" }, new HttpError("SimpleMDM", 500, "boom"), (m) => logs.push(m));
   assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")));
   assert.ok(logs.some((l) => /dry-run/i.test(l) && /lock_device/.test(l)));
 });
@@ -196,7 +197,7 @@ test("a publish failure enqueues the failure finding to the retry queue when MCP
     if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
     return realFetch(url);
   };
-  await onToolError("lock_device", { device_id: "99" }, new Error("device unreachable"));
+  await onToolError("lock_device", { device_id: "99" }, new HttpError("SimpleMDM", 503, "device unreachable"));
   fetchImpl = realFetch;
 
   const files = await fs.readdir(QUEUE_DIR);
@@ -218,7 +219,7 @@ test("a publish failure does NOT enqueue anything when MCP_FINDINGS_QUEUE_DIR is
     if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
     return realFetch(url);
   };
-  await onToolError("lock_device", { device_id: "1" }, new Error("boom"));
+  await onToolError("lock_device", { device_id: "1" }, new HttpError("SimpleMDM", 500, "boom"));
   fetchImpl = realFetch;
 
   await assert.rejects(() => fs.access(QUEUE_DIR), "no queue dir should be created when MCP_FINDINGS_QUEUE_DIR is unset");
@@ -233,7 +234,7 @@ test("a publish failure is caught and never throws (no queue dir configured)", a
     return realFetch(url);
   };
   const logs = [];
-  await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, new Error("boom"), (m) => logs.push(m)));
+  await assert.doesNotReject(() => onToolError("lock_device", { device_id: "1" }, new HttpError("SimpleMDM", 500, "boom"), (m) => logs.push(m)));
   assert.ok(logs.some((l) => /fail/i.test(l)));
   fetchImpl = realFetch;
 });

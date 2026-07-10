@@ -2,6 +2,7 @@ import { TOOL_MANIFEST } from "./toolManifest.js";
 import type { ToolFindingAdapter } from "./toolManifest.js";
 import type { McpFinding } from "../reports/domain/findings-map.js";
 import { munkiReportIngest } from "../munkiReportClient.js";
+import { HttpError } from "../simplemdm-client.js";
 import { loadFindingsConfig } from "./config.js";
 import { enqueue } from "./retryQueue.js";
 
@@ -158,6 +159,19 @@ export async function onToolError(
 
     const entry = TOOL_MANIFEST[toolName];
     if (!entry || !entry.publishable || !entry.supportsAutoPublish || !entry.actionFailure) return;
+
+    // Only a genuine upstream SimpleMDM API failure (HttpError, thrown by
+    // throwForStatus() after a non-2xx response) is worth a fleet finding.
+    // requireWrites()/validateWipeArgs()/seg() and similar guards inside
+    // handleTool throw plain Errors for client-error/bad-argument/config cases
+    // (e.g. SIMPLEMDM_ALLOW_WRITES unset) BEFORE any network call is made --
+    // those are not operational failures and would otherwise spam the
+    // dashboard with a false "danger" finding on every attempted action in a
+    // monitoring-first (writes-disabled) deployment. This mirrors why
+    // validateArgs failures are excluded in src/index.ts's wiring -- the
+    // real distinction is "did we actually attempt the action against
+    // SimpleMDM," not merely "did handleTool throw."
+    if (!(error instanceof HttpError)) return;
 
     // Action failures are always severity: "danger" -- the highest rank in
     // SEVERITY_RANK, so this can only ever be filtered out if minSeverity were
