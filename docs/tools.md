@@ -185,7 +185,7 @@ These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php
 | `get_munkireport_runner_status` | Sync runner/cron/Python operational status — the "syncs silently stopped" warning surface (admin session) |
 | `request_munkireport_sync` | Module: write — queue a mirror sync run (admin session; acts on the module, never SimpleMDM) |
 | `refresh_munkireport_supplemental` | Module: write — recompute cross-module summaries, one device or fleet-wide (admin session) |
-| `push_munkireport_findings` | Module: write — push MCP-computed findings (CVE exposure, audit deltas, …) into MunkiReport's MCP Findings widget; sync-token auth, no session needed (module 2026-07-07+ build). Accepts optional `scan_id` to group findings by audit run; findings items may include `category` to classify finding types. |
+| `push_munkireport_findings` | Module: write — push MCP-computed findings (CVE exposure, audit deltas, …) into MunkiReport's MCP Findings widget; sync-token auth, no session needed (module 2026-07-07+ build). Accepts optional `scan_id` to group findings by audit run; findings items may include `category` to classify finding types. This is also the ingest path used by the opt-in [findings auto-publish middleware](findings-middleware.md), which can call it automatically instead of requiring an explicit push. |
 | `get_munkireport_mcp_findings` | Read back MCP-pushed findings with per-severity totals |
 
 ## Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)

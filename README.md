@@ -19,6 +19,7 @@ An MCP (Model Context Protocol) server for [SimpleMDM](https://simplemdm.com) th
 - [Fleet Audit (/audit)](#fleet-audit-audit)
 - [Device Logs Audit (/logs-audit)](#device-logs-audit-logs-audit)
 - [Fleet Inventory Reports (/inventory)](#fleet-inventory-reports-inventory)
+- [Findings auto-publish middleware](#findings-auto-publish-middleware)
 - [Tools](#tools)
 - [Resources](#resources)
 - [Prompts](#prompts)
@@ -407,6 +408,18 @@ SimpleMDM-built profiles have no download endpoint, so they are captured as meta
 
 ---
 
+## Findings auto-publish middleware
+
+Beyond the manual `run_fleet_audit --publish` path, an opt-in middleware can
+automatically turn eligible tool calls (compliance/health-check reads, an
+inventory-tool allowlist, and action-tool **failures**) into MunkiReport
+findings, with a persistent retry queue and `findings status/retry/dry-run/validate`
+CLI subcommands. Off by default (`MUNKIREPORT_ENABLED=false`) — see
+[`docs/findings-middleware.md`](docs/findings-middleware.md) for configuration,
+behavior per tool category, and the CLI.
+
+---
+
 ## Tools
 
 The server registers **200 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
@@ -506,6 +519,11 @@ Start with read-only. Add write permissions only if you need them, and only for 
 | `MUNKIREPORT_AUTH_HEADER_NAME` | No | — | HTTP header name for MunkiReport authentication (e.g. `Authorization`). |
 | `MUNKIREPORT_AUTH_HEADER_VALUE` | No | — | HTTP header value for MunkiReport authentication (e.g. `Bearer <token>`). |
 | `MUNKIREPORT_COOKIE` | No | — | Cookie string for MunkiReport session-based authentication (alternative to header auth). |
+| `MUNKIREPORT_ENABLED` | No | `false` | Master switch for the [findings auto-publish middleware](docs/findings-middleware.md). |
+| `MCP_PUBLISH_MODE` | No | `manual` | `auto` \| `dry_run` \| `manual` \| `disabled` — see [`docs/findings-middleware.md`](docs/findings-middleware.md). |
+| `MCP_PUBLISH_MIN_SEVERITY` | No | `warning` | Skip auto-published findings below this severity (`danger`/`warning`/`info`). |
+| `MCP_PUBLISH_INVENTORY_TOOLS` | No | *(empty)* | Comma-separated allowlist opting specific inventory tools into auto-publish. |
+| `MCP_FINDINGS_QUEUE_DIR` | No | *(unset)* | Directory for the findings middleware's persistent on-disk retry queue. Unset = queue disabled. |
 
 ---
 

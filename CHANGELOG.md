@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-07-10
+
+Completes PRD Phase 4 (findings auto-publish middleware): the four items
+deferred from the initial middleware slice. See
+[`docs/findings-middleware.md`](docs/findings-middleware.md) for the full
+picture (config, per-tool-category behavior, retry queue, CLI). No
+MunkiReport-php changes.
+
+### Added
+- **Inventory-tool opt-in publishing** — 8 inventory tools (`get_unmanaged_apps`, `get_app_coverage`, `get_assignment_group_drift`, `get_inactive_assignment_groups`, `get_lost_mode_devices`, `get_orphaned_apps`, `get_orphaned_profiles`, `get_user_attribution`) gain `severity: "info"` findings adapters, gated behind a new `MCP_PUBLISH_INVENTORY_TOOLS` allowlist so `MCP_PUBLISH_MODE=auto` alone never starts publishing this category unasked.
+- **Persistent on-disk retry queue** — `MCP_FINDINGS_QUEUE_DIR` durably queues failed publish payloads (instead of just logging and dropping them) so they survive a process restart and can be replayed later.
+- **`findings status|retry|dry-run|validate` CLI subcommands** (`node dist/reports/cli.js findings …`) — inspect current config/queue state, drain the retry queue, preview an adapter's output against a sample fixture, and catch tool/manifest drift with a nonzero exit code.
+- **Action-tool failure-detection findings** — all ~39 action-type tools (`lock_device`, `wipe_device`, `restart_device`, …) now auto-publish a single `severity: "danger"` finding when the action genuinely fails against the SimpleMDM API (a real `HttpError`), never on success and never for a client/config error (bad arguments, writes disabled) that never reached the network.
+- `docs/findings-middleware.md` — new dedicated doc covering the whole findings auto-publish middleware (this slice plus the original Phase 4 middleware, `MUNKIREPORT_ENABLED`/`MCP_PUBLISH_MODE`/`MCP_PUBLISH_MIN_SEVERITY`), which had shipped without public documentation until now.
+
 ## [0.33.0] - 2026-07-07
 
 Closes the MCP→MunkiReport data gap: MCP-computed findings can now land in MunkiReport dashboards (two new tools, 198 → 200; companion module build 2026-07-07+ required).
