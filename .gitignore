@@ -30,3 +30,4 @@ docs/superpowers/
 /test-result.log
 /.codex-adversarial-review.out
 .gstack/
+.worktrees/
