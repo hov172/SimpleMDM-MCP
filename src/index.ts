@@ -38,6 +38,7 @@ import {
   validateApplePayload,
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
+import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -69,8 +70,6 @@ const resolveReportPath = (p: string): string => p.startsWith("/") ? p : resolve
 const ALLOW_WRITES   = process.env.SIMPLEMDM_ALLOW_WRITES === "true";
 const USE_LOCAL_APP  = process.env.LOCAL_APP_MODE === "true";
 
-const MR_BASE    = process.env.MUNKIREPORT_BASE_URL ?? "";
-const MR_PREFIX  = process.env.MUNKIREPORT_MODULE_PREFIX ?? "/module/simplemdm";
 const MR_HNAME   = process.env.MUNKIREPORT_AUTH_HEADER_NAME ?? "";
 const MR_HVALUE  = process.env.MUNKIREPORT_AUTH_HEADER_VALUE ?? "";
 const MR_COOKIE  = process.env.MUNKIREPORT_COOKIE ?? "";
@@ -174,20 +173,6 @@ async function munkiReport(route: string): Promise<unknown> {
     headers[MR_HNAME] = MR_HVALUE;
   }
   const res = await fetchWithRetry("MunkiReport", `${MR_BASE}${MR_PREFIX}${route}`, { headers });
-  if (!res.ok) await throwForStatus("MunkiReport", res);
-  return res.json();
-}
-
-// Token-authenticated POST to the module's sync-token ingest endpoints. The
-// X-SimpleMDM-API-Key header is sent ONLY here — never on session reads — to
-// keep key exposure limited to the endpoint class designed to receive it.
-async function munkiReportIngest(route: string, body: unknown): Promise<unknown> {
-  if (!MR_BASE) throw new Error("MunkiReport not configured — set MUNKIREPORT_BASE_URL.");
-  const res = await fetchWithRetry("MunkiReport", `${MR_BASE}${MR_PREFIX}${route}`, {
-    method: "POST",
-    headers: { "X-SimpleMDM-API-Key": API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
   if (!res.ok) await throwForStatus("MunkiReport", res);
   return res.json();
 }
