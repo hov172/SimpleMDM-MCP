@@ -13,7 +13,7 @@ The server registers **200 tools** covering the full SimpleMDM API surface (30 d
 | `get_security_posture` | **Compound** — fleet-wide percentages for supervised, DEP, FileVault, firmware/recovery lock, activation lock, UAMDM, passcode compliance |
 | `get_api_coverage` | Static introspection: tool counts exposed by capability area (no API call — reads the registered tool list) |
 | `check_for_update` | Compare the running server version against the latest GitHub release; reports `update_available` + the host-side upgrade steps (the container cannot self-update) |
-| `run_fleet_audit` | Run the SOFA macOS security audit via the unified report engine CLI (`node dist/reports/cli.js audit`) as a host-side subprocess; writes CSV/md/html/docx/pdf to `reports/` and returns a text summary. Relative output paths resolve under the installed package root. Supports `page_size: a3\|a4`. |
+| `run_fleet_audit` | Run the SOFA macOS security audit via the unified report engine CLI (`node dist/reports/cli.js audit`) as a host-side subprocess; writes CSV/md/html/docx/pdf to `reports/` and returns a text summary. Relative output paths resolve under the installed package root. Supports `page_size: a3\|a4`. Optional: `publish` (boolean) and `scan_id` (string) to push audit findings to MunkiReport in the same call. |
 | `run_device_logs_audit` | Run the forensic device-logs audit via the unified report engine CLI (`node dist/reports/cli.js logs`) as a host-side subprocess; writes dossiers + CSVs to `reports/` and returns a text summary. Relative output paths resolve under the installed package root |
 | `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary. Relative output paths resolve under the installed package root |
 | `run_report_diff` | Compare two local inventory report run dirs (both under the install root's `reports/`): devices added/removed, meaningful field changes, findings new vs resolved; writes `diff-vs-<before>.md` into the after dir. Purely local — no API calls |
@@ -185,7 +185,7 @@ These tools query a [MunkiReport](https://github.com/munkireport/munkireport-php
 | `get_munkireport_runner_status` | Sync runner/cron/Python operational status — the "syncs silently stopped" warning surface (admin session) |
 | `request_munkireport_sync` | Module: write — queue a mirror sync run (admin session; acts on the module, never SimpleMDM) |
 | `refresh_munkireport_supplemental` | Module: write — recompute cross-module summaries, one device or fleet-wide (admin session) |
-| `push_munkireport_findings` | Module: write — push MCP-computed findings (CVE exposure, audit deltas, …) into MunkiReport's MCP Findings widget; sync-token auth, no session needed (module 2026-07-07+ build) |
+| `push_munkireport_findings` | Module: write — push MCP-computed findings (CVE exposure, audit deltas, …) into MunkiReport's MCP Findings widget; sync-token auth, no session needed (module 2026-07-07+ build). Accepts optional `scan_id` to group findings by audit run; findings items may include `category` to classify finding types. |
 | `get_munkireport_mcp_findings` | Read back MCP-pushed findings with per-severity totals |
 
 ## Write tools (require `SIMPLEMDM_ALLOW_WRITES=true`)
