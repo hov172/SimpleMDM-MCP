@@ -39,7 +39,7 @@ import {
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
 import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
-import { afterToolCall } from "./findings/middleware.js";
+import { afterToolCall, onToolError } from "./findings/middleware.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -4456,7 +4456,10 @@ function formatError(err: unknown): string {
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
-const server = new Server(
+// Exported for tests only (e.g. test/findings/actionFailureWiring.test.mjs), so a test
+// can drive the real CallToolRequestSchema handler in-process via an MCP SDK
+// InMemoryTransport pair instead of spawning a subprocess or duplicating its logic.
+export const server = new Server(
   { name: "simplemdm-mcp", version: PKG_VERSION },
   { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
@@ -4465,8 +4468,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
+  // Tracks whether we got past validateArgs before a throw, so the catch block
+  // below can tell a client error (bad/missing arguments -- never worth a fleet
+  // finding) apart from a real operational/API failure from handleTool (which
+  // onToolError should surface). Neither this flag nor onToolError changes the
+  // isError:true response returned to the caller -- see the fire-and-forget
+  // .catch below, identical in spirit to afterToolCall's success-path pattern.
+  let pastValidation = false;
   try {
     validateArgs(name, args as Args);
+    pastValidation = true;
     const result = await handleTool(name, args as Args);
     const prefixes = INVALIDATION_MAP[name];
     if (prefixes?.length) cacheInvalidate(...prefixes);
@@ -4477,6 +4488,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     afterToolCall(name, result, (m) => console.error(m)).catch(() => {});
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (err) {
+    // Only surface handleTool failures (operational/API errors) to the findings
+    // pipeline -- not validateArgs failures (client error / bad arguments), which
+    // pastValidation being false at this point identifies. Fire-and-forget, same
+    // pattern as afterToolCall: never affects the error response below.
+    if (pastValidation) {
+      onToolError(name, args as Record<string, unknown>, err, (m) => console.error(m)).catch(() => {});
+    }
     return { content: [{ type: "text", text: `Error: ${formatError(err)}` }], isError: true };
   }
 });

@@ -65,11 +65,13 @@ test("get_security_posture is classified compliance but has no adapter (pure agg
   assert.equal(entry.adapters, undefined);
 });
 
-test("a representative action tool (lock_device) is classified action, publishable but auto-publish deferred", () => {
+test("a representative action tool (lock_device) is classified action, publishable, and supports auto-publish on FAILURE via actionFailure (no success-path adapters)", () => {
   const entry = TOOL_MANIFEST["lock_device"];
   assert.equal(entry.toolType, "action");
   assert.equal(entry.publishable, true);
-  assert.equal(entry.supportsAutoPublish, false, "action-tool adapters are deferred in this slice");
+  assert.equal(entry.supportsAutoPublish, true);
+  assert.equal(entry.adapters, undefined, "action tools have no 'healthy' finding, only a failure one");
+  assert.deepStrictEqual(entry.actionFailure, { entityIdField: "device_id", entityLabel: "device" });
 });
 
 test("a representative config-write tool (create_device) is never publishable", () => {
@@ -92,6 +94,63 @@ test("a representative inventory tool (get_top_installed_apps) is publishable bu
   assert.equal(entry.supportsAutoPublish, false);
 });
 
+// Inventory-tool opt-in publishing (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §1): every inventory tool must be classified, but only the ones with a genuine
+// pre-filtered per-row shape get a wired adapter. This locks down exactly which
+// inventory tools got one, so a future edit can't silently add/drop one without a
+// test failure forcing a conscious update.
+const INVENTORY_TOOLS_WITH_ADAPTERS = [
+  "get_unmanaged_apps",
+  "get_app_coverage",
+  "get_assignment_group_drift",
+  "get_inactive_assignment_groups",
+  "get_lost_mode_devices",
+  "get_orphaned_apps",
+  "get_orphaned_profiles",
+  "get_user_attribution",
+].sort();
+
+test("only the designed subset of inventory tools have a wired adapter", () => {
+  const actualInventoryToolsWithAdapters = Object.entries(TOOL_MANIFEST)
+    .filter(([, entry]) => entry.toolType === "inventory" && Array.isArray(entry.adapters) && entry.adapters.length > 0)
+    .map(([name]) => name)
+    .sort();
+  assert.deepStrictEqual(actualInventoryToolsWithAdapters, INVENTORY_TOOLS_WITH_ADAPTERS);
+});
+
+test("every inventory tool with an adapter has severity:info (never danger/warning) and supportsAutoPublish:true", () => {
+  for (const name of INVENTORY_TOOLS_WITH_ADAPTERS) {
+    const entry = TOOL_MANIFEST[name];
+    assert.equal(entry.toolType, "inventory");
+    assert.equal(entry.supportsAutoPublish, true, `${name} should support auto-publish once opted in`);
+    assert.ok(entry.adapters.length > 0, `${name} should have at least one adapter`);
+    for (const adapter of entry.adapters) {
+      assert.equal(adapter.severity, "info", `${name} inventory adapter must be severity:info`);
+    }
+  }
+});
+
+test("inventory tools deliberately skipped (pure aggregate / no actionable per-row shape) have no adapter", () => {
+  const skipped = [
+    "get_app_version_drift",
+    "get_app_size_footprint",
+    "get_apps_by_publisher",
+    "get_top_installed_apps",
+    "get_network_summary",
+    "get_recently_enrolled",
+    "get_fleet_summary",
+    "get_device_full_profile",
+    "get_dep_device_status",
+  ];
+  for (const name of skipped) {
+    const entry = TOOL_MANIFEST[name];
+    assert.equal(entry.toolType, "inventory", `${name} should still be classified inventory`);
+    assert.equal(entry.publishable, true);
+    assert.equal(entry.supportsAutoPublish, false, `${name} should not support auto-publish (no adapter)`);
+    assert.equal(entry.adapters, undefined, `${name} should have no adapter`);
+  }
+});
+
 test("every adapter's resultField is a string and severity is one of danger/warning/info", () => {
   const validSeverities = new Set(["danger", "warning", "info"]);
   for (const [name, entry] of Object.entries(TOOL_MANIFEST)) {
@@ -104,10 +163,17 @@ test("every adapter's resultField is a string and severity is one of danger/warn
   }
 });
 
-test("no tool with adapters has supportsAutoPublish:false, and no tool without adapters has supportsAutoPublish:true", () => {
+test("no tool with adapters has supportsAutoPublish:false, and no tool without adapters or actionFailure has supportsAutoPublish:true", () => {
+  // Action tools (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+  // §4) gain supportsAutoPublish via `actionFailure` (failure-path only), not via
+  // success-path `adapters` -- they have no "healthy" finding. So the invariant is:
+  // supportsAutoPublish must be backed by EITHER adapters OR actionFailure, never neither,
+  // and never true with neither present.
   for (const [name, entry] of Object.entries(TOOL_MANIFEST)) {
     const hasAdapters = Array.isArray(entry.adapters) && entry.adapters.length > 0;
-    assert.equal(entry.supportsAutoPublish, hasAdapters, `${name}: supportsAutoPublish must match adapter presence`);
+    const hasActionFailure = !!entry.actionFailure;
+    assert.ok(!(hasAdapters && hasActionFailure), `${name}: a tool should not have both adapters and actionFailure`);
+    assert.equal(entry.supportsAutoPublish, hasAdapters || hasActionFailure, `${name}: supportsAutoPublish must match adapter/actionFailure presence`);
   }
 });
 
@@ -132,6 +198,14 @@ const REAL_ROW_FIXTURES = {
   get_pending_commands: { pending_count: 2, oldest_sent_at: "2026-07-01T00:00:00Z" },
   get_dep_drift: { serial: "C02J", assigned_profile_uuid: "uuid-a", expected_profile_uuid: "uuid-b" },
   get_dep_unassigned: { model: "MacBookPro18,1", serial: "C02K" },
+  get_unmanaged_apps: { bundle_identifier: "com.example.foo", name: "Foo", count: 12 },
+  get_app_coverage: { id: "1", name: "Liam's Mac", serial: "C02L" },
+  get_assignment_group_drift: { group_id: "5", group_name: "Engineering", device_id: "42", missing: ["com.example.bar"] },
+  get_inactive_assignment_groups: { id: "9", name: "Stale Group" },
+  get_lost_mode_devices: { id: "10", name: "Mona's iPad", serial: "C02M" },
+  get_orphaned_apps: { id: "11", name: "Orphan App" },
+  get_orphaned_profiles: { id: "12", name: "Orphan Profile" },
+  get_user_attribution: { device_id: "13", device_name: "Nora's Mac", serial: "C02N", user: null },
 };
 
 // resultField for get_storage_health has two adapters (two distinct fixtures above); map

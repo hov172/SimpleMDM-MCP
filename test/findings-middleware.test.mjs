@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 process.env.SIMPLEMDM_TEST_MODE = "true";
 process.env.SIMPLEMDM_API_KEY = "dummy-key";
@@ -24,6 +26,8 @@ function resetEnv(overrides = {}) {
   delete process.env.MUNKIREPORT_ENABLED;
   delete process.env.MCP_PUBLISH_MODE;
   delete process.env.MCP_PUBLISH_MIN_SEVERITY;
+  delete process.env.MCP_PUBLISH_INVENTORY_TOOLS;
+  delete process.env.MCP_FINDINGS_QUEUE_DIR;
   Object.assign(process.env, overrides);
 }
 
@@ -173,6 +177,106 @@ test("a publish failure is caught and does not throw", async () => {
   await assert.doesNotReject(() => afterToolCall("get_stale_devices", STALE_DEVICES_RESULT, (m) => logs.push(m)));
   assert.ok(logs.some((l) => /fail/i.test(l)));
   globalThis.fetch = realFetch;
+});
+
+// Persistent on-disk retry queue (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §2): a failed publish additionally enqueues the same payload when MCP_FINDINGS_QUEUE_DIR is set,
+// and behavior is completely unchanged (log-and-drop only) when it's unset.
+const QUEUE_DIR = path.resolve("reports/.scratch/retry-queue-middleware-test");
+
+test("a publish failure enqueues to the retry queue when MCP_FINDINGS_QUEUE_DIR is set", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto", MCP_FINDINGS_QUEUE_DIR: QUEUE_DIR });
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  rich.length = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
+    return realFetch(url);
+  };
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  globalThis.fetch = realFetch;
+
+  const files = await fs.readdir(QUEUE_DIR);
+  assert.equal(files.length, 1, "expected the failed publish payload to be enqueued");
+  const enqueued = JSON.parse(await fs.readFile(path.join(QUEUE_DIR, files[0]), "utf8"));
+  assert.equal(enqueued.route, "/ingest_mcp_findings");
+  assert.equal(enqueued.body.source, "mcp_auto_get_stale_devices");
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  delete process.env.MCP_FINDINGS_QUEUE_DIR;
+});
+
+test("a publish failure does NOT enqueue anything when MCP_FINDINGS_QUEUE_DIR is unset (unchanged log-and-drop behavior)", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
+  await fs.rm(QUEUE_DIR, { recursive: true, force: true });
+  rich.length = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("ingest_mcp_findings")) return { ok: false, status: 500, text: async () => "boom", headers: new Headers() };
+    return realFetch(url);
+  };
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  globalThis.fetch = realFetch;
+
+  await assert.rejects(() => fs.access(QUEUE_DIR), "no queue dir should be created when MCP_FINDINGS_QUEUE_DIR is unset");
+});
+
+// Inventory-tool opt-in publishing (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §1): mode=auto alone must not publish an inventory-type tool -- it must also be named
+// in MCP_PUBLISH_INVENTORY_TOOLS. get_unmanaged_apps has a real adapter (severity: info),
+// so lower MCP_PUBLISH_MIN_SEVERITY to "info" in these cases to isolate the opt-in gate
+// from severity filtering.
+const UNMANAGED_APPS_RESULT = {
+  apps: [{ bundle_identifier: "com.example.foo", name: "Foo", count: 12 }],
+};
+
+test("an opted-in inventory tool publishes in auto mode", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    MCP_PUBLISH_INVENTORY_TOOLS: "get_unmanaged_apps",
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
+  assert.ok(call, "expected a publish call for an opted-in inventory tool");
+  const body = JSON.parse(call.body);
+  assert.equal(body.source, "mcp_auto_get_unmanaged_apps");
+  assert.equal(body.findings.length, 1);
+  assert.equal(body.findings[0].finding_type, "unmanaged_app");
+  assert.match(body.findings[0].message, /Foo/);
+});
+
+test("a non-opted-in inventory tool does NOT publish in auto mode, even though it has a real adapter", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    // MCP_PUBLISH_INVENTORY_TOOLS deliberately unset/empty -- no inventory tool opted in.
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")), "an inventory tool must not auto-publish unless explicitly opted in");
+});
+
+test("an opt-in list naming a DIFFERENT inventory tool does not enable this one", async () => {
+  resetEnv({
+    MUNKIREPORT_ENABLED: "true",
+    MCP_PUBLISH_MODE: "auto",
+    MCP_PUBLISH_MIN_SEVERITY: "info",
+    MCP_PUBLISH_INVENTORY_TOOLS: "get_orphaned_apps,get_lost_mode_devices",
+  });
+  rich.length = 0;
+  await afterToolCall("get_unmanaged_apps", UNMANAGED_APPS_RESULT);
+  assert.ok(!rich.some((c) => c.url.includes("ingest_mcp_findings")), "opt-in is per-tool-name, not fleet-wide");
+});
+
+test("the inventory opt-in gate does not affect a non-inventory tool (get_stale_devices still publishes unconditionally in auto mode)", async () => {
+  resetEnv({ MUNKIREPORT_ENABLED: "true", MCP_PUBLISH_MODE: "auto" });
+  rich.length = 0;
+  await afterToolCall("get_stale_devices", STALE_DEVICES_RESULT);
+  const call = rich.find((c) => c.url.includes("ingest_mcp_findings"));
+  assert.ok(call, "non-inventory tools must be unaffected by MCP_PUBLISH_INVENTORY_TOOLS being unset");
 });
 
 test("get_compliance_violators' array-valued {failures} field is joined with ', ' in the message", async () => {
