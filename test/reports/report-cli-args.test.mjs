@@ -49,6 +49,28 @@ test("buildAuditCliArgs report_only:true → contains --report-only", () => {
   assert.ok(r.includes("--report-only"), "must include --report-only");
 });
 
+test("buildAuditCliArgs publish:true → contains --publish", () => {
+  const r = buildAuditCliArgs({ publish: true }, "/out");
+  assert.ok(r.includes("--publish"), "must include --publish");
+});
+
+test("buildAuditCliArgs publish absent → NOT --publish", () => {
+  const r = buildAuditCliArgs({}, "/out");
+  assert.ok(!r.includes("--publish"), "must NOT include --publish by default");
+});
+
+test("buildAuditCliArgs scan_id → --scan-id <value>", () => {
+  const r = buildAuditCliArgs({ scan_id: "scan_mcp_audit_20260710" }, "/out");
+  const i = r.indexOf("--scan-id");
+  assert.ok(i >= 0, "must include --scan-id");
+  assert.strictEqual(r[i + 1], "scan_mcp_audit_20260710");
+});
+
+test("buildAuditCliArgs no scan_id → NOT --scan-id", () => {
+  const r = buildAuditCliArgs({}, "/out");
+  assert.ok(!r.includes("--scan-id"), "must NOT include --scan-id when absent");
+});
+
 // ── buildLogsCliArgs ─────────────────────────────────────────────────────────
 
 test("buildLogsCliArgs defaults → [logs, --format, all, --report-detail, summary, --out, <dir>]", () => {

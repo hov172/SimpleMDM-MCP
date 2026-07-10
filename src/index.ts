@@ -1781,6 +1781,8 @@ export const TOOLS: Tool[] = [
       report_only: { type: "boolean", description: "Write only the rendered report + summary; skip the data CSV exports. Not valid with format 'csv'." },
       page_size: { type: "string", enum: ["a3", "a4"], description: "PDF/HTML page size. 'a3' (default) = roomy A3-landscape with larger text; 'a4' = compact A4-landscape that shrinks the wide All Devices table to fit a standard page (denser, more wrapping)." },
       out_dir: { type: "string", description: "Custom output directory path." },
+      publish: { type: "boolean", description: "Push per-check findings derived from the audit (FileVault/SIP/Firewall/XProtect/CVE/OS-EOL) to MunkiReport via push_munkireport_findings after the report writes. Publish failures are logged as a warning and do not fail the audit. Default false." },
+      scan_id: { type: "string", description: "Scan id to group this publish under, surfaced by the module's get_mcp_scan_status. Defaults to scan_mcp_audit_<timestamp> when publish is true and scan_id is omitted." },
     }}},
 
   { name: "run_device_logs_audit",
