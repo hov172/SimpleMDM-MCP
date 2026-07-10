@@ -39,6 +39,7 @@ import {
 } from "./appleSchemas.js";
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
 import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
+import { afterToolCall } from "./findings/middleware.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -4469,6 +4470,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const result = await handleTool(name, args as Args);
     const prefixes = INVALIDATION_MAP[name];
     if (prefixes?.length) cacheInvalidate(...prefixes);
+    // Fire-and-forget: findings publishing must never add latency to a
+    // successful tool response or turn it into an error (afterToolCall
+    // already catches every internal failure; this .catch is defense in
+    // depth against something throwing synchronously before that point).
+    afterToolCall(name, result).catch(() => {});
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (err) {
     return { content: [{ type: "text", text: `Error: ${formatError(err)}` }], isError: true };
