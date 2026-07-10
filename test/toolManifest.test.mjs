@@ -65,11 +65,13 @@ test("get_security_posture is classified compliance but has no adapter (pure agg
   assert.equal(entry.adapters, undefined);
 });
 
-test("a representative action tool (lock_device) is classified action, publishable but auto-publish deferred", () => {
+test("a representative action tool (lock_device) is classified action, publishable, and supports auto-publish on FAILURE via actionFailure (no success-path adapters)", () => {
   const entry = TOOL_MANIFEST["lock_device"];
   assert.equal(entry.toolType, "action");
   assert.equal(entry.publishable, true);
-  assert.equal(entry.supportsAutoPublish, false, "action-tool adapters are deferred in this slice");
+  assert.equal(entry.supportsAutoPublish, true);
+  assert.equal(entry.adapters, undefined, "action tools have no 'healthy' finding, only a failure one");
+  assert.deepStrictEqual(entry.actionFailure, { entityIdField: "device_id", entityLabel: "device" });
 });
 
 test("a representative config-write tool (create_device) is never publishable", () => {
@@ -161,10 +163,17 @@ test("every adapter's resultField is a string and severity is one of danger/warn
   }
 });
 
-test("no tool with adapters has supportsAutoPublish:false, and no tool without adapters has supportsAutoPublish:true", () => {
+test("no tool with adapters has supportsAutoPublish:false, and no tool without adapters or actionFailure has supportsAutoPublish:true", () => {
+  // Action tools (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+  // §4) gain supportsAutoPublish via `actionFailure` (failure-path only), not via
+  // success-path `adapters` -- they have no "healthy" finding. So the invariant is:
+  // supportsAutoPublish must be backed by EITHER adapters OR actionFailure, never neither,
+  // and never true with neither present.
   for (const [name, entry] of Object.entries(TOOL_MANIFEST)) {
     const hasAdapters = Array.isArray(entry.adapters) && entry.adapters.length > 0;
-    assert.equal(entry.supportsAutoPublish, hasAdapters, `${name}: supportsAutoPublish must match adapter presence`);
+    const hasActionFailure = !!entry.actionFailure;
+    assert.ok(!(hasAdapters && hasActionFailure), `${name}: a tool should not have both adapters and actionFailure`);
+    assert.equal(entry.supportsAutoPublish, hasAdapters || hasActionFailure, `${name}: supportsAutoPublish must match adapter/actionFailure presence`);
   }
 });
 

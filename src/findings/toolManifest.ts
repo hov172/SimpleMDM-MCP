@@ -60,11 +60,34 @@ export interface ToolFindingAdapter {
   messageTemplate: string;
 }
 
+// Action-tool failure-detection (docs/superpowers/specs/2026-07-10-findings-phase4-followups-design.md
+// §4). Every `toolType: "action"` tool fails uniformly by throwing (via `api()` ->
+// `throwForStatus()`), caught by the ONE shared try/catch in src/index.ts's
+// CallToolRequestSchema handler -- so this isn't 37 bespoke adapters, just one manifest
+// field per action tool identifying which arg field holds the acted-on entity's id (for
+// the resulting failure finding's `data`), verified against each tool's real inputSchema
+// in src/index.ts (not assumed uniform):
+//   - device_id: the large majority (lock/wipe/restart/clear_*/rotate_*/enable_*/disable_*/etc.)
+//   - installed_app_id: request_app_management, update_installed_app, uninstall_app
+//   - group_id: push_apps_to_group, update_apps_in_group, sync_profiles_in_group
+//   - job_id: cancel_script_job
+//   - script_id: create_script_job (its device_ids arg is a plural array, not a single
+//     entity id -- script_id is the closest single-entity field the args actually have)
+//   - serial_number: refresh_munkireport_supplemental (optional arg -- undefined/omitted
+//     for its fleet-wide, no-serial invocation, which is fine: `data` is only populated
+//     when the field is present in args)
+//   - null: request_munkireport_sync (inputSchema has no properties at all -- no entity)
+export interface ActionFailureAdapter {
+  entityIdField: string | null;
+  entityLabel: string;
+}
+
 export interface ToolManifestEntry {
   toolType: ToolType;
   publishable: boolean;
   supportsAutoPublish: boolean;
   adapters?: ToolFindingAdapter[];
+  actionFailure?: ActionFailureAdapter;
 }
 
 export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
@@ -87,12 +110,12 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "build_vpn_profile_payload": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "build_webclip_profile_payload": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "build_wifi_profile_payload": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "cancel_script_job": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "cancel_script_job": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "job_id", entityLabel: "script job" } },
   "check_for_update": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "clear_firmware_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "clear_passcode": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "clear_recovery_lock_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "clear_restrictions_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "clear_firmware_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "clear_passcode": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "clear_recovery_lock_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "clear_restrictions_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "clone_assignment_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "create_app": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "create_assignment_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
@@ -103,7 +126,7 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "create_managed_app_config": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "create_safari_bookmarks_declaration": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "create_script": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "create_script_job": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "create_script_job": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "script_id", entityLabel: "script" } },
   "delete_app": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "delete_assignment_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "delete_custom_attribute": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
@@ -114,15 +137,15 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "delete_enrollment": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "delete_managed_app_config": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "delete_script": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "disable_activation_lock": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "disable_bluetooth": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "disable_lost_mode": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "disable_remote_desktop": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "disable_activation_lock": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "disable_bluetooth": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "disable_lost_mode": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "disable_remote_desktop": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "download_custom_configuration_profile": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "download_custom_declaration": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "enable_bluetooth": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "enable_lost_mode": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "enable_remote_desktop": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "enable_bluetooth": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "enable_lost_mode": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "enable_remote_desktop": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "generate_report": { toolType: "reporting_export", publishable: false, supportsAutoPublish: false },
   "get_account": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_activation_lock_status": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
@@ -279,22 +302,22 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "list_profiles": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_script_jobs": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_scripts": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "lock_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "play_lost_mode_sound": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "push_apps_to_group": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "lock_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "play_lost_mode_sound": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "push_apps_to_group": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "group_id", entityLabel: "assignment group" } },
   "push_managed_app_configs": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "push_message": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "push_message": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "push_munkireport_findings": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "refresh_cellular_plans": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "refresh_device_inventory": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "refresh_munkireport_supplemental": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "request_app_management": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "request_munkireport_sync": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "restart_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "rotate_admin_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "rotate_filevault_recovery_key": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "rotate_firmware_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "rotate_recovery_lock_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "refresh_cellular_plans": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "refresh_device_inventory": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "refresh_munkireport_supplemental": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "serial_number", entityLabel: "device" } },
+  "request_app_management": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "installed_app_id", entityLabel: "installed app" } },
+  "request_munkireport_sync": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: null, entityLabel: "MunkiReport sync job" } },
+  "restart_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "rotate_admin_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "rotate_filevault_recovery_key": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "rotate_firmware_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "rotate_recovery_lock_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "run_config_backup": { toolType: "reporting_export", publishable: false, supportsAutoPublish: false },
   "run_device_logs_audit": { toolType: "audit", publishable: true, supportsAutoPublish: false },
   "run_fleet_audit": { toolType: "audit", publishable: true, supportsAutoPublish: false },
@@ -302,37 +325,37 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "run_report_diff": { toolType: "reporting_export", publishable: false, supportsAutoPublish: false },
   "search_apple_device_management_schemas": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "send_enrollment_invitation": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "set_admin_password": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "set_admin_password": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "set_attribute_for_multiple_devices": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_device_attribute_value": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_group_attribute_value": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "set_managed_app_config_schema": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "set_time_zone": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "shutdown_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "set_time_zone": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "shutdown_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "sync_dep_server": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "sync_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "sync_profiles_in_group": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "sync_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "sync_profiles_in_group": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "group_id", entityLabel: "assignment group" } },
   "unassign_app_from_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "unassign_custom_profile_from_device": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "unassign_declaration_from_device": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "unassign_device_from_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "unassign_profile_from_device": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "unassign_profile_from_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "unenroll_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "uninstall_app": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "unenroll_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "uninstall_app": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "installed_app_id", entityLabel: "installed app" } },
   "update_account": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "update_app": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "update_apps_in_group": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "update_apps_in_group": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "group_id", entityLabel: "assignment group" } },
   "update_assignment_group": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "update_custom_attribute": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "update_custom_configuration_profile": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "update_custom_declaration": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "update_device": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
-  "update_installed_app": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "update_lost_mode_location": { toolType: "action", publishable: true, supportsAutoPublish: false },
-  "update_os": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "update_installed_app": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "installed_app_id", entityLabel: "installed app" } },
+  "update_lost_mode_location": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
+  "update_os": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "update_script": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "validate_apple_payload": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "verify_webhook_payload": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
-  "wipe_device": { toolType: "action", publishable: true, supportsAutoPublish: false },
+  "wipe_device": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
 };

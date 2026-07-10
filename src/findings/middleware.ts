@@ -133,3 +133,82 @@ export async function afterToolCall(
     }
   }
 }
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+// Runs after a tool call has thrown an operational failure (from handleTool, never
+// from validateArgs -- see src/index.ts's CallToolRequestSchema catch block, which
+// only fires this for post-validation failures). Mirrors afterToolCall's gating
+// conventions but builds exactly ONE McpFinding from the manifest's actionFailure
+// entry, since action tools have no "healthy" finding -- only a failure one. Never
+// throws -- every failure path is caught internally, same contract as afterToolCall.
+export async function onToolError(
+  toolName: string,
+  args: Record<string, unknown>,
+  error: unknown,
+  log: (msg: string) => void = () => {},
+): Promise<void> {
+  try {
+    const config = loadFindingsConfig();
+    if (!config.enabled) return;
+    if (config.mode === "disabled" || config.mode === "manual") return;
+
+    const entry = TOOL_MANIFEST[toolName];
+    if (!entry || !entry.publishable || !entry.supportsAutoPublish || !entry.actionFailure) return;
+
+    // Action failures are always severity: "danger" -- the highest rank in
+    // SEVERITY_RANK, so this can only ever be filtered out if minSeverity were
+    // somehow above "danger", which loadFindingsConfig's VALID_SEVERITIES doesn't
+    // allow. This check is kept for defense-in-depth / consistency with
+    // afterToolCall's pattern, not because it's reachable today.
+    if (SEVERITY_RANK.danger < SEVERITY_RANK[config.minSeverity]) return;
+
+    const { entityIdField, entityLabel } = entry.actionFailure;
+    const message = `${entityLabel} action "${toolName}" failed: ${errorMessage(error)}`;
+
+    const finding: McpFinding = {
+      finding_type: `action_failed_${toolName}`,
+      category: "Action Failure",
+      severity: "danger",
+      message,
+    };
+    if (entityIdField !== null && Object.prototype.hasOwnProperty.call(args, entityIdField)) {
+      finding.data = { [entityIdField]: args[entityIdField] };
+    }
+
+    if (config.mode === "dry_run") {
+      log(`[findings dry-run] ${toolName}: would publish 1 failure finding: ${JSON.stringify({ "Action Failure": 1 })}`);
+      return;
+    }
+
+    const ingestBody = {
+      // Same replace:true reasoning as afterToolCall -- reflects current state within
+      // this tool's own source namespace (mcp_auto_action_<toolName>).
+      source: `mcp_auto_action_${toolName}`,
+      scan_id: `mcp_auto_action_${toolName}_${Date.now()}`,
+      replace: true,
+      findings: [finding],
+    };
+
+    try {
+      await munkiReportIngest("/ingest_mcp_findings", ingestBody);
+      log(`[findings auto-publish] ${toolName}: published 1 failure finding`);
+    } catch (e) {
+      log(`[findings auto-publish] ${toolName}: failure-finding publish failed: ${(e as Error).message}`);
+      if (config.queueDir) {
+        try {
+          await enqueue({ route: "/ingest_mcp_findings", body: ingestBody });
+        } catch (queueErr) {
+          log(`[findings auto-publish] ${toolName}: failed to enqueue failure finding for retry: ${(queueErr as Error).message}`);
+        }
+      }
+    }
+  } catch (e) {
+    // Must never throw -- a problem building/publishing a failure finding can never
+    // itself become an unhandled rejection on the error-response path.
+    log(`[findings auto-publish] ${toolName}: onToolError internal error: ${errorMessage(e)}`);
+  }
+}
