@@ -1,7 +1,7 @@
 import type { EvaluatedDevice } from "./sofa-eval.js";
 
 export interface McpFinding {
-  serial_number: string;
+  serial_number?: string;
   finding_type: string;
   category: string;
   severity: "danger" | "warning" | "info";
