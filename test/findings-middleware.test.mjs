@@ -56,7 +56,11 @@ test("enabled + mode=auto on an eligible tool — publishes both findings", asyn
   assert.ok(call, "expected a publish call");
   const body = JSON.parse(call.body);
   assert.equal(body.source, "mcp_auto_get_stale_devices");
-  assert.equal(body.replace, false);
+  // true is correct here: cross-tool/manual-run isolation is already provided by
+  // each tool's own distinct source namespace, so replace:true only resolves stale
+  // findings WITHIN this one tool's own source -- required so repeated calls don't
+  // accumulate duplicates and previously-flagged-now-fixed devices actually clear.
+  assert.equal(body.replace, true);
   assert.equal(body.findings.length, 2);
   assert.equal(body.findings[0].serial_number, "C02AAA111");
   assert.equal(body.findings[0].finding_type, "stale_device");

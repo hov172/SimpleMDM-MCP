@@ -110,3 +110,53 @@ test("no tool with adapters has supportsAutoPublish:false, and no tool without a
     assert.equal(entry.supportsAutoPublish, hasAdapters, `${name}: supportsAutoPublish must match adapter presence`);
   }
 });
+
+// Every {field} referenced in an adapter's messageTemplate must actually exist on that
+// tool's real row shape (verified against src/index.ts's handlers). A prior review found
+// get_dep_drift/get_dep_unassigned templates referencing {name}, a field neither tool's
+// row shape has -- this guard prevents that class of bug recurring silently as more
+// adapters are added. Fixture rows below are the real per-tool shapes, not made up.
+const REAL_ROW_FIXTURES = {
+  get_stale_devices: { serial: "C02A", name: "Alice's Mac", days_since: 20 },
+  get_storage_health_low_disk: { serial: "C02B", name: "Bob's Mac", available_gb: 3.2 },
+  get_storage_health_low_battery: { serial: "C02C", name: "Carol's Mac", battery_level_pct: 8 },
+  get_battery_health_report: { serial: "C02D", name: "Dave's Mac", reason: "low_level" },
+  get_compliance_violators: { serial: "C02E", name: "Eve's Mac", failures: ["passcode_not_compliant"] },
+  get_devices_missing_profile: { serial: "C02F", name: "Frank's Mac" },
+  get_supervision_drift: { serial: "C02G", name: "Grace's Mac" },
+  get_device_user_count_outliers: { serial: "C02H", name: "Heidi's Mac", user_count: 7 },
+  get_os_eligibility: { serial: "C02I", name: "Ivan's Mac", upgrade_available: true },
+  get_enrollment_token_audit: { id: "enr_1", stale: true },
+  get_certificate_expiration_audit: { apple_id: "admin@example.edu", days_until_expiry: 21, warning: "renew_now" },
+  get_app_install_failures: { app_name: "Foo", status: "failed", device_id: "123" },
+  get_pending_commands: { pending_count: 2, oldest_sent_at: "2026-07-01T00:00:00Z" },
+  get_dep_drift: { serial: "C02J", assigned_profile_uuid: "uuid-a", expected_profile_uuid: "uuid-b" },
+  get_dep_unassigned: { model: "MacBookPro18,1", serial: "C02K" },
+};
+
+// resultField for get_storage_health has two adapters (two distinct fixtures above); map
+// each adapter to its fixture key explicitly since resultField alone isn't unique for it.
+function fixtureKeyFor(toolName, adapter) {
+  if (toolName === "get_storage_health") {
+    return adapter.resultField === "low_disk_devices" ? "get_storage_health_low_disk" : "get_storage_health_low_battery";
+  }
+  return toolName;
+}
+
+test("every {field} referenced in an adapter's messageTemplate exists on that tool's real row fixture", () => {
+  for (const [name, entry] of Object.entries(TOOL_MANIFEST)) {
+    if (!entry.adapters) continue;
+    for (const adapter of entry.adapters) {
+      const fixtureKey = fixtureKeyFor(name, adapter);
+      const fixture = REAL_ROW_FIXTURES[fixtureKey];
+      assert.ok(fixture, `no fixture registered for ${fixtureKey} -- add one to REAL_ROW_FIXTURES so this guard covers it`);
+      const fields = [...adapter.messageTemplate.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+      for (const field of fields) {
+        assert.ok(
+          field in fixture,
+          `${name} adapter's messageTemplate references {${field}}, which is not in its real row shape (fixture: ${JSON.stringify(fixture)}) -- messageTemplate: "${adapter.messageTemplate}"`,
+        );
+      }
+    }
+  }
+});

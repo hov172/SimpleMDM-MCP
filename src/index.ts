@@ -4474,7 +4474,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     // successful tool response or turn it into an error (afterToolCall
     // already catches every internal failure; this .catch is defense in
     // depth against something throwing synchronously before that point).
-    afterToolCall(name, result).catch(() => {});
+    afterToolCall(name, result, (m) => console.error(m)).catch(() => {});
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (err) {
     return { content: [{ type: "text", text: `Error: ${formatError(err)}` }], isError: true };

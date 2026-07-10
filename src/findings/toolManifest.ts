@@ -117,12 +117,12 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "get_dep_device_status": { toolType: "inventory", publishable: true, supportsAutoPublish: false },
   "get_dep_drift": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
-      { resultField: "devices", findingType: "dep_drift", category: "DEP", severity: "warning", serialField: "serial", messageTemplate: "{name} DEP profile assignment drifted" },
+      { resultField: "devices", findingType: "dep_drift", category: "DEP", severity: "warning", serialField: "serial", messageTemplate: "Device {serial} DEP profile assignment drifted (assigned {assigned_profile_uuid}, expected {expected_profile_uuid})" },
     ] },
   "get_dep_server": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_dep_unassigned": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
-      { resultField: "devices", findingType: "dep_unassigned", category: "DEP", severity: "info", serialField: "serial", messageTemplate: "{name} is a DEP device not yet assigned" },
+      { resultField: "devices", findingType: "dep_unassigned", category: "DEP", severity: "info", serialField: "serial", messageTemplate: "{model} device {serial} is a DEP device not yet assigned" },
     ] },
   "get_device": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "get_device_attribute_values": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },

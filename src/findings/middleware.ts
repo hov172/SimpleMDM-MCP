@@ -79,10 +79,17 @@ export async function afterToolCall(
   }
 
   try {
+    // replace:true reflects current state WITHIN this tool's own source namespace
+    // (mcp_auto_<toolName>) -- cross-tool/manual-run isolation is already fully
+    // provided by every tool having its own distinct source string, so replace
+    // here cannot auto-resolve a different tool's or a manual run's findings.
+    // Without this, repeated interactive calls to the same tool would each add a
+    // fresh finding set under a new scan_id and never resolve stale ones (a
+    // previously-flagged device that's since fixed would stay "open" forever).
     await munkiReportIngest("/ingest_mcp_findings", {
       source: `mcp_auto_${toolName}`,
       scan_id: `mcp_auto_${toolName}_${Date.now()}`,
-      replace: false,
+      replace: true,
       findings,
     });
     log(`[findings auto-publish] ${toolName}: published ${findings.length} finding(s)`);
