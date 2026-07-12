@@ -308,6 +308,18 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 - [`docker-run.sh`](examples/docker-run.sh) — versioned `docker build` + run
 - [`query-cookbook.md`](examples/query-cookbook.md) — 30+ natural-language queries grouped by intent
 
+## MunkiReport Setup
+
+Use this when you want the `get_munkireport_*` tools or `push_munkireport_findings` to talk to a MunkiReport instance.
+
+1. Install the [SimpleMDM-MunkiReport module](https://github.com/hov172/SimpleMDM-MunkiReport) in your MunkiReport instance.
+2. Set `MUNKIREPORT_BASE_URL=https://your-munkireport.example.com`.
+3. Set `MUNKIREPORT_AUTH_HEADER_NAME=X-SIMPLEMDM-API-KEY` and `MUNKIREPORT_AUTH_HEADER_VALUE` to the same SimpleMDM API key the module stores.
+4. Keep `MUNKIREPORT_COOKIE` handy for the two admin actions, `request_munkireport_sync` and `refresh_munkireport_supplemental`.
+5. Test with `get_munkireport_sync_health`.
+
+If a tool returns MunkiReport's `Authenticate first.` page, the auth header or cookie is wrong. On older module builds, cookie auth may be required for more routes.
+
 ---
 
 ## Two report surfaces

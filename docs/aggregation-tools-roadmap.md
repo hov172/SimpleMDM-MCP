@@ -104,7 +104,7 @@ Drafted but removed before merge — would have produced misleading or empty out
 
 ### Caching
 - All list endpoints, `collectDevices()` fleet iterations, and per-device `collectInstalledApps()` calls are cached in-memory with a configurable TTL (default 5 min, `SIMPLEMDM_CACHE_TTL_MS`). Repeated calls within the TTL window return instantly from cache — zero API calls, minimal token usage.
-- Write operations automatically invalidate affected cache entries (all 84 write tools are mapped to cache key prefixes in `INVALIDATION_MAP` — full coverage is enforced by `test/cacheInvalidation.test.mjs` since 0.30.4). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
+- Write operations automatically invalidate affected cache entries (all 87 write tools are mapped to cache key prefixes in `INVALIDATION_MAP` — full coverage is enforced by `test/cacheInvalidation.test.mjs` since 0.30.4). Cross-resource invalidation is handled (e.g. `assign_app_to_group` clears both `/assignment_groups` and `/apps` caches).
 - Concurrent identical requests are deduplicated (stampede protection) so only one fetch runs.
 - Set `SIMPLEMDM_CACHE_TTL_MS=0` to disable caching entirely.
 
@@ -159,14 +159,14 @@ Open work (not yet started):
 - **0.5.0**: 28 derived tools shipped. Minor bump (additive, no breaking changes).
 - **0.6.0**: Auto-pagination on all list tools, in-memory TTL cache with automatic write-invalidation, response slimming for heavy list endpoints, stable OS-lag baseline for `get_compliance_violators`.
 - **Update on each macOS major release**: bump `table_last_updated` and the `MACOS_SUPPORT_TABLE` rows in `src/index.ts`. This is a forced minor bump because it changes tool output; document the table delta in the CHANGELOG.
-- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`189`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
+- **Tool-count drift**: the README and `docs/tools.md` quote the current count (`200`); update them in the same commit that adds/removes a tool. `test/toolCount.test.mjs` enforces the documented count against the static registry.
 - **Sparse-field surveys**: when a customer reports that one of the optional-field tools returns empty, capture the field name and tenant settings in `docs/aggregation-tools-roadmap.md` so future maintainers know the conditions under which it works.
 
 ---
 
 ## MCP context budget
 
-The catalog is now **189 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **200 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.
