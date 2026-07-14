@@ -4440,7 +4440,7 @@ export function promptBody(name: string, args: Record<string, string> | undefine
   const a = args ?? {};
   switch (name) {
     case "fleet-health-dashboard":
-      return "Give me a fleet health dashboard. Call get_fleet_summary, get_security_posture, and get_certificate_expiration_audit in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, APNs push certificate expiration status, and any obvious posture outliers. End with up to 3 concrete recommendations.";
+      return "Give me a fleet health dashboard. Call get_fleet_summary, get_security_posture, get_certificate_expiration_audit, and get_dep_token_audit in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, APNs push certificate expiration status, DEP server token expiration status (flag any in renew_now/expired bands), and any obvious posture outliers. End with up to 3 concrete recommendations.";
     case "configure-webhooks-guide":
       return "Provide a comprehensive guide on manually configuring, securing, and testing SimpleMDM Webhooks. Explain that because the SimpleMDM REST API doesn't support webhook CRUD operations, webhooks must be created in the SimpleMDM admin portal under Settings > Webhooks. Describe how to secure webhook endpoints using a shared query parameter token (e.g. ?token=secret) and validate payload schemas using the verify_webhook_payload tool.";
     case "security-audit":

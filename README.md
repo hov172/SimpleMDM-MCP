@@ -471,7 +471,7 @@ The server ships workflow **prompts** — templated starting points selectable f
 
 | Prompt | Arguments | What it does |
 |---|---|---|
-| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit`, summarizes posture/APNs, lists outliers, proposes up to 3 actions |
+| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit` + `get_dep_token_audit`, summarizes posture/APNs/DEP tokens, lists outliers, proposes up to 3 actions |
 | `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
 | `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
 | `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
