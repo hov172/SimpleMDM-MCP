@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **200 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **201 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -152,6 +152,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 | `get_supervision_drift` | DEP-enrolled devices that lost supervision |
 | `get_device_user_count_outliers` | Macs with unusually many local user accounts |
 | `get_certificate_expiration_audit` | APNs push cert renewal warning bands |
+| `get_dep_token_audit` | DEP server token renewal warning bands + sync-stale flag |
 | `get_enrollment_token_audit` | Stale enrollment URLs (no use in N days) |
 
 **MunkiReport enrichment (require MunkiReport configuration)**

@@ -176,6 +176,11 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
     adapters: [
       { resultField: "", findingType: "certificate_expiring", category: "Certificates", severity: "warning", serialField: null, conditionField: "warning", conditionValues: ["renew_soon", "renew_now", "expired"], messageTemplate: "APNs certificate for {apple_id} expires in {days_until_expiry} days ({warning})" },
     ] },
+  "get_dep_token_audit": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "danger", serialField: null, conditionField: "warning", conditionValues: ["renew_now", "expired"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
+      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "warning", serialField: null, conditionField: "warning", conditionValues: ["renew_soon"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
+    ] },
   "get_compliance_violators": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
       { resultField: "violators", findingType: "compliance_violation", category: "Compliance", severity: "warning", serialField: "serial", messageTemplate: "{name} fails: {failures}" },
