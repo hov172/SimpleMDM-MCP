@@ -6,6 +6,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-07-15
+
+### Added
+- **DEP token status in fleet-health dashboard** — the `fleet-health-dashboard` prompt now calls `get_dep_token_audit` in parallel with the other health checks and summarizes DEP server token expiration status, including the `renew_now` and `expired` bands.
+
 ## [0.34.0] - 2026-07-10
 
 Ships PRD Phase 4 (findings auto-publish middleware) end-to-end: the core
