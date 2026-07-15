@@ -434,7 +434,7 @@ behavior per tool category, and the CLI.
 
 ## Tools
 
-The server registers **200 tools** covering the full SimpleMDM API surface (30 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **201 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 Apple schema helpers (`search_apple_device_management_schemas`, `get_apple_device_management_schema`, `validate_apple_payload`, `build_mobileconfig`, `build_custom_declaration_payload`, plus convenience builders for Wi-Fi, restrictions, SCEP/certificates, VPN, web clips, content filters, FileVault escrow, firewall, passcode, and software update settings) use `data/apple-device-management/schema-cache.json`, generated from Apple's public `apple/device-management` YAML schemas, with curated fallback data for high-value payloads. They do not call the third-party Apple Profile Builder site at runtime. See [`docs/apple-schema-helpers.md`](docs/apple-schema-helpers.md) for the search -> validate/build -> create SimpleMDM profile/declaration workflow and [`data/apple-device-management/README.md`](data/apple-device-management/README.md) for cache refresh/maintenance details.
 
@@ -471,7 +471,7 @@ The server ships workflow **prompts** — templated starting points selectable f
 
 | Prompt | Arguments | What it does |
 |---|---|---|
-| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit`, summarizes posture/APNs, lists outliers, proposes up to 3 actions |
+| `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit` + `get_dep_token_audit`, summarizes posture/APNs/DEP tokens, lists outliers, proposes up to 3 actions |
 | `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
 | `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
 | `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |

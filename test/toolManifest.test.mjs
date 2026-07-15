@@ -194,6 +194,7 @@ const REAL_ROW_FIXTURES = {
   get_os_eligibility: { serial: "C02I", name: "Ivan's Mac", upgrade_available: true },
   get_enrollment_token_audit: { id: "enr_1", stale: true },
   get_certificate_expiration_audit: { apple_id: "admin@example.edu", days_until_expiry: 21, warning: "renew_now" },
+  get_dep_token_audit: { server_name: "HQ Store", organization_name: "Acme Corp", days_until_expiry: 21, warning: "renew_now" },
   get_app_install_failures: { app_name: "Foo", status: "failed", device_id: "123" },
   get_pending_commands: { pending_count: 2, oldest_sent_at: "2026-07-01T00:00:00Z" },
   get_dep_drift: { serial: "C02J", assigned_profile_uuid: "uuid-a", expected_profile_uuid: "uuid-b" },

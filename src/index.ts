@@ -768,6 +768,10 @@ export const TOOLS: Tool[] = [
     description: "Derived — APNs / MDM push certificate expiration. Inspects get_push_certificate. Lists days remaining and a renewal warning band (90/60/30).",
     inputSchema: { type: "object", properties: {} } },
 
+  { name: "get_dep_token_audit",
+    description: "Derived — DEP (Automated Device Enrollment) server token expiration. For each DEP server lists days remaining and a renewal warning band (90/30), a worst_warning roll-up across all servers, and a sync_stale flag for servers not synced with Apple in over 7 days.",
+    inputSchema: { type: "object", properties: {} } },
+
   { name: "get_enrollment_token_audit",
     description: "Derived — list enrollments with creation date, last-used date (when reported), and a stale flag for enrollments not used in over N days.",
     inputSchema: { type: "object", properties: {
@@ -2791,6 +2795,56 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       return { apple_id: a.apple_id, expires_at: expiry ?? null, days_until_expiry, warning };
     }
 
+    case "get_dep_token_audit": {
+      const r = await collectAllPages<{ id: string | number; attributes?: Record<string, unknown> }>("/dep_servers");
+      const now = Date.now();
+      const SYNC_STALE_MS = 7 * 86_400_000;
+      const servers = r.data.map(s => {
+        const at = s.attributes ?? {};
+        const expiry = at.token_expires_at as string | undefined;
+        let days_until_expiry: number | null = null;
+        let warning: "ok" | "renew_soon" | "renew_now" | "expired" | "unknown" = "unknown";
+        if (expiry) {
+          const t = Date.parse(expiry);
+          if (Number.isFinite(t)) {
+            days_until_expiry = Math.floor((t - now) / 86_400_000);
+            warning = days_until_expiry < 0 ? "expired"
+                    : days_until_expiry <= 30 ? "renew_now"
+                    : days_until_expiry <= 90 ? "renew_soon" : "ok";
+          }
+        }
+        const lastSynced = at.last_synced_at as string | undefined;
+        const lastSyncedT = lastSynced ? Date.parse(lastSynced) : NaN;
+        const sync_stale = !Number.isFinite(lastSyncedT) || (now - lastSyncedT) > SYNC_STALE_MS;
+        return {
+          id: s.id,
+          server_name: at.server_name as string | undefined,
+          organization_name: at.organization_name as string | undefined,
+          token_expires_at: expiry ?? null,
+          last_synced_at: lastSynced ?? null,
+          days_until_expiry,
+          warning,
+          sync_stale,
+        };
+      });
+      const RANK: Record<string, number> = { expired: 4, renew_now: 3, renew_soon: 2, ok: 1, unknown: 0 };
+      servers.sort((a, b) => {
+        if (a.days_until_expiry === null && b.days_until_expiry === null) return 0;
+        if (a.days_until_expiry === null) return 1;
+        if (b.days_until_expiry === null) return -1;
+        return a.days_until_expiry - b.days_until_expiry;
+      });
+      const worst_warning = servers.reduce<string>((w, s) => (RANK[s.warning] > RANK[w] ? s.warning : w), "unknown");
+      return {
+        total: servers.length,
+        expired_count: servers.filter(s => s.warning === "expired").length,
+        renew_now_count: servers.filter(s => s.warning === "renew_now").length,
+        renew_soon_count: servers.filter(s => s.warning === "renew_soon").length,
+        worst_warning: servers.length ? worst_warning : "unknown",
+        servers,
+      };
+    }
+
     case "get_enrollment_token_audit": {
       const staleDays = Math.max(1, Number(args.stale_days ?? 90));
       const cutoff = Date.now() - staleDays * 86_400_000;
@@ -4386,7 +4440,7 @@ export function promptBody(name: string, args: Record<string, string> | undefine
   const a = args ?? {};
   switch (name) {
     case "fleet-health-dashboard":
-      return "Give me a fleet health dashboard. Call get_fleet_summary, get_security_posture, and get_certificate_expiration_audit in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, APNs push certificate expiration status, and any obvious posture outliers. End with up to 3 concrete recommendations.";
+      return "Give me a fleet health dashboard. Call get_fleet_summary, get_security_posture, get_certificate_expiration_audit, and get_dep_token_audit in parallel. Then summarize: total devices, enrolled/unenrolled split, supervised and DEP percentages, FileVault enablement rate, OS major-version distribution, APNs push certificate expiration status, DEP server token expiration status (flag any in renew_now/expired bands), and any obvious posture outliers. End with up to 3 concrete recommendations.";
     case "configure-webhooks-guide":
       return "Provide a comprehensive guide on manually configuring, securing, and testing SimpleMDM Webhooks. Explain that because the SimpleMDM REST API doesn't support webhook CRUD operations, webhooks must be created in the SimpleMDM admin portal under Settings > Webhooks. Describe how to secure webhook endpoints using a shared query parameter token (e.g. ?token=secret) and validate payload schemas using the verify_webhook_payload tool.";
     case "security-audit":
