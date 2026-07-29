@@ -327,9 +327,11 @@ The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
      "write_gate": "confirmation_required",
      "tier": "critical",
      "tool": "wipe_device",
-     "args": { "device_id": "REDACTED" },
-     "targets": "1 device(s)",
-     "would_execute": "Wipe device 42",
+     "args": { "device_id": "42" },
+     "targets": [
+       { "id": "42", "name": "iPhone-42", "serial": "F2LW1234ABCD" }
+     ],
+     "would_execute": "Remote wipe. Erases all data on the device. Irreversible. Supports iOS 17+ Return-to-Service and eSIM/data-plan preservation.",
      "executed": false,
      "confirm_token": "a1b2c3d4e5f6...",
      "expires_at": "2026-07-28T12:45:00Z",
@@ -337,7 +339,7 @@ The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
    }
    ```
    
-   The `confirm_token` is single-use and bound to your exact arguments (device IDs, resource names, etc.). It expires after 120 seconds (configurable via `SIMPLEMDM_CONFIRM_TTL_SECONDS`).
+   The `confirm_token` is single-use and bound to your exact arguments (device IDs, resource names, etc.). It expires after 120 seconds (configurable via `SIMPLEMDM_CONFIRM_TTL_SECONDS`). The `targets` array contains resolved device records (id, name, serial; if a device cannot be looked up, `unresolved: true` is set). The `would_execute` field contains the tool's static description and does not vary per device or argument.
 
 2. **Second call** (execution) — re-call with the identical arguments plus the token:
    ```json
