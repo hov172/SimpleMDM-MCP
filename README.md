@@ -534,6 +534,9 @@ Alongside tools, this server exposes canonical **MCP resources** that clients ca
 | `simplemdm://inventory/devices` | Full device list (auto-paginated) |
 | `simplemdm://inventory/assignment-groups` | All assignment groups with membership |
 | `simplemdm://inventory/apps` | Full app catalog (auto-paginated) |
+| `simplemdm://audit/recent-writes` | Local audit log of recent write operations (last 50 entries, no API call) |
+| `simplemdm://recommendations` | Fleet health recommendations from security/compliance rules |
+| `simplemdm://fleet/risk` | Security posture, APNs certificate audit, DEP token status, stale devices, recent write errors |
 
 Resources are loaded via the client's resource picker (Claude Desktop/Code → `Resources` menu; ChatGPT connectors → resource references in a chat). Tools remain the right choice when you need to pass parameters or perform mutations.
 

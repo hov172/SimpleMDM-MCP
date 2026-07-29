@@ -4411,9 +4411,12 @@ export const RESOURCES = [
   { uri: "simplemdm://reports/unmanaged-apps", name: "Unmanaged apps",         description: "Apps installed on the fleet but missing from the SimpleMDM catalog. Shadow-IT discovery.",          mimeType: "application/json" },
   { uri: "simplemdm://reports/stale-devices",  name: "Stale devices (14d)",    description: "Enrolled devices that have not checked in for more than 14 days. Fast.",                              mimeType: "application/json" },
   { uri: "simplemdm://reports/storage-health", name: "Storage / battery health", description: "Enrolled devices with low free disk (<20GB) or low battery (<=20%). Fast.",                        mimeType: "application/json" },
+  { uri: "simplemdm://audit/recent-writes",    name: "Recent write audit",     description: "Local audit log of recent write operations (last 50 entries, no API call).",                         mimeType: "application/json" },
+  { uri: "simplemdm://recommendations",        name: "Recommendations",        description: "Fleet health recommendations from security/compliance rules (recommend_fixes tool).",              mimeType: "application/json" },
+  { uri: "simplemdm://fleet/risk",             name: "Fleet risk dashboard",   description: "Security posture, APNs certificate audit, DEP token status, stale devices, recent write errors.",   mimeType: "application/json" },
 ];
 
-async function readResource(uri: string): Promise<unknown> {
+export async function readResource(uri: string): Promise<unknown> {
   switch (uri) {
     case "simplemdm://fleet/summary":                 return handleTool("get_fleet_summary", {});
     case "simplemdm://reports/security-posture":      return handleTool("get_security_posture", {});
@@ -4463,6 +4466,19 @@ async function readResource(uri: string): Promise<unknown> {
     case "simplemdm://reports/unmanaged-apps":        return handleTool("get_unmanaged_apps", {});
     case "simplemdm://reports/stale-devices":         return handleTool("get_stale_devices", {});
     case "simplemdm://reports/storage-health":        return handleTool("get_storage_health", {});
+    case "simplemdm://audit/recent-writes":
+      return { entries: readAuditEntries(auditDir(), { limit: 50 }), audit_dir: auditDir() };
+    case "simplemdm://recommendations":
+      return handleTool("recommend_fixes", {});
+    case "simplemdm://fleet/risk": {
+      const [posture, certAudit, depAudit, stale] = await Promise.all([
+        handleTool("get_security_posture", {}).catch(() => null),
+        handleTool("get_certificate_expiration_audit", {}).catch(() => null),
+        handleTool("get_dep_token_audit", {}).catch(() => null),
+        handleTool("get_stale_devices", {}).catch(() => null),
+      ]);
+      return { security_posture: posture, apns_certificate: certAudit, dep_tokens: depAudit, stale_devices: stale, recent_write_failures: readAuditEntries(auditDir(), { outcome: "error", limit: 10 }) };
+    }
     default: throw new Error(`Unknown resource: ${uri}`);
   }
 }
