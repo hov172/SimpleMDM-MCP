@@ -314,6 +314,11 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "push_managed_app_configs": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "push_message": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "push_munkireport_findings": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
+  "recommend_fixes": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
+    adapters: [
+      { resultField: "recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "danger", serialField: null, conditionField: "severity", conditionValues: ["critical"], messageTemplate: "[{category}] {summary}" },
+      { resultField: "recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "warning", serialField: null, conditionField: "severity", conditionValues: ["warning"], messageTemplate: "[{category}] {summary}" },
+    ] },
   "refresh_cellular_plans": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "refresh_device_inventory": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "refresh_munkireport_supplemental": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "serial_number", entityLabel: "device" } },

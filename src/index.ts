@@ -46,6 +46,7 @@ import { redactArgs, writeAuditEntry, readAuditEntries, type AuditEntry, type Au
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
+import { buildRecommendations, type RecommendationInputs, type Severity } from "./analytics/recommendations.js";
 import { buildDynamicDossier, validateDynamicSpec, adapterRows, type DynamicReportSpec } from "./reports/specs/dynamic.js";
 import { ServerDataSource } from "./reports/data/server-source.js";
 
@@ -806,6 +807,14 @@ export const TOOLS: Tool[] = [
     description: "Derived — list enrollments with creation date, last-used date (when reported), and a stale flag for enrollments not used in over N days.",
     inputSchema: { type: "object", properties: {
       stale_days: { type: "number", description: "Days without use to mark as stale. Default 90." },
+    }}},
+
+  { name: "recommend_fixes",
+    description: "READ — Prioritized fleet recommendations derived from the existing audits (certificates, DEP tokens, compliance, stale devices). Each item names the gated write tool or workflow prompt that fixes it. Params: min_severity (default warning), categories, limit.",
+    inputSchema: { type: "object", properties: {
+      min_severity: { type: "string", enum: ["info", "warning", "critical"], description: "Drop recommendations below this severity. Default 'warning'." },
+      categories: { type: "array", items: { type: "string", enum: ["certificates", "dep", "compliance", "stale_devices"] }, description: "Restrict to these categories. Default all." },
+      limit: { type: "integer", description: "Max recommendations to return. Default unlimited." },
     }}},
 
   { name: "get_device_user_count_outliers",
@@ -4261,6 +4270,46 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const outDir = resolveReportPath(`reports/${report}-${date}-${time}`);
 
       return runReport({ report, scope, format, reportOnly, outDir, search });
+    }
+
+    case "recommend_fixes": {
+      const sources: Array<[keyof RecommendationInputs, string]> = [
+        ["certAudit", "get_certificate_expiration_audit"],
+        ["depAudit", "get_dep_token_audit"],
+        ["complianceViolators", "get_compliance_violators"],
+        ["staleDevices", "get_stale_devices"],
+      ];
+      const inputs: RecommendationInputs = {
+        certAudit: null, depAudit: null, complianceViolators: null, staleDevices: null,
+      };
+      const generatedFrom: string[] = [];
+      await Promise.all(sources.map(async ([key, toolName]) => {
+        try {
+          const result = await handleTool(toolName, {});
+          (inputs as unknown as Record<string, unknown>)[key] = result;
+          generatedFrom.push(toolName);
+        } catch {
+          // A failed source becomes a null input and is dropped from generated_from —
+          // recommend_fixes still returns a best-effort list from the sources that worked.
+        }
+      }));
+
+      let recommendations = buildRecommendations(inputs);
+
+      const minSeverity = (args.min_severity as Severity | undefined) ?? "warning";
+      const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
+      recommendations = recommendations.filter(r => rank[r.severity] <= rank[minSeverity]);
+
+      if (Array.isArray(args.categories) && args.categories.length > 0) {
+        const allowed = new Set(args.categories as string[]);
+        recommendations = recommendations.filter(r => allowed.has(r.category));
+      }
+
+      if (typeof args.limit === "number" && args.limit >= 0) {
+        recommendations = recommendations.slice(0, args.limit);
+      }
+
+      return { recommendations, count: recommendations.length, generated_from: generatedFrom };
     }
 
     case "get_write_audit_log": {
