@@ -4483,6 +4483,37 @@ export const PROMPTS = [
     description: "Guidance and walkthrough for manually configuring, securing, and testing SimpleMDM webhooks via the admin web console.",
     arguments: [],
   },
+  {
+    name: "lost-device-response",
+    description: "Lost/stolen device response with the gated write workflow: enable Lost Mode, locate, optionally lock; wipe only on explicit user demand. Includes escalation and recovery guidance.",
+    arguments: [
+      { name: "device_ref", description: "Device ID or serial number of the lost/stolen device.", required: true },
+    ],
+  },
+  {
+    name: "emergency-patching",
+    description: "Emergency OS patching with the gated write workflow: identify vulnerable devices, stage update_os pushes (dry-run + confirm-token gated), verify uptake.",
+    arguments: [
+      { name: "platform", description: "Platform to patch: mac, ios, or ipad.", required: true },
+      { name: "max_major_lag", description: "Major versions behind to target. Default 1.", required: false },
+    ],
+  },
+  {
+    name: "semester-refresh",
+    description: "Education semester refresh for one assignment group with the gated write workflow: re-baseline profiles and apps, refresh inventory, verify coverage.",
+    arguments: [
+      { name: "group", description: "Assignment group name to refresh (e.g. a lab or cohort).", required: true },
+    ],
+  },
+  {
+    name: "lab-provisioning",
+    description: "Provision a lab cohort with the gated write workflow: ensure the assignment group exists, assign profiles/apps, push, and verify coverage.",
+    arguments: [
+      { name: "group", description: "Assignment group name for the lab cohort.", required: true },
+      { name: "profile_ids", description: "Comma-separated profile IDs to assign. Optional.", required: false },
+      { name: "app_ids", description: "Comma-separated app IDs to assign. Optional.", required: false },
+    ],
+  },
 ];
 
 // Shared gated-write protocol appended to every write-capable prompt body.
@@ -4504,6 +4535,10 @@ export const GATED_PROMPTS = new Set<string>([
   "stale-devices-cleanup",
   "compliance-violators-remediation",
   "profile-coverage-remediation",
+  "lost-device-response",
+  "emergency-patching",
+  "semester-refresh",
+  "lab-provisioning",
 ]);
 
 export function promptBody(name: string, args: Record<string, string> | undefined): string {
@@ -4567,6 +4602,49 @@ ${GATED_WORKFLOW_RULES}`;
       const limit = a.limit || "25";
       return `Run a cross-fleet app inventory audit. Call get_top_installed_apps with limit=${limit} and get_unmanaged_apps in parallel. Then: 1) flag any unmanaged app installed on more than 50% of the fleet as a strong candidate for catalog addition (so updates and configuration can be managed); 2) flag catalog apps with very low install_pct as candidates for removal or reassignment; 3) call out anything that looks like obviously legitimate Apple/Adobe/Microsoft helper processes (don't recommend managing those). End with a 5–10 item action list ranked by impact.`;
     }
+    case "lost-device-response":
+      return `Respond to a lost/stolen report for ${a.device_ref || "the specified device"} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision), last check-in, last known location if present.
+- Intended writes, in order: enable_lost_mode (high — displays a return message and phone number you compose with the user); update_lost_mode_location to request a fresh location; play_lost_mode_sound if the device may be nearby. Optionally lock_device with a PIN as a second layer. wipe_device (critical) ONLY if the user explicitly declares the device unrecoverable and accepts data loss — surface it as a separate confirmation.
+- VERIFY: re-check the device's lost-mode status and location responses in the command log.
+RECOVERY: Lost Mode is reversible with disable_lost_mode once recovered. A wipe is NOT reversible. Escalation guidance: file a police report with the serial number; Activation Lock keeps the device unusable by others even when wiped; do NOT disable_activation_lock on a stolen device.
+${GATED_WORKFLOW_RULES}`;
+
+    case "emergency-patching": {
+      const platform = a.platform || "{platform}";
+      const lag = a.max_major_lag || "1";
+      return `Run emergency OS patching for platform=${platform} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_compliance_violators (max_os_major_lag=${lag}) and get_fleet_summary: enumerate the vulnerable ${platform} devices (IDs, names, current OS). Stage the rollout: a small pilot set first, then the remainder.
+- Intended writes: update_os (high tier) per target device, pilot set first.
+- VERIFY: after devices check in, re-call get_fleet_summary / get_compliance_violators and report the shrinking behind-count; refresh_device_inventory on stragglers to force fresh data.
+RECOVERY: OS updates are NOT reversible — that is why the pilot set goes first; a failed pilot stops the rollout. Devices with insufficient disk or battery will silently skip the update — they surface in VERIFY, not EXECUTE.
+${GATED_WORKFLOW_RULES}`;
+    }
+
+    case "semester-refresh": {
+      const group = a.group || "{group}";
+      return `Run a semester refresh for assignment group "${group}" using the gated write protocol below.
+Workflow specifics:
+- PLAN: resolve the group with list_assignment_groups; enumerate its devices, assigned profiles, and apps. Confirm with the user what "refreshed" means for this cohort (profiles re-pushed, apps updated, inventory current).
+- Intended writes, in order: sync_profiles_in_group to re-push the profile baseline; update_apps_in_group then push_apps_to_group for the app baseline; refresh_device_inventory (low) per device to bring analytics current.
+- VERIFY: spot-check 2-3 devices with get_device_full_profile (profiles present, apps updating) and re-run the group listing.
+RECOVERY: all semester-refresh writes are re-pushes of the existing baseline — repeatable and non-destructive. Nothing in this workflow removes user data.
+${GATED_WORKFLOW_RULES}`;
+    }
+
+    case "lab-provisioning": {
+      const group = a.group || "{group}";
+      return `Provision the lab cohort "${group}" using the gated write protocol below.
+Workflow specifics:
+- PLAN: check whether assignment group "${group}" exists via list_assignment_groups. Parse profile_ids=${a.profile_ids || "(none given)"} and app_ids=${a.app_ids || "(none given)"}; confirm the final profile/app baseline with the user.
+- Intended writes, in order: create_assignment_group if missing (medium); assign_profile_to_group per profile; assign_app_to_group per app; then push_apps_to_group and sync_profiles_in_group to deploy.
+- VERIFY: get_devices_missing_profile per assigned profile should trend to zero for group members as they check in.
+RECOVERY: fully reversible — unassign_profile_from_group / unassign_app_from_group undo assignments; delete_assignment_group (critical) removes the group itself if created in error.
+${GATED_WORKFLOW_RULES}`;
+    }
+
     default:
       throw new Error(`Unknown prompt: ${name}`);
   }
