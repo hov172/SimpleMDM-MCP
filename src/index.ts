@@ -12,7 +12,7 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
@@ -41,6 +41,8 @@ import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMD
 import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
 import { afterToolCall, onToolError } from "./findings/middleware.js";
 import { WRITE_TIERS, CONFIRM_TIERS, type RiskTier } from "./safety/tiers.js";
+import { canonicalArgsHash, issueToken, redeemToken } from "./safety/confirm.js";
+import { redactArgs, writeAuditEntry, type AuditEntry, type AuditPhase, type AuditOutcome } from "./safety/audit.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -189,6 +191,13 @@ function requireWrites(): void {
     "Use a key scoped to minimum required permissions before doing so."
   );
 }
+
+// ─── Write-safety gate config (PRD v2 Phase 1) ─────────────────────────────
+// Read at call time (not import time) so tests and operators can toggle
+// confirm mode without a restart. auditDir() is also used by Task 5.
+const confirmModeOn = (): boolean => (process.env.SIMPLEMDM_CONFIRM_MODE ?? "on") !== "off";
+const confirmTtlMs = (): number => Number(process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS ?? 120) * 1000;
+const auditDir = (): string => resolveReportPath(process.env.MCP_WRITE_AUDIT_DIR ?? "audit_log");
 
 function j(body: unknown): string { return JSON.stringify(body); }
 
@@ -4283,6 +4292,13 @@ for (const t of TOOLS) {
     idempotentHint: !isWrite,
     openWorldHint: true,
   };
+  if (isWrite) {
+    // Spec §1.1: the tier is part of every write tool's advertised metadata.
+    t.description = `${t.description} [risk tier: ${WRITE_TIERS[t.name]}]`;
+    const props = (t.inputSchema as { properties?: Record<string, unknown> }).properties ??= {};
+    props.dry_run ??= { type: "boolean", description: "Preview only: return a plan of what would change without executing. Audited, never calls the SimpleMDM write API." };
+    props.confirm_token ??= { type: "string", description: "Single-use token from a prior planning call, required to execute high/critical-tier writes when confirm mode is on. Bound to these exact arguments." };
+  }
 }
 
 // ─── Resources (canonical report URIs) ────────────────────────────────────────
@@ -4495,6 +4511,44 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
+// ─── Write-safety gate (PRD v2 Phase 1) ───────────────────────────────────────
+// Runs after validateArgs, before handleTool.
+
+function auditWrite(partial: Omit<AuditEntry, "ts" | "event_id">): void {
+  writeAuditEntry(auditDir(), { ts: new Date().toISOString(), event_id: randomUUID(), ...partial });
+}
+
+// Best-effort target resolution (spec §1.2): device reads go through api(),
+// which is cached, so repeated plans are cheap. Unresolvable targets are
+// reported as such rather than failing the plan.
+async function resolvePlanTargets(args: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+  const ids = Array.isArray(args.device_ids) ? args.device_ids
+    : args.device_id != null ? [args.device_id] : [];
+  const targets: Array<Record<string, unknown>> = [];
+  for (const id of ids.slice(0, 25)) {
+    try {
+      const d = await api(`/devices/${seg(id, "device_id")}`) as
+        { data?: { attributes?: { name?: string; serial_number?: string } } };
+      targets.push({ id, name: d?.data?.attributes?.name ?? null, serial: d?.data?.attributes?.serial_number ?? null });
+    } catch {
+      targets.push({ id, name: null, serial: null, unresolved: true });
+    }
+  }
+  return targets;
+}
+
+async function buildWritePlan(name: string, tier: RiskTier, args: Args): Promise<Record<string, unknown>> {
+  const tool = TOOLS.find((t) => t.name === name);
+  const { confirm_token: _t, dry_run: _d, ...cleanArgs } = args as Record<string, unknown>;
+  return {
+    tool: name,
+    tier,
+    args: redactArgs(cleanArgs),
+    targets: await resolvePlanTargets(cleanArgs),
+    would_execute: tool?.description?.split(" — ")[1] ?? tool?.description ?? name,
+  };
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 // Exported for tests only (e.g. test/findings/actionFailureWiring.test.mjs), so a test
@@ -4519,6 +4573,66 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     validateArgs(name, args as Args);
     pastValidation = true;
+
+    // ── Write-safety gate ────────────────────────────────────────────────
+    if (WRITE_TOOLS.has(name) && ALLOW_WRITES) {
+      const tier = WRITE_TIERS[name];
+      const a = args as Record<string, unknown>;
+      const argsHash = canonicalArgsHash(name, a);
+
+      if (a.dry_run === true) {
+        auditWrite({ tool: name, tier, phase: "dry_run", args: redactArgs(a), args_hash: argsHash, outcome: "success" });
+        return { content: [{ type: "text", text: JSON.stringify({
+          write_gate: "dry_run", ...(await buildWritePlan(name, tier, args as Args)),
+          executed: false,
+          instructions: "This was a dry run. Re-call without dry_run to proceed" +
+            (confirmModeOn() && CONFIRM_TIERS.has(tier) ? " (a confirm token will be required)." : "."),
+        }) }] };
+      }
+
+      if (confirmModeOn() && CONFIRM_TIERS.has(tier)) {
+        const provided = typeof a.confirm_token === "string" ? a.confirm_token : null;
+        if (!provided) {
+          const { token, expires_at } = issueToken(name, argsHash, confirmTtlMs());
+          auditWrite({ tool: name, tier, phase: "plan", args: redactArgs(a), args_hash: argsHash, token_id: token.slice(0, 8), outcome: "success" });
+          return { content: [{ type: "text", text: JSON.stringify({
+            write_gate: "confirmation_required", ...(await buildWritePlan(name, tier, args as Args)),
+            executed: false, confirm_token: token, expires_at,
+            instructions: `This is a ${tier}-tier write and was NOT executed. Show the user what will ` +
+              "happen and get their explicit approval, then re-call this tool with the same arguments " +
+              "plus confirm_token to execute. The token is single-use and bound to these exact arguments.",
+          }) }] };
+        }
+        const verdict = redeemToken(provided, name, argsHash);
+        if (!verdict.ok) {
+          auditWrite({ tool: name, tier, phase: "blocked", args: redactArgs(a), args_hash: argsHash, token_id: provided.slice(0, 8), outcome: "blocked", error: verdict.reason });
+          throw new Error(
+            `Confirm token rejected (${verdict.reason}). Tokens are single-use, expire after ` +
+            `${confirmTtlMs() / 1000}s, and are bound to the exact tool and arguments they were issued ` +
+            "for. Re-call the tool without confirm_token to get a fresh plan and token.",
+          );
+        }
+      }
+
+      // Execute (low/medium always; high/critical with a redeemed token or confirm mode off).
+      const started = Date.now();
+      const { confirm_token: _ct, dry_run: _dr, ...cleanArgs } = a;
+      try {
+        const result = await handleTool(name, cleanArgs as Args);
+        auditWrite({ tool: name, tier, phase: "execute", args: redactArgs(a), args_hash: argsHash, outcome: "success", duration_ms: Date.now() - started });
+        const prefixes = INVALIDATION_MAP[name];
+        if (prefixes?.length) cacheInvalidate(...prefixes);
+        afterToolCall(name, result, (m) => console.error(m)).catch(() => {});
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        auditWrite({ tool: name, tier, phase: "execute", args: redactArgs(a), args_hash: argsHash, outcome: "error",
+          http_status: err instanceof HttpError ? err.status : undefined,
+          error: formatError(err), duration_ms: Date.now() - started });
+        throw err;
+      }
+    }
+    // ── End write-safety gate ────────────────────────────────────────────
+
     const result = await handleTool(name, args as Args);
     const prefixes = INVALIDATION_MAP[name];
     if (prefixes?.length) cacheInvalidate(...prefixes);
