@@ -57,7 +57,27 @@ test("critical tool without token returns a plan, makes no network call, audits 
     assert.match(plan.confirm_token, /^[0-9a-f]{32,}$/);
     assert.equal(fetchCalls.filter((c) => c.method !== "GET").length, 0);
     assert.ok(auditLines().some((e) => e.tool === "wipe_device" && e.phase === "plan"));
+    // Finding 2: would_execute must not be polluted by the annotations loop's
+    // " [risk tier: X]" description suffix; the boolean lives in `executed`.
+    assert.doesNotMatch(String(plan.would_execute), /\[risk tier:/);
+    assert.equal(plan.executed, false);
   } finally { await client.close(); }
+});
+
+test("malformed SIMPLEMDM_CONFIRM_TTL_SECONDS fails closed (finite TTL, not NaN)", async () => {
+  process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS = "120s";
+  const client = await connectedClient();
+  try {
+    const before = Date.now();
+    const plan = parse(await client.callTool({ name: "wipe_device", arguments: { device_id: "42" } }));
+    const expiresAtMs = Date.parse(plan.expires_at);
+    assert.ok(Number.isFinite(expiresAtMs), `expires_at should be a valid timestamp, got ${plan.expires_at}`);
+    const deltaSeconds = (expiresAtMs - before) / 1000;
+    assert.ok(deltaSeconds > 100 && deltaSeconds < 140, `expected ~120s TTL, got ${deltaSeconds}s`);
+  } finally {
+    delete process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS;
+    await client.close();
+  }
 });
 
 test("critical tool with valid token executes exactly one POST and audits phase=execute", async () => {

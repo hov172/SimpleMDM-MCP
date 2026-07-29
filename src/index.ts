@@ -196,7 +196,20 @@ function requireWrites(): void {
 // Read at call time (not import time) so tests and operators can toggle
 // confirm mode without a restart. auditDir() is also used by Task 5.
 const confirmModeOn = (): boolean => (process.env.SIMPLEMDM_CONFIRM_MODE ?? "on") !== "off";
-const confirmTtlMs = (): number => Number(process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS ?? 120) * 1000;
+const DEFAULT_CONFIRM_TTL_SECONDS = 120;
+const confirmTtlMs = (): number => {
+  const raw = process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS;
+  if (raw === undefined) return DEFAULT_CONFIRM_TTL_SECONDS * 1000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(
+      `[write-safety] Invalid SIMPLEMDM_CONFIRM_TTL_SECONDS=${JSON.stringify(raw)}; ` +
+      `falling back to ${DEFAULT_CONFIRM_TTL_SECONDS}s (fail closed).`
+    );
+    return DEFAULT_CONFIRM_TTL_SECONDS * 1000;
+  }
+  return n * 1000;
+};
 const auditDir = (): string => resolveReportPath(process.env.MCP_WRITE_AUDIT_DIR ?? "audit_log");
 
 function j(body: unknown): string { return JSON.stringify(body); }
@@ -4545,7 +4558,8 @@ async function buildWritePlan(name: string, tier: RiskTier, args: Args): Promise
     tier,
     args: redactArgs(cleanArgs),
     targets: await resolvePlanTargets(cleanArgs),
-    would_execute: tool?.description?.split(" — ")[1] ?? tool?.description ?? name,
+    would_execute: (tool?.description?.split(" — ")[1] ?? tool?.description ?? name)
+      .replace(/ \[risk tier: \w+\]$/, ""),
   };
 }
 
