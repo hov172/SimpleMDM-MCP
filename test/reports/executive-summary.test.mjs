@@ -47,6 +47,13 @@ test("REGISTRY.executive-summary exists with buildInput/build/defaultFormat", ()
 
 // ── Dossier content ─────────────────────────────────────────────────────────
 
+async function writeAndReadMd(input) {
+  const dossier = buildExecutiveDossier(input);
+  const out = mkdtempSync(join(tmpdir(), "executive-summary-"));
+  await dossier.write(out, { format: "md", reportOnly: false, generatedIso: "2026-07-28T00:00:00Z" });
+  return readFileSync(join(out, "executive-summary.md"), "utf8");
+}
+
 test("build(FIXTURE) returns a Dossier with Fleet KPIs / Risk Summary / Top Recommendations", async () => {
   const dossier = REGISTRY["executive-summary"].build(FIXTURE_INPUT);
   const out = mkdtempSync(join(tmpdir(), "executive-summary-"));
@@ -62,4 +69,52 @@ test("buildExecutiveDossier is directly importable and matches the registry buil
   const dossier = buildExecutiveDossier(FIXTURE_INPUT);
   const doc = dossier.toDocument();
   assert.ok(doc, "toDocument() should return a document");
+});
+
+// ── Unknown-status caveats (data-limitation disclosure) ────────────────────
+// executiveInputLive (the CLI/generate_report path) cannot determine
+// apns_status/dep_worst_status — no push-cert/DEP-token fetchers on that path
+// — and reports "unknown" for both. A bare "unknown" cell in the rendered
+// document reads as "nothing to worry about" rather than "not checked," so
+// the document itself must carry an explicit caveat in that case, and the
+// caveat must NOT appear when real statuses are supplied (e.g. a future
+// richer input path, or FIXTURE_INPUT above with "ok"/"renew_soon").
+
+const UNKNOWN_RISK_INPUT = {
+  ...FIXTURE_INPUT,
+  risk: { ...FIXTURE_INPUT.risk, apns_status: "unknown", dep_worst_status: "unknown" },
+};
+
+test("Risk Summary carries an in-document caveat when apns_status/dep_worst_status are unknown", async () => {
+  const md = await writeAndReadMd(UNKNOWN_RISK_INPUT);
+  assert.ok(
+    md.includes("APNs certificate and DEP token status are not available via this report path"),
+    "expected Risk Summary caveat when status is unknown",
+  );
+});
+
+test("Top Recommendations carries a caveat noting cert/DEP recommendations are excluded when status is unknown", async () => {
+  const md = await writeAndReadMd(UNKNOWN_RISK_INPUT);
+  assert.ok(
+    md.includes("Certificate and DEP token recommendations are not included in this report path"),
+    "expected Top Recommendations caveat when status is unknown",
+  );
+});
+
+test("no caveats are rendered when apns_status/dep_worst_status are real (known) values", async () => {
+  const md = await writeAndReadMd(FIXTURE_INPUT);
+  assert.ok(
+    !md.includes("are not available via this report path"),
+    "Risk Summary caveat must be absent for known statuses",
+  );
+  assert.ok(
+    !md.includes("are not included in this report path"),
+    "Top Recommendations caveat must be absent for known statuses",
+  );
+});
+
+test("caveat triggers when only one of apns_status/dep_worst_status is unknown", async () => {
+  const partial = { ...FIXTURE_INPUT, risk: { ...FIXTURE_INPUT.risk, apns_status: "unknown" } };
+  const md = await writeAndReadMd(partial);
+  assert.ok(md.includes("are not available via this report path"), "caveat should trigger on partial unknown");
 });

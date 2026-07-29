@@ -23,6 +23,21 @@ export function buildExecutiveDossier(input: ExecutiveInput): Dossier {
         .map((x, i) => `${i + 1}. **[${x.severity}]** ${x.summary} — _fix via ${x.remediation.type} \`${x.remediation.name}\`_`)
         .join("\n")
     : "_No open recommendations — fleet is clean._";
+  // When apns_status/dep_worst_status could not be determined via this report
+  // path (the legacy CLI/generate_report input builder has no push-certificate
+  // or DEP-token fetchers — see executiveInputLive in cli/inputs.ts), a bare
+  // "unknown" cell reads as "nothing to worry about" rather than "not checked."
+  // Surface the limitation in the rendered document itself, not just in code
+  // comments, so every consumer of the report (not just engineers reading the
+  // source) sees it. A future richer input path that supplies real statuses
+  // should not carry this caveat.
+  const statusUnknown = r.apns_status === "unknown" || r.dep_worst_status === "unknown";
+  const riskCaveat = statusUnknown
+    ? "\n\n_APNs certificate and DEP token status are not available via this report path — run get_certificate_expiration_audit and get_dep_token_audit for authoritative status._"
+    : "";
+  const recCaveat = statusUnknown
+    ? "\n\n_Certificate and DEP token recommendations are not included in this report path._"
+    : "";
   d.bodyMarkdown(`# Executive Fleet Summary — ${input.dateStr}
 
 ## Fleet KPIs
@@ -43,11 +58,11 @@ export function buildExecutiveDossier(input: ExecutiveInput): Dossier {
 | APNs push certificate | ${r.apns_status} |
 | DEP tokens (worst) | ${r.dep_worst_status} |
 | Stale devices | ${r.stale_count} |
-| Compliance violators | ${r.violator_count} |
+| Compliance violators | ${r.violator_count} |${riskCaveat}
 
 ## Top Recommendations
 
-${recLines}
+${recLines}${recCaveat}
 `);
   d.dataCsv(
     "recommendations.csv",
