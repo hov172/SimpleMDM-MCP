@@ -296,6 +296,81 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ---
 
+## Write safety
+
+All 87 write tools are classified into **risk tiers** (low/medium/high/critical) to prevent accidents. Tiers are enforced through two independent gates: a **dry-run mode** for planning, and a **confirm-token flow** for high/critical actions when confirm mode is on.
+
+**Risk tiers** classify the impact of each write action:
+
+| Tier | Impact | Requires confirm | Examples |
+|---|---|---|---|
+| low | Idempotent; no device state change | — | `sync_device`, `push_message`, `request_munkireport_sync` |
+| medium | Changes management state; reversible via another call | — | `assign_device_to_group`, `create_app`, `set_device_attribute_value` |
+| high | User-visible device impact or security-state change | ✓ (if confirm mode on) | `lock_device`, `restart_device`, `update_os`, `rotate_filevault_recovery_key` |
+| critical | Irreversible or destructive | ✓ (if confirm mode on) | `wipe_device`, `disable_activation_lock`, `delete_device`, `clear_passcode` |
+
+The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
+
+**Dry-run mode** — pass `dry_run: true` on any write tool to preview the action without executing it. The response includes `write_gate: "dry_run"`, a description of what would happen, the target device(s) or resource, and `executed: false`. No API call is made.
+
+**Confirm-token flow** — when `SIMPLEMDM_CONFIRM_MODE=on` (the default when writes are enabled) and you call a high/critical tool, the server returns a plan instead of executing:
+
+1. **First call** (planning) — call the tool with normal arguments:
+   ```json
+   POST /tool/wipe_device
+   { "device_id": "42" }
+   ```
+   
+   Response (does not execute):
+   ```json
+   {
+     "write_gate": "confirmation_required",
+     "tier": "critical",
+     "tool": "wipe_device",
+     "args": { "device_id": "REDACTED" },
+     "targets": "1 device(s)",
+     "would_execute": "Wipe device 42",
+     "executed": false,
+     "confirm_token": "a1b2c3d4e5f6...",
+     "expires_at": "2026-07-28T12:45:00Z",
+     "instructions": "Re-call this tool with the same arguments plus confirm_token to execute."
+   }
+   ```
+   
+   The `confirm_token` is single-use and bound to your exact arguments (device IDs, resource names, etc.). It expires after 120 seconds (configurable via `SIMPLEMDM_CONFIRM_TTL_SECONDS`).
+
+2. **Second call** (execution) — re-call with the identical arguments plus the token:
+   ```json
+   POST /tool/wipe_device
+   { "device_id": "42", "confirm_token": "a1b2c3d4e5f6..." }
+   ```
+   
+   Response (executes):
+   ```json
+   { "executed": true, ... }
+   ```
+
+Low and medium-tier tools execute directly (no token required). **Confirm mode can be disabled** by setting `SIMPLEMDM_CONFIRM_MODE=off`, which restores the prior behavior of immediate execution for high/critical tools — useful for headless/scriptable deployments. Read tools are always unaffected.
+
+**Audit log** — every write invocation (plan, dry_run, execute, blocked) is logged to a JSONL file under `audit_log/` (default location `audit_log/audit-YYYYMMDD.jsonl`). Each entry includes the tool name, timestamp, tier, phase, arguments (redacted), outcome, and any error. Query the audit log via the `get_write_audit_log` tool:
+
+```json
+GET /tool/get_write_audit_log
+{ "since": "2026-07-28T00:00:00Z", "tool": "wipe_device", "tier": "critical", "limit": 100 }
+```
+
+Returns: array of audit entries with paging support.
+
+**Environment variables**:
+
+- `SIMPLEMDM_CONFIRM_MODE` (default `on` when `SIMPLEMDM_ALLOW_WRITES=true`) — set `off` to execute high/critical tools directly without a token. Startup-free per-call override.
+- `SIMPLEMDM_CONFIRM_TTL_SECONDS` (default `120`) — token expiration window in seconds. Malformed values (e.g. `"120s"`) fail closed to the default with a stderr warning.
+- `MCP_WRITE_AUDIT_DIR` (default `audit_log/`, resolved against the install root) — directory for JSONL audit logs.
+
+**No action if writes are disabled** — when `SIMPLEMDM_ALLOW_WRITES` is unset (default), nothing changes: all write tools refuse to run with "Write actions are disabled," regardless of the confirm-mode or tier settings. The confirm layer only activates once writes are explicitly enabled.
+
+---
+
 ## Examples
 
 The [`examples/`](examples/) directory ships drop-in client configs and a starter query cookbook:
