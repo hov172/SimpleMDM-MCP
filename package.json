@@ -12,7 +12,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
-    "test": "npm run build && node --test test/*.mjs test/reports/*.mjs test/findings/*.mjs",
+    "test": "npm run build && node --test test/*.mjs test/reports/*.mjs test/findings/*.mjs test/safety/*.mjs",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "files": [

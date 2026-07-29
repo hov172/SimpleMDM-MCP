@@ -40,6 +40,7 @@ import {
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
 import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
 import { afterToolCall, onToolError } from "./findings/middleware.js";
+import { WRITE_TIERS, CONFIRM_TIERS, type RiskTier } from "./safety/tiers.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -4263,25 +4264,11 @@ export const WRITE_TOOLS = new Set<string>([
   "create_script_job", "cancel_script_job",
 ]);
 
-const DESTRUCTIVE = new Set<string>([
-  "wipe_device",
-  "disable_activation_lock",
-  "unenroll_device",
-  "delete_device",
-  "delete_device_user",
-  "delete_app",
-  "delete_assignment_group",
-  "delete_custom_attribute",
-  "delete_custom_configuration_profile",
-  "delete_custom_declaration",
-  "delete_enrollment",
-  "delete_managed_app_config",
-  "delete_script",
-  "clear_passcode",
-  "clear_restrictions_password",
-  "clear_firmware_password",
-  "clear_recovery_lock_password",
-]);
+// Derived from WRITE_TIERS — "critical" is the single source of truth for
+// destructiveHint. See src/safety/tiers.ts.
+const DESTRUCTIVE = new Set<string>(
+  Object.entries(WRITE_TIERS).filter(([, t]) => t === "critical").map(([n]) => n)
+);
 
 function titleCase(name: string): string {
   return name.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
