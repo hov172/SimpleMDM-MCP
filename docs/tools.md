@@ -1,6 +1,6 @@
 # Tools
 
-The server registers **202 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **203 tools** covering the full SimpleMDM API surface (32 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 ## Read tools (always available)
 
@@ -18,7 +18,7 @@ The server registers **202 tools** covering the full SimpleMDM API surface (31 d
 | `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary. Relative output paths resolve under the installed package root |
 | `run_report_diff` | Compare two local inventory report run dirs (both under the install root's `reports/`): devices added/removed, meaningful field changes, findings new vs resolved; writes `diff-vs-<before>.md` into the after dir. Purely local — no API calls |
 | `run_config_backup` | Disaster-recovery export: downloads every custom profile's mobileconfig + custom declarations, plus scripts/groups/attributes records, with a sha256 manifest, to `reports/config-backup-<ts>/` under the installed package root |
-| `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs) and return `WriteResult` metadata (out_dir + per-file sha256). Relative output paths resolve under the installed package root. Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
+| `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs/executive-summary) and return `WriteResult` metadata (out_dir + per-file sha256). Relative output paths resolve under the installed package root. Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
 
 **Apple schema helpers**
 
@@ -154,6 +154,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 | `get_certificate_expiration_audit` | APNs push cert renewal warning bands |
 | `get_dep_token_audit` | DEP server token renewal warning bands + sync-stale flag |
 | `get_enrollment_token_audit` | Stale enrollment URLs (no use in N days) |
+| `recommend_fixes` | Prioritized fleet recommendations derived from the certificate, DEP token, compliance, and stale-device audits; each item names the gated workflow prompt or manual step that fixes it |
 | `get_write_audit_log` | Query the local write-audit log (JSONL) with filters for since/tool/tier/phase/outcome |
 
 **MunkiReport enrichment (require MunkiReport configuration)**

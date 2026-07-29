@@ -6,7 +6,9 @@ set -euo pipefail
 
 V=$(node -p "require('./package.json').version")
 
-docker build --build-arg VERSION="$V" -t "simplemdm-mcp:$V" .
+# Tag both the version and :latest — client configs (Claude Code/Desktop) launch
+# simplemdm-mcp:latest, and a stale :latest silently serves an old build.
+docker build --build-arg VERSION="$V" -t "simplemdm-mcp:$V" -t "simplemdm-mcp:latest" .
 
 # Run with an .env file (recommended):
 docker run --rm -i --env-file .env "simplemdm-mcp:$V"

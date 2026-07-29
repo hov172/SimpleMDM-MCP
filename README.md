@@ -398,10 +398,11 @@ If a tool returns MunkiReport's `Authenticate first.` page, the auth header or c
 
 ## Two report surfaces
 
-All three report types (audit / inventory / logs) share a unified engine (`dist/reports/cli.js`):
+All four report types (audit / inventory / logs / executive-summary) share a unified engine (`dist/reports/cli.js`):
 
 - **`run_fleet_audit` / `run_device_logs_audit` / `run_inventory_report` MCP tools** — spawn the unified CLI as a **host-side subprocess**. Files are written to disk under `reports/` and the tool response returns a text summary + report preview. Relative output paths resolve under the installed package root, not the MCP client's current working directory. Use these when you want on-disk output (CSVs, dossier PDFs, manifests).
 - **`generate_report` MCP tool** — runs the same engine **in-process**, returns only `WriteResult` metadata (out_dir, file list with sha256). Also supports **declarative dynamic specs** for ad-hoc tables without writing a spec file. Relative output paths resolve under the installed package root. Use this for metadata-only generation, scripted pipelines, and custom one-off reports.
+- **`executive-summary` report** — a leadership-facing one-pager (fleet KPIs, risk summary, top recommendations) rendered by the same engine to md/csv/docx/pdf via `generate_report` with `report: "executive-summary"` or `dist/reports/cli.js executive-summary`. Its recommendations come from the **`recommend_fixes`** tool, which merges the certificate, DEP-token, compliance, and stale-device audits into one prioritized action list — each item naming the gated workflow prompt or manual step that fixes it — and auto-publishes to MunkiReport like the other audit tools.
 
 The skills (`/audit`, `/logs-audit`, `/inventory`) invoke the run_* tools under the hood, so they also write on-disk output. Note the skills live in this repo's `.claude/skills/`, so they are available only when Claude Code runs inside the SimpleMDM-MCP directory — from any other directory, ask for the underlying `run_*` tools directly (they work from anywhere the server is registered).
 
@@ -508,7 +509,7 @@ behavior per tool category, and the CLI.
 
 ## Tools
 
-The server registers **202 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **203 tools** covering the full SimpleMDM API surface (32 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 Apple schema helpers (`search_apple_device_management_schemas`, `get_apple_device_management_schema`, `validate_apple_payload`, `build_mobileconfig`, `build_custom_declaration_payload`, plus convenience builders for Wi-Fi, restrictions, SCEP/certificates, VPN, web clips, content filters, FileVault escrow, firewall, passcode, and software update settings) use `data/apple-device-management/schema-cache.json`, generated from Apple's public `apple/device-management` YAML schemas, with curated fallback data for high-value payloads. They do not call the third-party Apple Profile Builder site at runtime. See [`docs/apple-schema-helpers.md`](docs/apple-schema-helpers.md) for the search -> validate/build -> create SimpleMDM profile/declaration workflow and [`data/apple-device-management/README.md`](data/apple-device-management/README.md) for cache refresh/maintenance details.
 
@@ -534,6 +535,9 @@ Alongside tools, this server exposes canonical **MCP resources** that clients ca
 | `simplemdm://inventory/devices` | Full device list (auto-paginated) |
 | `simplemdm://inventory/assignment-groups` | All assignment groups with membership |
 | `simplemdm://inventory/apps` | Full app catalog (auto-paginated) |
+| `simplemdm://audit/recent-writes` | Local audit log of recent write operations (last 50 entries, no API call) |
+| `simplemdm://recommendations` | Fleet health recommendations from security/compliance rules |
+| `simplemdm://fleet/risk` | Security posture, APNs certificate audit, DEP token status, stale devices, recent write errors |
 
 Resources are loaded via the client's resource picker (Claude Desktop/Code → `Resources` menu; ChatGPT connectors → resource references in a chat). Tools remain the right choice when you need to pass parameters or perform mutations.
 
@@ -547,13 +551,13 @@ The server ships workflow **prompts** — templated starting points selectable f
 |---|---|---|
 | `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit` + `get_dep_token_audit`, summarizes posture/APNs/DEP tokens, lists outliers, proposes up to 3 actions |
 | `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
-| `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
-| `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
+| `new-device-onboarding` | `device_ref` (ID or serial) | Verify and remediate onboarding gaps with the gated write workflow: assign groups and profiles, sync apps, refresh inventory (dry-run + confirm-token gated) |
+| `device-offboarding` | `device_ref` | Offboard a device with the gated write workflow: unscope groups/profiles, then lock or wipe (dry-run + confirm-token gated), verify, and report recovery notes |
 | `patch-compliance-review` | — | OS version distribution, flags devices >1 major version behind, recommends groups to prioritize |
-| `stale-devices-cleanup` | `days` (default 14) | Finds devices not checked in, proposes sync → lock ladder without auto-wipe |
+| `stale-devices-cleanup` | `days` (default 14) | Find stale devices and remediate with the gated write workflow: sync borderline, lock long-stale (dry-run + confirm-token gated); never unenrolls or wipes |
 | `app-inventory-audit` | `limit` (default 25) | Cross-fleet top-apps + unmanaged-apps audit; recommends catalog additions/removals |
-| `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Calls `get_compliance_violators`, groups by failure type, proposes remediation tools per group |
-| `profile-coverage-remediation` | `profile_id` (required) | Calls `get_devices_missing_profile`, recommends bulk vs per-device assignment based on gap size |
+| `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Remediate compliance violators with the gated write workflow: update OS, assign profiles, clear passcodes by category (dry-run + confirm-token gated); escalates manual re-enrollment cases |
+| `profile-coverage-remediation` | `profile_id` (required) | Close profile coverage gaps with the gated write workflow: assign to groups (bulk) or devices (per-device), sync profiles (dry-run + confirm-token gated); fully reversible |
 | `configure-webhooks-guide` | — | Walkthrough and guidance for manually configuring, securing, and testing SimpleMDM webhooks |
 | `lost-device-response` | `device_ref` | Lost/stolen device playbook: Lost Mode, locate, optional lock; wipe only on explicit user demand, with escalation and recovery guidance |
 | `emergency-patching` | `platform` (required), `max_major_lag` (default 1) | Stages `update_os` pushes for vulnerable devices as a pilot-then-rollout, then verifies uptake |

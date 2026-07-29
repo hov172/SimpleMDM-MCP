@@ -108,6 +108,103 @@ export async function auditInputLive(scope: LegacySelector, ctx: Ctx): Promise<a
   return { ev, tables, cveDetail, summary, dateStr: todayStr(), scoped: scope !== null, account: await fetchAccountSafe(apiKey) };
 }
 
+// ── Executive summary ────────────────────────────────────────────────────────
+//
+// Reuses auditInputLive's SOFA-evaluated devices (ev/summary) for OS-currency,
+// FileVault, and staleness signals — same fetch/eval path as the `audit`
+// report, no new fetch code. supervised/DEP/enrollment posture is NOT present
+// on evaluateDevice()'s input (flatten() omits those raw attributes), so this
+// builder issues one additional bulk fetchAllDevicesRaw() call (mirroring the
+// pattern inventoryInputLive already uses) to read is_supervised/
+// is_dep_enrollment/status off the raw JSON:API records. This means devices
+// are fetched twice per run (once inside auditInputLive, once here) — an
+// accepted simplification (a single extra bulk list fetch, not a per-device
+// loop) rather than building shared cross-report fetch/caching infrastructure.
+//
+// KNOWN SIMPLIFICATION: apns_status / dep_worst_status are not derivable from
+// the legacy scripts/lib fetchers (no push-certificate or DEP-token endpoints
+// there — those live only behind the MCP get_certificate_expiration_audit /
+// get_dep_token_audit tool handlers in src/index.ts, which the CLI path
+// cannot call). Both report as "unknown" here; a caller with access to those
+// tool results (e.g. an MCP-side wrapper) can populate real values by
+// constructing an ExecutiveInput directly and calling buildExecutiveDossier().
+// Likewise `recommendations` here only covers what buildRecommendations can
+// derive from compliance/staleness data available in this builder — cert/DEP
+// recommendations require those same unavailable audits and are omitted
+// (buildRecommendations degrades gracefully when certAudit/depAudit are null).
+export async function executiveInputLive(scope: LegacySelector, ctx: Ctx): Promise<any> {
+  const { buildRecommendations } = await import("../../analytics/recommendations.js");
+  const { fetchAllDevicesRaw, fetchDeviceGroups, fetchAssignmentGroups } =
+    await import("../../../scripts/lib/simplemdm.mjs");
+
+  const { apiKey } = ctx;
+  const auditData = await auditInputLive(scope, ctx);
+  const { ev, summary, dateStr, account } = auditData;
+
+  const raw: any[] = await fetchAllDevicesRaw(apiKey);
+  let selected: any[];
+  if (scope) {
+    const matchGroupIds = new Set<number>();
+    if (scope.kind === "group") {
+      const groups: Map<any, string> = await fetchDeviceGroups(apiKey);
+      const ag: Map<any, string> = await fetchAssignmentGroups(apiKey);
+      const wanted = scope.value.toLowerCase();
+      for (const [id, name] of [...groups, ...ag]) {
+        if (String(name).toLowerCase() === wanted) matchGroupIds.add(id as number);
+      }
+    }
+    selected = selectDevices(raw, scope, matchGroupIds);
+  } else {
+    selected = raw;
+  }
+
+  const total = selected.length;
+  const pct = (n: number) => (total > 0 ? Math.round((n / total) * 1000) / 10 : 0);
+  const statusOf = (d: any) => d.attributes?.status ?? d.attributes?.enrollment_status ?? "unknown";
+  const enrolled = selected.filter((d: any) => statusOf(d) === "enrolled").length;
+  const supervised = selected.filter((d: any) => d.attributes?.is_supervised === true).length;
+  const dep = selected.filter((d: any) => d.attributes?.is_dep_enrollment === true).length;
+  const filevault = selected.filter((d: any) => d.attributes?.filevault_enabled === true).length;
+  const osCurrent = summary.total > 0 ? Math.round(((summary.total - summary.osOutdated) / summary.total) * 1000) / 10 : 0;
+
+  const STALE_THRESHOLD_DAYS = 30;
+  const now = Date.now();
+  const staleCount = (ev as any[]).filter((d: any) => {
+    if (!d.lastSeen) return false;
+    const days = (now - new Date(d.lastSeen).getTime()) / 86400000;
+    return days > STALE_THRESHOLD_DAYS;
+  }).length;
+
+  const recommendations = buildRecommendations({
+    certAudit: null,
+    depAudit: null,
+    complianceViolators: null,
+    staleDevices: staleCount > 0
+      ? { devices: (ev as any[]).filter((d: any) => d.lastSeen && (now - new Date(d.lastSeen).getTime()) / 86400000 > STALE_THRESHOLD_DAYS).map((d: any) => ({ id: d.id, days_since: Math.round((now - new Date(d.lastSeen).getTime()) / 86400000) })) }
+      : null,
+  });
+
+  return {
+    dateStr,
+    fleet: {
+      total,
+      enrolled,
+      supervised_pct: pct(supervised),
+      dep_pct: pct(dep),
+      filevault_pct: pct(filevault),
+      os_current_pct: osCurrent,
+    },
+    risk: {
+      apns_status: "unknown",
+      dep_worst_status: "unknown",
+      stale_count: staleCount,
+      violator_count: summary.withIssues,
+    },
+    recommendations,
+    account,
+  };
+}
+
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
 export interface InventoryInputOpts {

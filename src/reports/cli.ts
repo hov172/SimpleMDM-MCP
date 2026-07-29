@@ -196,7 +196,7 @@ export async function runCli(argv: string[], deps?: CliDeps): Promise<WriteResul
   const reportName = argv[0];
   if (!reportName || reportName.startsWith("--")) {
     throw new Error(
-      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs)  |  diff <beforeDir> <afterDir>  |  findings <status|retry|dry-run|validate>",
+      "Usage: node dist/reports/cli.js <report> [flags]  (report: audit|inventory|logs|executive-summary)  |  diff <beforeDir> <afterDir>  |  findings <status|retry|dry-run|validate>",
     );
   }
 

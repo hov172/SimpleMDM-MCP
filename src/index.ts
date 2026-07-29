@@ -46,6 +46,7 @@ import { redactArgs, writeAuditEntry, readAuditEntries, type AuditEntry, type Au
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
+import { buildRecommendations, type RecommendationInputs, type Severity } from "./analytics/recommendations.js";
 import { buildDynamicDossier, validateDynamicSpec, adapterRows, type DynamicReportSpec } from "./reports/specs/dynamic.js";
 import { ServerDataSource } from "./reports/data/server-source.js";
 
@@ -806,6 +807,14 @@ export const TOOLS: Tool[] = [
     description: "Derived — list enrollments with creation date, last-used date (when reported), and a stale flag for enrollments not used in over N days.",
     inputSchema: { type: "object", properties: {
       stale_days: { type: "number", description: "Days without use to mark as stale. Default 90." },
+    }}},
+
+  { name: "recommend_fixes",
+    description: "READ — Prioritized fleet recommendations derived from the existing audits (certificates, DEP tokens, compliance, stale devices). Each item names the gated workflow prompt or manual step that fixes it. Params: min_severity (default warning), categories, limit.",
+    inputSchema: { type: "object", properties: {
+      min_severity: { type: "string", enum: ["info", "warning", "critical"], description: "Drop recommendations below this severity. Default 'warning'." },
+      categories: { type: "array", items: { type: "string", enum: ["certificates", "dep", "compliance", "stale_devices"] }, description: "Restrict to these categories. Default all." },
+      limit: { type: "integer", description: "Max recommendations to return. Default unlimited." },
     }}},
 
   { name: "get_device_user_count_outliers",
@@ -1910,9 +1919,9 @@ export const TOOLS: Tool[] = [
   // UNIFIED REPORT ENGINE (in-process)
   // ══════════════════════════════════════════════════════════════════════════
   { name: "generate_report",
-    description: "Generate a fleet dossier in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Two modes (provide exactly one): (1) catalog — set `report` (audit/inventory/logs) + `scope`; reuses the same registry and bridge as the CLI. (2) dynamic — set `spec`, a declarative report definition rendered in the house style over a chosen dataAdapter (devices/apps/profiles/users/logs/posture). For large fleets prefer scoped selectors; whole-fleet (all) requires confirm_all:true in the scope object. The run_fleet_audit, run_device_logs_audit, and run_inventory_report tools wrap the same engine as host-side subprocesses for on-disk delivery.",
+    description: "Generate a fleet dossier in-process and return WriteResult metadata (out_dir, files with sha256, skipped). Two modes (provide exactly one): (1) catalog — set `report` (audit/inventory/logs/executive-summary) + `scope`; reuses the same registry and bridge as the CLI. (2) dynamic — set `spec`, a declarative report definition rendered in the house style over a chosen dataAdapter (devices/apps/profiles/users/logs/posture). For large fleets prefer scoped selectors; whole-fleet (all) requires confirm_all:true in the scope object. The run_fleet_audit, run_device_logs_audit, and run_inventory_report tools wrap the same engine as host-side subprocesses for on-disk delivery.",
     inputSchema: { type: "object", properties: {
-      report: { type: "string", enum: ["audit", "inventory", "logs"], description: "Catalog mode: report type — audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export). Mutually exclusive with `spec`." },
+      report: { type: "string", enum: ["audit", "inventory", "logs", "executive-summary"], description: "Catalog mode: report type — audit (SOFA security), inventory (fleet software/profile inventory), logs (device activity log export), executive-summary (fleet KPIs + risk signals + top prioritized recommendations). Mutually exclusive with `spec`." },
       scope: { type: "object", description: "Catalog mode device selector — one of: {serials:[\"SN1\",...]}, {group:\"GroupName\"}, {last_seen:N}, {all:true,confirm_all:true}, or {search:\"query\"} (inventory only). Whole-fleet scope requires confirm_all:true to prevent accidental large fetches." },
       spec: { type: "object", description: "Dynamic mode: a declarative report spec {title, pageStyle?, footerTitle?, mdName?, dataAdapter, sections:[{heading, table:{columns:[{key,header}], from, csvName?, filter?}}]}. pageStyle is OPTIONAL (a3-landscape|a4-landscape|letter-portrait) — when omitted it is auto-selected by the widest table's column count: ≤6 cols → letter-portrait, 7-12 → a4-landscape, ≥13 → a3-landscape. dataAdapter is one of devices|apps|profiles|users|logs|posture; each section's table.from selects rows from the adapter result (key \"rows\"). Optional table.filter is an array of {field, op, value?} conditions (ANDed) — op one of eq|ne|contains|icontains|gt|lt|gte|lte|exists|absent|in; field supports dot-paths (e.g. \"attributes.name\") — keeps only matching rows (e.g. stale devices, missing-FileVault). Mutually exclusive with `report`." },
       format: { type: "string", enum: ["csv", "md", "docx", "all"], description: "Output format(s). Default 'all'." },
@@ -4263,6 +4272,61 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       return runReport({ report, scope, format, reportOnly, outDir, search });
     }
 
+    case "recommend_fixes": {
+      const sources: Array<[keyof RecommendationInputs, string]> = [
+        ["certAudit", "get_certificate_expiration_audit"],
+        ["depAudit", "get_dep_token_audit"],
+        ["complianceViolators", "get_compliance_violators"],
+        ["staleDevices", "get_stale_devices"],
+      ];
+      const inputs: RecommendationInputs = {
+        certAudit: null, depAudit: null, complianceViolators: null, staleDevices: null,
+      };
+      const generatedFrom: string[] = [];
+      await Promise.all(sources.map(async ([key, toolName]) => {
+        try {
+          const result = await handleTool(toolName, {});
+          (inputs as unknown as Record<string, unknown>)[key] = result;
+          generatedFrom.push(toolName);
+        } catch {
+          // A failed source becomes a null input and is dropped from generated_from —
+          // recommend_fixes still returns a best-effort list from the sources that worked.
+        }
+      }));
+
+      const allRecommendations = buildRecommendations(inputs);
+      let recommendations = allRecommendations;
+
+      const minSeverity = (args.min_severity as Severity | undefined) ?? "warning";
+      const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
+      recommendations = recommendations.filter(r => rank[r.severity] <= rank[minSeverity]);
+
+      if (Array.isArray(args.categories) && args.categories.length > 0) {
+        const allowed = new Set(args.categories as string[]);
+        recommendations = recommendations.filter(r => allowed.has(r.category));
+      }
+
+      if (typeof args.limit === "number" && args.limit >= 0) {
+        recommendations = recommendations.slice(0, args.limit);
+      }
+
+      const result: Record<string, unknown> = { recommendations, count: recommendations.length, generated_from: generatedFrom };
+      // all_recommendations is the unfiltered list the findings-publish adapters read
+      // from (see src/findings/toolManifest.ts "recommend_fixes") -- the caller-facing
+      // `recommendations` field above is shaped by min_severity/categories/limit, and
+      // publishing that filtered/reduced set with replace:true would silently
+      // auto-resolve previously-open findings that just fell outside this call's
+      // filter. Only publish when every source succeeded (sources.length === 4);
+      // otherwise omit the field entirely so findingsFromAdapters resolves an empty
+      // row set and afterToolCall's `findings.length === 0` guard skips the publish
+      // call outright (see src/findings/middleware.ts) rather than replacing the
+      // namespace with a partial/empty set.
+      if (generatedFrom.length === sources.length) {
+        result.all_recommendations = allRecommendations;
+      }
+      return result;
+    }
+
     case "get_write_audit_log": {
       const entries = readAuditEntries(auditDir(), {
         since: args.since as string | undefined,
@@ -4362,9 +4426,12 @@ export const RESOURCES = [
   { uri: "simplemdm://reports/unmanaged-apps", name: "Unmanaged apps",         description: "Apps installed on the fleet but missing from the SimpleMDM catalog. Shadow-IT discovery.",          mimeType: "application/json" },
   { uri: "simplemdm://reports/stale-devices",  name: "Stale devices (14d)",    description: "Enrolled devices that have not checked in for more than 14 days. Fast.",                              mimeType: "application/json" },
   { uri: "simplemdm://reports/storage-health", name: "Storage / battery health", description: "Enrolled devices with low free disk (<20GB) or low battery (<=20%). Fast.",                        mimeType: "application/json" },
+  { uri: "simplemdm://audit/recent-writes",    name: "Recent write audit",     description: "Local audit log of recent write operations (last 50 entries, no API call).",                         mimeType: "application/json" },
+  { uri: "simplemdm://recommendations",        name: "Recommendations",        description: "Fleet health recommendations from security/compliance rules (recommend_fixes tool).",              mimeType: "application/json" },
+  { uri: "simplemdm://fleet/risk",             name: "Fleet risk dashboard",   description: "Security posture, APNs certificate audit, DEP token status, stale devices, recent write errors.",   mimeType: "application/json" },
 ];
 
-async function readResource(uri: string): Promise<unknown> {
+export async function readResource(uri: string): Promise<unknown> {
   switch (uri) {
     case "simplemdm://fleet/summary":                 return handleTool("get_fleet_summary", {});
     case "simplemdm://reports/security-posture":      return handleTool("get_security_posture", {});
@@ -4414,6 +4481,19 @@ async function readResource(uri: string): Promise<unknown> {
     case "simplemdm://reports/unmanaged-apps":        return handleTool("get_unmanaged_apps", {});
     case "simplemdm://reports/stale-devices":         return handleTool("get_stale_devices", {});
     case "simplemdm://reports/storage-health":        return handleTool("get_storage_health", {});
+    case "simplemdm://audit/recent-writes":
+      return { entries: readAuditEntries(auditDir(), { limit: 50 }), audit_dir: auditDir() };
+    case "simplemdm://recommendations":
+      return handleTool("recommend_fixes", {});
+    case "simplemdm://fleet/risk": {
+      const [posture, certAudit, depAudit, stale] = await Promise.all([
+        handleTool("get_security_posture", {}).catch(() => null),
+        handleTool("get_certificate_expiration_audit", {}).catch(() => null),
+        handleTool("get_dep_token_audit", {}).catch(() => null),
+        handleTool("get_stale_devices", {}).catch(() => null),
+      ]);
+      return { security_posture: posture, apns_certificate: certAudit, dep_tokens: depAudit, stale_devices: stale, recent_write_failures: readAuditEntries(auditDir(), { outcome: "error", limit: 10 }) };
+    }
     default: throw new Error(`Unknown resource: ${uri}`);
   }
 }
@@ -4564,7 +4644,7 @@ Workflow specifics:
 - PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): capture assignment groups, directly assigned profiles, installed managed apps, and pending MDM commands.
 - Intended writes, in order: unassign_device_from_group for each group; unassign_profile_from_device for each directly assigned profile; then exactly ONE of lock_device (recoverable) or wipe_device (irreversible) — ask the user which end-state they want BEFORE the dry-run pass.
 - VERIFY by re-calling get_device_full_profile: removed groups gone, profiles unassigned, and the lock/wipe command visible in the recent command log.
-RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN or clear_passcode. A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
+RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN (macOS) or the device passcode (iOS; clear_passcode as last resort — it is itself irreversible). A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
 ${GATED_WORKFLOW_RULES}`;
     case "patch-compliance-review":
       return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
@@ -4575,7 +4655,7 @@ Workflow specifics:
 - PLAN with get_stale_devices (days=${days}); group results by OS major version and staleness age.
 - Intended writes per device: sync_device for borderline cases (under 30 days); lock_device (high tier) only past 30 days. NEVER propose unenroll_device or wipe_device in this workflow — flag candidates for the user to handle in device-offboarding instead.
 - VERIFY by re-calling get_stale_devices after devices have had time to check in; report which recovered.
-RECOVERY: sync_device is idempotent; a lock is reversible via the lock PIN or clear_passcode. Devices that never check in again need physical recovery or the device-offboarding workflow.
+RECOVERY: sync_device is idempotent; a lock is reversible via the lock PIN (macOS) or the device passcode (iOS; clear_passcode as last resort — it is itself irreversible). Devices that never check in again need physical recovery or the device-offboarding workflow.
 ${GATED_WORKFLOW_RULES}`;
     }
     case "compliance-violators-remediation": {
@@ -4605,7 +4685,7 @@ ${GATED_WORKFLOW_RULES}`;
     case "lost-device-response":
       return `Respond to a lost/stolen report for ${a.device_ref || "the specified device"} using the gated write protocol below.
 Workflow specifics:
-- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision), last check-in, last known location if present.
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision; Lost Mode is iOS/iPadOS only — for a Mac, go straight to lock_device with a PIN), last check-in, last known location if present.
 - Intended writes, in order: enable_lost_mode (high — displays a return message and phone number you compose with the user); update_lost_mode_location to request a fresh location; play_lost_mode_sound if the device may be nearby. Optionally lock_device with a PIN as a second layer. wipe_device (critical) ONLY if the user explicitly declares the device unrecoverable and accepts data loss — surface it as a separate confirmation.
 - VERIFY: re-check the device's lost-mode status and location responses in the command log.
 RECOVERY: Lost Mode is reversible with disable_lost_mode once recovered. A wipe is NOT reversible. Escalation guidance: file a police report with the serial number; Activation Lock keeps the device unusable by others even when wiped; do NOT disable_activation_lock on a stolen device.

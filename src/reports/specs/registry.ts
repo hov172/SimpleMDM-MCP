@@ -1,10 +1,11 @@
 import type { Dossier } from "../engine/dossier.js";
 import type { Format } from "../engine/csv.js";
 import type { LegacySelector, Ctx } from "../cli/inputs.js";
-import { auditInputLive, inventoryInputLive, logsInputLive } from "../cli/inputs.js";
+import { auditInputLive, inventoryInputLive, logsInputLive, executiveInputLive } from "../cli/inputs.js";
 import { buildAuditDossier } from "./audit.js";
 import { buildInventoryDossier } from "./inventory.js";
 import { buildLogsDossier } from "./logs.js";
+import { buildExecutiveDossier } from "./executive.js";
 import { findingRows } from "../domain/logs.js";
 
 export interface RegistryEntry {
@@ -138,6 +139,22 @@ export const REGISTRY: Record<string, RegistryEntry> = {
         opts?.outDir ? `Output: ${opts.outDir}` : null,
       ];
       return lines.filter(Boolean).join("\n") + "\n";
+    },
+  },
+  "executive-summary": {
+    buildInput: (scope, ctx) => executiveInputLive(scope, ctx),
+    build: (input) => buildExecutiveDossier(input),
+    defaultFormat: "md",
+    writeOpts: { manifest: true },
+    summaryText(input: any): string {
+      const f = input.fleet, r = input.risk;
+      return (
+        `Executive Fleet Summary ${input.dateStr}\n` +
+        `Devices: ${f.total} (enrolled ${f.enrolled}) | Supervised ${f.supervised_pct}% | DEP ${f.dep_pct}% | ` +
+        `FileVault ${f.filevault_pct}% | On current OS ${f.os_current_pct}%\n` +
+        `Risk: APNs ${r.apns_status} | DEP tokens ${r.dep_worst_status} | Stale ${r.stale_count} | Devices with security findings (SOFA) ${r.violator_count}\n` +
+        `Recommendations: ${(input.recommendations ?? []).length}\n`
+      );
     },
   },
 };
