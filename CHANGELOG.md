@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- **Write-safety layer** — all 87 write tools now classified into four risk tiers (low/medium/high/critical; see [`src/safety/tiers.ts`](src/safety/tiers.ts)), with dry-run and confirm-token enforcement. High/critical tools return a plan on first call (no execution) when `SIMPLEMDM_ALLOW_WRITES=true` and `SIMPLEMDM_CONFIRM_MODE=on` (the default); re-call with the returned single-use token to execute. `dry_run: true` on any write tool previews without executing. Audit log: JSONL daily files under `audit_log/` (default location) with per-invocation phase/outcome/args tracking; query via `get_write_audit_log`.
+- **`get_write_audit_log`** — query the write audit log; filter by timestamp, tool name, tier, phase (plan/dry_run/execute/blocked), outcome, with pagination.
+- Environment variables: `SIMPLEMDM_CONFIRM_MODE` (`on` \| `off`, default `on` when writes enabled), `SIMPLEMDM_CONFIRM_TTL_SECONDS` (default `120`; malformed values fail closed with a stderr warning), `MCP_WRITE_AUDIT_DIR` (default `audit_log/`, resolved against install root).
+
+### Breaking behavior
+- High/critical write tools now return a confirmation plan (JSON with `write_gate: "confirmation_required"`, tier, confirm_token, expires_at, and other metadata) on the first call instead of executing immediately, **when writes are enabled and confirm mode is on**. Set `SIMPLEMDM_CONFIRM_MODE=off` to restore immediate execution for headless/scriptable deployments. With `SIMPLEMDM_ALLOW_WRITES` unset (default), nothing changes — writes still refuse to run.
+
+### Documentation
+- README: new "Write safety" section covering tiers, dry-run, the two-step confirm flow (with a `wipe_device` example), audit log, `get_write_audit_log` query, and all new environment variables.
+- `.gitignore`: added `audit_log/` next to existing `reports/` entry.
+- Example config `examples/claude-desktop-with-writes.json` updated to show new environment variables with their defaults.
+
+Tool count: **202** (87 write tools + 115 read/query tools).
+
 ## [0.35.0] - 2026-07-15
 
 ### Added

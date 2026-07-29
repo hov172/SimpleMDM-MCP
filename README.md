@@ -296,6 +296,80 @@ See [API key permissions](#api-key-permissions) below for what each action requi
 
 ---
 
+## Write safety
+
+All 87 write tools are classified into **risk tiers** (low/medium/high/critical) to prevent accidents. Tiers are enforced through two independent gates: a **dry-run mode** for planning, and a **confirm-token flow** for high/critical actions when confirm mode is on.
+
+**Risk tiers** classify the impact of each write action:
+
+| Tier | Impact | Requires confirm | Examples |
+|---|---|---|---|
+| low | Idempotent; no device state change | — | `sync_device`, `push_message`, `request_munkireport_sync` |
+| medium | Changes management state; reversible via another call | — | `assign_device_to_group`, `create_app`, `set_device_attribute_value` |
+| high | User-visible device impact or security-state change | ✓ (if confirm mode on) | `lock_device`, `restart_device`, `update_os`, `rotate_filevault_recovery_key` |
+| critical | Irreversible or destructive | ✓ (if confirm mode on) | `wipe_device`, `disable_activation_lock`, `delete_device`, `clear_passcode` |
+
+The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
+
+**Dry-run mode** — pass `dry_run: true` on any write tool to preview the action without executing it. The response includes `write_gate: "dry_run"`, a description of what would happen, and `executed: false`. No API call is made. When the write names a device (`device_id`/`device_ids`), `targets` is resolved to the matching device record(s); for non-device writes (e.g. profile or group operations), `targets` is an empty array and `args` remains the source of truth for what will be affected.
+
+**Confirm-token flow** — when `SIMPLEMDM_CONFIRM_MODE=on` (the default when writes are enabled) and you call a high/critical tool, the server returns a plan instead of executing:
+
+1. **First call** (planning) — call the tool with normal arguments:
+   ```json
+   POST /tool/wipe_device
+   { "device_id": "42" }
+   ```
+   
+   Response (does not execute):
+   ```json
+   {
+     "write_gate": "confirmation_required",
+     "tier": "critical",
+     "tool": "wipe_device",
+     "args": { "device_id": "42" },
+     "targets": [
+       { "id": "42", "name": "iPhone-42", "serial": "F2LW1234ABCD" }
+     ],
+     "would_execute": "Remote wipe. Erases all data on the device. Irreversible. Supports iOS 17+ Return-to-Service and eSIM/data-plan preservation.",
+     "executed": false,
+     "confirm_token": "a1b2c3d4e5f6...",
+     "expires_at": "2026-07-28T12:45:00Z",
+     "instructions": "Re-call this tool with the same arguments plus confirm_token to execute."
+   }
+   ```
+   
+   The `confirm_token` is single-use and bound to your exact arguments (device IDs, resource names, etc.). It expires after 120 seconds (configurable via `SIMPLEMDM_CONFIRM_TTL_SECONDS`). The `targets` array contains resolved device records (id, name, serial; if a device cannot be looked up, `unresolved: true` is set). The `would_execute` field contains the tool's static description and does not vary per device or argument.
+
+2. **Second call** (execution) — re-call with the identical arguments plus the token:
+   ```json
+   POST /tool/wipe_device
+   { "device_id": "42", "confirm_token": "a1b2c3d4e5f6..." }
+   ```
+   
+   The gate consumes the token and lets the call through to the real SimpleMDM API — the response is the raw result from that API call (e.g. SimpleMDM's job/status payload for `wipe_device`), not a gate-shaped object. There is no `executed` field on execute responses; that field only appears in `plan`/`dry_run` responses. The absence of a `write_gate` field in the response is what indicates the write actually executed.
+
+Low and medium-tier tools execute directly (no token required). **Confirm mode can be disabled** by setting `SIMPLEMDM_CONFIRM_MODE=off`, which restores the prior behavior of immediate execution for high/critical tools — useful for headless/scriptable deployments. Read tools are always unaffected.
+
+**Audit log** — every write invocation (plan, dry_run, execute, blocked) is logged to a JSONL file under `audit_log/` (default location `audit_log/audit-YYYYMMDD.jsonl`). Each entry includes the tool name, timestamp, tier, phase, arguments (redacted), outcome, and any error. Query the audit log via the `get_write_audit_log` tool:
+
+```json
+GET /tool/get_write_audit_log
+{ "since": "2026-07-28T00:00:00Z", "tool": "wipe_device", "tier": "critical", "limit": 100 }
+```
+
+Returns: array of audit entries with paging support.
+
+**Environment variables**:
+
+- `SIMPLEMDM_CONFIRM_MODE` (default `on` when `SIMPLEMDM_ALLOW_WRITES=true`) — set `off` to execute high/critical tools directly without a token. Startup-free per-call override.
+- `SIMPLEMDM_CONFIRM_TTL_SECONDS` (default `120`) — token expiration window in seconds. Malformed values (e.g. `"120s"`) fail closed to the default with a stderr warning.
+- `MCP_WRITE_AUDIT_DIR` (default `audit_log/`, resolved against the install root) — directory for JSONL audit logs.
+
+**No action if writes are disabled** — when `SIMPLEMDM_ALLOW_WRITES` is unset (default), nothing changes: all write tools refuse to run with "Write actions are disabled," regardless of the confirm-mode or tier settings. The confirm layer only activates once writes are explicitly enabled.
+
+---
+
 ## Examples
 
 The [`examples/`](examples/) directory ships drop-in client configs and a starter query cookbook:
@@ -434,7 +508,7 @@ behavior per tool category, and the CLI.
 
 ## Tools
 
-The server registers **201 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **202 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
 
 Apple schema helpers (`search_apple_device_management_schemas`, `get_apple_device_management_schema`, `validate_apple_payload`, `build_mobileconfig`, `build_custom_declaration_payload`, plus convenience builders for Wi-Fi, restrictions, SCEP/certificates, VPN, web clips, content filters, FileVault escrow, firewall, passcode, and software update settings) use `data/apple-device-management/schema-cache.json`, generated from Apple's public `apple/device-management` YAML schemas, with curated fallback data for high-value payloads. They do not call the third-party Apple Profile Builder site at runtime. See [`docs/apple-schema-helpers.md`](docs/apple-schema-helpers.md) for the search -> validate/build -> create SimpleMDM profile/declaration workflow and [`data/apple-device-management/README.md`](data/apple-device-management/README.md) for cache refresh/maintenance details.
 

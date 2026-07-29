@@ -12,7 +12,7 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { localApp, checkLocalApp } from "./localAppClient.js";
@@ -40,6 +40,9 @@ import {
 import { API_KEY, HttpError, fetchWithRetry, throwForStatus, simpleMDM, simpleMDMText } from "./simplemdm-client.js";
 import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
 import { afterToolCall, onToolError } from "./findings/middleware.js";
+import { WRITE_TIERS, CONFIRM_TIERS, type RiskTier } from "./safety/tiers.js";
+import { canonicalArgsHash, issueToken, redeemToken } from "./safety/confirm.js";
+import { redactArgs, writeAuditEntry, readAuditEntries, type AuditEntry, type AuditPhase, type AuditOutcome } from "./safety/audit.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -70,6 +73,13 @@ const resolveReportPath = (p: string): string => p.startsWith("/") ? p : resolve
 
 const ALLOW_WRITES   = process.env.SIMPLEMDM_ALLOW_WRITES === "true";
 const USE_LOCAL_APP  = process.env.LOCAL_APP_MODE === "true";
+
+// One-time startup warning: with writes enabled and confirm mode off, high/
+// critical-tier writes execute immediately with no confirm-token step (spec
+// §1.3). Read once at startup, not per-call — this mirrors ALLOW_WRITES above.
+if (ALLOW_WRITES && process.env.SIMPLEMDM_CONFIRM_MODE === "off") {
+  console.error("[write-safety] SIMPLEMDM_CONFIRM_MODE=off — confirm tokens disabled; high/critical writes execute immediately.");
+}
 
 const MR_HNAME   = process.env.MUNKIREPORT_AUTH_HEADER_NAME ?? "";
 const MR_HVALUE  = process.env.MUNKIREPORT_AUTH_HEADER_VALUE ?? "";
@@ -188,6 +198,26 @@ function requireWrites(): void {
     "Use a key scoped to minimum required permissions before doing so."
   );
 }
+
+// ─── Write-safety gate config (PRD v2 Phase 1) ─────────────────────────────
+// Read at call time (not import time) so tests and operators can toggle
+// confirm mode without a restart. auditDir() is also used by Task 5.
+const confirmModeOn = (): boolean => (process.env.SIMPLEMDM_CONFIRM_MODE ?? "on") !== "off";
+const DEFAULT_CONFIRM_TTL_SECONDS = 120;
+const confirmTtlMs = (): number => {
+  const raw = process.env.SIMPLEMDM_CONFIRM_TTL_SECONDS;
+  if (raw === undefined) return DEFAULT_CONFIRM_TTL_SECONDS * 1000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(
+      `[write-safety] Invalid SIMPLEMDM_CONFIRM_TTL_SECONDS=${JSON.stringify(raw)}; ` +
+      `falling back to ${DEFAULT_CONFIRM_TTL_SECONDS}s (fail closed).`
+    );
+    return DEFAULT_CONFIRM_TTL_SECONDS * 1000;
+  }
+  return n * 1000;
+};
+const auditDir = (): string => resolveReportPath(process.env.MCP_WRITE_AUDIT_DIR ?? "audit_log");
 
 function j(body: unknown): string { return JSON.stringify(body); }
 
@@ -1774,6 +1804,20 @@ export const TOOLS: Tool[] = [
   { name: "check_for_update",
     description: "Read — Check whether a newer simplemdm-mcp release is available. Compares this server's running version against the latest GitHub release and returns {current_version, latest_version, update_available, release_url, upgrade}. Note: the server cannot update itself (it runs in a pinned, read-only Docker container) — when an update is available it returns the host-side upgrade steps to run.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_write_audit_log",
+    description: "READ — Query the local write-audit log (JSONL, written by the write-safety gate). " +
+                 "Filters: since (ISO timestamp), tool, tier (low|medium|high|critical), " +
+                 "phase (plan|dry_run|execute|blocked), outcome (success|error|blocked), limit (default 100). " +
+                 "Local file read only — never calls the SimpleMDM API.",
+    inputSchema: { type: "object", properties: {
+      since: { type: "string", description: "ISO 8601 timestamp; only entries at/after this time." },
+      tool: { type: "string" },
+      tier: { type: "string", enum: ["low", "medium", "high", "critical"] },
+      phase: { type: "string", enum: ["plan", "dry_run", "execute", "blocked"] },
+      outcome: { type: "string", enum: ["success", "error", "blocked"] },
+      limit: { type: "integer", minimum: 1, maximum: 1000 },
+    }}},
 
   { name: "run_fleet_audit",
     description: "Runs the unified report engine CLI (node dist/reports/cli.js audit) as a host-side subprocess; writes CSV/md/html/docx/pdf files under reports/audit-YYYY-MM-DD and returns a text summary + report head. For in-process metadata-only generation (and declarative dynamic specs) use generate_report.",
@@ -4219,6 +4263,18 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       return runReport({ report, scope, format, reportOnly, outDir, search });
     }
 
+    case "get_write_audit_log": {
+      const entries = readAuditEntries(auditDir(), {
+        since: args.since as string | undefined,
+        tool: args.tool as string | undefined,
+        tier: args.tier as string | undefined,
+        phase: args.phase as string | undefined,
+        outcome: args.outcome as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+      return { entries, count: entries.length, audit_dir: auditDir() };
+    }
+
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -4263,25 +4319,11 @@ export const WRITE_TOOLS = new Set<string>([
   "create_script_job", "cancel_script_job",
 ]);
 
-const DESTRUCTIVE = new Set<string>([
-  "wipe_device",
-  "disable_activation_lock",
-  "unenroll_device",
-  "delete_device",
-  "delete_device_user",
-  "delete_app",
-  "delete_assignment_group",
-  "delete_custom_attribute",
-  "delete_custom_configuration_profile",
-  "delete_custom_declaration",
-  "delete_enrollment",
-  "delete_managed_app_config",
-  "delete_script",
-  "clear_passcode",
-  "clear_restrictions_password",
-  "clear_firmware_password",
-  "clear_recovery_lock_password",
-]);
+// Derived from WRITE_TIERS — "critical" is the single source of truth for
+// destructiveHint. See src/safety/tiers.ts.
+const DESTRUCTIVE = new Set<string>(
+  Object.entries(WRITE_TIERS).filter(([, t]) => t === "critical").map(([n]) => n)
+);
 
 function titleCase(name: string): string {
   return name.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
@@ -4296,6 +4338,13 @@ for (const t of TOOLS) {
     idempotentHint: !isWrite,
     openWorldHint: true,
   };
+  if (isWrite) {
+    // Spec §1.1: the tier is part of every write tool's advertised metadata.
+    t.description = `${t.description} [risk tier: ${WRITE_TIERS[t.name]}]`;
+    const props = (t.inputSchema as { properties?: Record<string, unknown> }).properties ??= {};
+    props.dry_run ??= { type: "boolean", description: "Preview only: return a plan of what would change without executing. Audited, never calls the SimpleMDM write API." };
+    props.confirm_token ??= { type: "string", description: "Single-use token from a prior planning call, required to execute high/critical-tier writes when confirm mode is on. Bound to these exact arguments." };
+  }
 }
 
 // ─── Resources (canonical report URIs) ────────────────────────────────────────
@@ -4508,6 +4557,45 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
+// ─── Write-safety gate (PRD v2 Phase 1) ───────────────────────────────────────
+// Runs after validateArgs, before handleTool.
+
+function auditWrite(partial: Omit<AuditEntry, "ts" | "event_id">): void {
+  writeAuditEntry(auditDir(), { ts: new Date().toISOString(), event_id: randomUUID(), ...partial });
+}
+
+// Best-effort target resolution (spec §1.2): device reads go through api(),
+// which is cached, so repeated plans are cheap. Unresolvable targets are
+// reported as such rather than failing the plan.
+async function resolvePlanTargets(args: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+  const ids = Array.isArray(args.device_ids) ? args.device_ids
+    : args.device_id != null ? [args.device_id] : [];
+  const targets: Array<Record<string, unknown>> = [];
+  for (const id of ids.slice(0, 25)) {
+    try {
+      const d = await api(`/devices/${seg(id, "device_id")}`) as
+        { data?: { attributes?: { name?: string; serial_number?: string } } };
+      targets.push({ id, name: d?.data?.attributes?.name ?? null, serial: d?.data?.attributes?.serial_number ?? null });
+    } catch {
+      targets.push({ id, name: null, serial: null, unresolved: true });
+    }
+  }
+  return targets;
+}
+
+async function buildWritePlan(name: string, tier: RiskTier, args: Args): Promise<Record<string, unknown>> {
+  const tool = TOOLS.find((t) => t.name === name);
+  const { confirm_token: _t, dry_run: _d, ...cleanArgs } = args as Record<string, unknown>;
+  return {
+    tool: name,
+    tier,
+    args: redactArgs(cleanArgs),
+    targets: await resolvePlanTargets(cleanArgs),
+    would_execute: (tool?.description?.split(" — ")[1] ?? tool?.description ?? name)
+      .replace(/ \[risk tier: \w+\]$/, ""),
+  };
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 // Exported for tests only (e.g. test/findings/actionFailureWiring.test.mjs), so a test
@@ -4532,6 +4620,66 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   try {
     validateArgs(name, args as Args);
     pastValidation = true;
+
+    // ── Write-safety gate ────────────────────────────────────────────────
+    if (WRITE_TOOLS.has(name) && ALLOW_WRITES) {
+      const tier = WRITE_TIERS[name];
+      const a = args as Record<string, unknown>;
+      const argsHash = canonicalArgsHash(name, a);
+
+      if (a.dry_run === true) {
+        auditWrite({ tool: name, tier, phase: "dry_run", args: redactArgs(a), args_hash: argsHash, outcome: "success" });
+        return { content: [{ type: "text", text: JSON.stringify({
+          write_gate: "dry_run", ...(await buildWritePlan(name, tier, args as Args)),
+          executed: false,
+          instructions: "This was a dry run. Re-call without dry_run to proceed" +
+            (confirmModeOn() && CONFIRM_TIERS.has(tier) ? " (a confirm token will be required)." : "."),
+        }) }] };
+      }
+
+      if (confirmModeOn() && CONFIRM_TIERS.has(tier)) {
+        const provided = typeof a.confirm_token === "string" ? a.confirm_token : null;
+        if (!provided) {
+          const { token, expires_at } = issueToken(name, argsHash, confirmTtlMs());
+          auditWrite({ tool: name, tier, phase: "plan", args: redactArgs(a), args_hash: argsHash, token_id: token.slice(0, 8), outcome: "success" });
+          return { content: [{ type: "text", text: JSON.stringify({
+            write_gate: "confirmation_required", ...(await buildWritePlan(name, tier, args as Args)),
+            executed: false, confirm_token: token, expires_at,
+            instructions: `This is a ${tier}-tier write and was NOT executed. Show the user what will ` +
+              "happen and get their explicit approval, then re-call this tool with the same arguments " +
+              "plus confirm_token to execute. The token is single-use and bound to these exact arguments.",
+          }) }] };
+        }
+        const verdict = redeemToken(provided, name, argsHash);
+        if (!verdict.ok) {
+          auditWrite({ tool: name, tier, phase: "blocked", args: redactArgs(a), args_hash: argsHash, token_id: provided.slice(0, 8), outcome: "blocked", error: verdict.reason });
+          throw new Error(
+            `Confirm token rejected (${verdict.reason}). Tokens are single-use, expire after ` +
+            `${confirmTtlMs() / 1000}s, and are bound to the exact tool and arguments they were issued ` +
+            "for. Re-call the tool without confirm_token to get a fresh plan and token.",
+          );
+        }
+      }
+
+      // Execute (low/medium always; high/critical with a redeemed token or confirm mode off).
+      const started = Date.now();
+      const { confirm_token: _ct, dry_run: _dr, ...cleanArgs } = a;
+      try {
+        const result = await handleTool(name, cleanArgs as Args);
+        auditWrite({ tool: name, tier, phase: "execute", args: redactArgs(a), args_hash: argsHash, outcome: "success", duration_ms: Date.now() - started });
+        const prefixes = INVALIDATION_MAP[name];
+        if (prefixes?.length) cacheInvalidate(...prefixes);
+        afterToolCall(name, result, (m) => console.error(m)).catch(() => {});
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        auditWrite({ tool: name, tier, phase: "execute", args: redactArgs(a), args_hash: argsHash, outcome: "error",
+          http_status: err instanceof HttpError ? err.status : undefined,
+          error: formatError(err), duration_ms: Date.now() - started });
+        throw err;
+      }
+    }
+    // ── End write-safety gate ────────────────────────────────────────────
+
     const result = await handleTool(name, args as Args);
     const prefixes = INVALIDATION_MAP[name];
     if (prefixes?.length) cacheInvalidate(...prefixes);

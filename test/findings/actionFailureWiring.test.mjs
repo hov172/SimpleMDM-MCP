@@ -13,11 +13,23 @@ process.env.SIMPLEMDM_API_KEY = "test-dummy-key";
 // Errors for client-error/bad-argument/config cases BEFORE any network call,
 // and those must NOT generate a "danger" fleet finding).
 process.env.SIMPLEMDM_ALLOW_WRITES = "true";
+// lock_device is a high-tier write; the write-safety gate (src/index.ts) would
+// otherwise intercept it and return a confirmation plan instead of reaching
+// the real api() call this test needs. Confirm mode off keeps this test's
+// focus on findings wiring, not the gate (that's test/safety/gateWiring.test.mjs).
+process.env.SIMPLEMDM_CONFIRM_MODE = "off";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
+// Keep this test's gated lock_device/wipe_device audit writes out of the
+// repo's real default audit_log/ dir (mirrors test/safety/gateWiring.test.mjs).
+process.env.MCP_WRITE_AUDIT_DIR = mkdtempSync(join(tmpdir(), "afw-audit-"));
 
 // A 404 (never retried by fetchWithRetry, unlike 429/5xx) so throwForStatus
 // raises an HttpError immediately -- a stand-in for a real SimpleMDM failure

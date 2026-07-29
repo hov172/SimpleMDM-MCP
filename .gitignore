@@ -20,6 +20,7 @@ dist/
 reports/*
 !reports/.gitkeep
 audit_export/
+audit_log/
 
 # Brainstorming/planning design docs — local only, not published to the repo
 docs/superpowers/
