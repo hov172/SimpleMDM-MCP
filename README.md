@@ -398,10 +398,11 @@ If a tool returns MunkiReport's `Authenticate first.` page, the auth header or c
 
 ## Two report surfaces
 
-All three report types (audit / inventory / logs) share a unified engine (`dist/reports/cli.js`):
+All four report types (audit / inventory / logs / executive-summary) share a unified engine (`dist/reports/cli.js`):
 
 - **`run_fleet_audit` / `run_device_logs_audit` / `run_inventory_report` MCP tools** — spawn the unified CLI as a **host-side subprocess**. Files are written to disk under `reports/` and the tool response returns a text summary + report preview. Relative output paths resolve under the installed package root, not the MCP client's current working directory. Use these when you want on-disk output (CSVs, dossier PDFs, manifests).
 - **`generate_report` MCP tool** — runs the same engine **in-process**, returns only `WriteResult` metadata (out_dir, file list with sha256). Also supports **declarative dynamic specs** for ad-hoc tables without writing a spec file. Relative output paths resolve under the installed package root. Use this for metadata-only generation, scripted pipelines, and custom one-off reports.
+- **`executive-summary` report** — a leadership-facing one-pager (fleet KPIs, risk summary, top recommendations) rendered by the same engine to md/csv/docx/pdf via `generate_report` with `report: "executive-summary"` or `dist/reports/cli.js executive-summary`. Its recommendations come from the **`recommend_fixes`** tool, which merges the certificate, DEP-token, compliance, and stale-device audits into one prioritized action list — each item naming the gated workflow prompt or manual step that fixes it — and auto-publishes to MunkiReport like the other audit tools.
 
 The skills (`/audit`, `/logs-audit`, `/inventory`) invoke the run_* tools under the hood, so they also write on-disk output. Note the skills live in this repo's `.claude/skills/`, so they are available only when Claude Code runs inside the SimpleMDM-MCP directory — from any other directory, ask for the underlying `run_*` tools directly (they work from anywhere the server is registered).
 
