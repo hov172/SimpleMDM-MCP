@@ -16,6 +16,7 @@ test("GATED_PROMPTS is non-empty and every member is a registered prompt", () =>
   assert.ok(GATED_PROMPTS.size >= 1);
   const names = new Set(PROMPTS.map((p) => p.name));
   for (const g of GATED_PROMPTS) assert.ok(names.has(g), `${g} not in PROMPTS`);
+  assert.equal(PROMPTS.length, GATED_PROMPTS.size + READ_ONLY.length, "every prompt must be either gated or in the READ_ONLY list");
 });
 
 test("every gated prompt body carries the 7 steps in order plus gate references", () => {

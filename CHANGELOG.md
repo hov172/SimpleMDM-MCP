@@ -11,6 +11,9 @@ All notable changes to this project are documented here. Format follows
 - **`get_write_audit_log`** — query the write audit log; filter by timestamp, tool name, tier, phase (plan/dry_run/execute/blocked), outcome, with pagination.
 - Environment variables: `SIMPLEMDM_CONFIRM_MODE` (`on` \| `off`, default `on` when writes enabled), `SIMPLEMDM_CONFIRM_TTL_SECONDS` (default `120`; malformed values fail closed with a stderr warning), `MCP_WRITE_AUDIT_DIR` (default `audit_log/`, resolved against install root).
 - **Prompts**: gated 7-step write workflow (plan → dry-run → present → confirm → execute → verify → report) across 9 write-capable prompts; four new playbooks (`lost-device-response`, `emergency-patching`, `semester-refresh`, `lab-provisioning`); 14 prompts total.
+- **`recommend_fixes`** — prioritized action list with machine-verified recommendations from security/compliance rules, auto-publishing high-priority findings to MunkiReport when enabled.
+- **Resources** (15 total): `simplemdm://audit/recent-writes` (recent write operations audit), `simplemdm://recommendations` (fleet health recommendations from `recommend_fixes`), `simplemdm://fleet/risk` (security posture + APNs/DEP status + stale devices + recent write errors).
+- **Reports**: `executive-summary` catalog report (fleet KPIs, risk signals, top prioritized recommendations via `recommend_fixes`).
 
 ### Breaking behavior
 - High/critical write tools now return a confirmation plan (JSON with `write_gate: "confirmation_required"`, tier, confirm_token, expires_at, and other metadata) on the first call instead of executing immediately, **when writes are enabled and confirm mode is on**. Set `SIMPLEMDM_CONFIRM_MODE=off` to restore immediate execution for headless/scriptable deployments. With `SIMPLEMDM_ALLOW_WRITES` unset (default), nothing changes — writes still refuse to run.
@@ -20,7 +23,7 @@ All notable changes to this project are documented here. Format follows
 - `.gitignore`: added `audit_log/` next to existing `reports/` entry.
 - Example config `examples/claude-desktop-with-writes.json` updated to show new environment variables with their defaults.
 
-Tool count: **202** (87 write tools + 115 read/query tools).
+Tool count: **203** (87 write tools + 116 read/query tools).
 
 ## [0.35.0] - 2026-07-15
 

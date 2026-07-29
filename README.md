@@ -550,13 +550,13 @@ The server ships workflow **prompts** — templated starting points selectable f
 |---|---|---|
 | `fleet-health-dashboard` | — | Calls `get_fleet_summary` + `get_security_posture` + `get_certificate_expiration_audit` + `get_dep_token_audit`, summarizes posture/APNs/DEP tokens, lists outliers, proposes up to 3 actions |
 | `security-audit` | — | Full posture audit; highlights any metric under 80%; pulls FileVault-off Macs from resource |
-| `new-device-onboarding` | `device_ref` (ID or serial) | Verifies profiles, apps, group membership, recent MDM log for a newly enrolled device |
-| `device-offboarding` | `device_ref` | Plans offboarding steps (unscope, profile review, lock/wipe) — **never** calls destructive writes without explicit user confirmation |
+| `new-device-onboarding` | `device_ref` (ID or serial) | Verify and remediate onboarding gaps with the gated write workflow: assign groups and profiles, sync apps, refresh inventory (dry-run + confirm-token gated) |
+| `device-offboarding` | `device_ref` | Offboard a device with the gated write workflow: unscope groups/profiles, then lock or wipe (dry-run + confirm-token gated), verify, and report recovery notes |
 | `patch-compliance-review` | — | OS version distribution, flags devices >1 major version behind, recommends groups to prioritize |
-| `stale-devices-cleanup` | `days` (default 14) | Finds devices not checked in, proposes sync → lock ladder without auto-wipe |
+| `stale-devices-cleanup` | `days` (default 14) | Find stale devices and remediate with the gated write workflow: sync borderline, lock long-stale (dry-run + confirm-token gated); never unenrolls or wipes |
 | `app-inventory-audit` | `limit` (default 25) | Cross-fleet top-apps + unmanaged-apps audit; recommends catalog additions/removals |
-| `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Calls `get_compliance_violators`, groups by failure type, proposes remediation tools per group |
-| `profile-coverage-remediation` | `profile_id` (required) | Calls `get_devices_missing_profile`, recommends bulk vs per-device assignment based on gap size |
+| `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Remediate compliance violators with the gated write workflow: update OS, assign profiles, clear passcodes by category (dry-run + confirm-token gated); escalates manual re-enrollment cases |
+| `profile-coverage-remediation` | `profile_id` (required) | Close profile coverage gaps with the gated write workflow: assign to groups (bulk) or devices (per-device), sync profiles (dry-run + confirm-token gated); fully reversible |
 | `configure-webhooks-guide` | — | Walkthrough and guidance for manually configuring, securing, and testing SimpleMDM webhooks |
 | `lost-device-response` | `device_ref` | Lost/stolen device playbook: Lost Mode, locate, optional lock; wipe only on explicit user demand, with escalation and recovery guidance |
 | `emergency-patching` | `platform` (required), `max_major_lag` (default 1) | Stages `update_os` pushes for vulnerable devices as a pilot-then-rollout, then verifies uptake |

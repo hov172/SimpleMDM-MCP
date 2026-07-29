@@ -4629,7 +4629,7 @@ Workflow specifics:
 - PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): capture assignment groups, directly assigned profiles, installed managed apps, and pending MDM commands.
 - Intended writes, in order: unassign_device_from_group for each group; unassign_profile_from_device for each directly assigned profile; then exactly ONE of lock_device (recoverable) or wipe_device (irreversible) — ask the user which end-state they want BEFORE the dry-run pass.
 - VERIFY by re-calling get_device_full_profile: removed groups gone, profiles unassigned, and the lock/wipe command visible in the recent command log.
-RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN or clear_passcode. A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
+RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN (macOS) or the device passcode (iOS; clear_passcode as last resort — it is itself irreversible). A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
 ${GATED_WORKFLOW_RULES}`;
     case "patch-compliance-review":
       return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
@@ -4640,7 +4640,7 @@ Workflow specifics:
 - PLAN with get_stale_devices (days=${days}); group results by OS major version and staleness age.
 - Intended writes per device: sync_device for borderline cases (under 30 days); lock_device (high tier) only past 30 days. NEVER propose unenroll_device or wipe_device in this workflow — flag candidates for the user to handle in device-offboarding instead.
 - VERIFY by re-calling get_stale_devices after devices have had time to check in; report which recovered.
-RECOVERY: sync_device is idempotent; a lock is reversible via the lock PIN or clear_passcode. Devices that never check in again need physical recovery or the device-offboarding workflow.
+RECOVERY: sync_device is idempotent; a lock is reversible via the lock PIN (macOS) or the device passcode (iOS; clear_passcode as last resort — it is itself irreversible). Devices that never check in again need physical recovery or the device-offboarding workflow.
 ${GATED_WORKFLOW_RULES}`;
     }
     case "compliance-violators-remediation": {
@@ -4670,7 +4670,7 @@ ${GATED_WORKFLOW_RULES}`;
     case "lost-device-response":
       return `Respond to a lost/stolen report for ${a.device_ref || "the specified device"} using the gated write protocol below.
 Workflow specifics:
-- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision), last check-in, last known location if present.
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision; Lost Mode is iOS/iPadOS only — for a Mac, go straight to lock_device with a PIN), last check-in, last known location if present.
 - Intended writes, in order: enable_lost_mode (high — displays a return message and phone number you compose with the user); update_lost_mode_location to request a fresh location; play_lost_mode_sound if the device may be nearby. Optionally lock_device with a PIN as a second layer. wipe_device (critical) ONLY if the user explicitly declares the device unrecoverable and accepts data loss — surface it as a separate confirmation.
 - VERIFY: re-check the device's lost-mode status and location responses in the command log.
 RECOVERY: Lost Mode is reversible with disable_lost_mode once recovered. A wipe is NOT reversible. Escalation guidance: file a police report with the serial number; Activation Lock keeps the device unusable by others even when wiped; do NOT disable_activation_lock on a stolen device.
