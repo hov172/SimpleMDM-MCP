@@ -810,7 +810,7 @@ export const TOOLS: Tool[] = [
     }}},
 
   { name: "recommend_fixes",
-    description: "READ — Prioritized fleet recommendations derived from the existing audits (certificates, DEP tokens, compliance, stale devices). Each item names the gated write tool or workflow prompt that fixes it. Params: min_severity (default warning), categories, limit.",
+    description: "READ — Prioritized fleet recommendations derived from the existing audits (certificates, DEP tokens, compliance, stale devices). Each item names the gated workflow prompt or manual step that fixes it. Params: min_severity (default warning), categories, limit.",
     inputSchema: { type: "object", properties: {
       min_severity: { type: "string", enum: ["info", "warning", "critical"], description: "Drop recommendations below this severity. Default 'warning'." },
       categories: { type: "array", items: { type: "string", enum: ["certificates", "dep", "compliance", "stale_devices"] }, description: "Restrict to these categories. Default all." },
@@ -4294,7 +4294,8 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         }
       }));
 
-      let recommendations = buildRecommendations(inputs);
+      const allRecommendations = buildRecommendations(inputs);
+      let recommendations = allRecommendations;
 
       const minSeverity = (args.min_severity as Severity | undefined) ?? "warning";
       const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
@@ -4309,7 +4310,21 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
         recommendations = recommendations.slice(0, args.limit);
       }
 
-      return { recommendations, count: recommendations.length, generated_from: generatedFrom };
+      const result: Record<string, unknown> = { recommendations, count: recommendations.length, generated_from: generatedFrom };
+      // all_recommendations is the unfiltered list the findings-publish adapters read
+      // from (see src/findings/toolManifest.ts "recommend_fixes") -- the caller-facing
+      // `recommendations` field above is shaped by min_severity/categories/limit, and
+      // publishing that filtered/reduced set with replace:true would silently
+      // auto-resolve previously-open findings that just fell outside this call's
+      // filter. Only publish when every source succeeded (sources.length === 4);
+      // otherwise omit the field entirely so findingsFromAdapters resolves an empty
+      // row set and afterToolCall's `findings.length === 0` guard skips the publish
+      // call outright (see src/findings/middleware.ts) rather than replacing the
+      // namespace with a partial/empty set.
+      if (generatedFrom.length === sources.length) {
+        result.all_recommendations = allRecommendations;
+      }
+      return result;
     }
 
     case "get_write_audit_log": {

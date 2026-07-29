@@ -26,8 +26,9 @@ const INPUTS = {
       { id: 4, failures: ["filevault_off"] },
       { id: 5, failures: ["filevault_off"] },
       { id: 6, failures: ["passcode_not_compliant"] },
+      { id: 9, failures: ["os_unsupported"] },
     ],
-    failure_counts: { os_mac_majors_behind: 3, filevault_off: 2, passcode_not_compliant: 1 },
+    failure_counts: { os_mac_majors_behind: 3, filevault_off: 2, passcode_not_compliant: 1, os_unsupported: 1 },
   },
   staleDevices: { devices: [{ id: 7, days_since: 45 }, { id: 8, days_since: 16 }] },
 };
@@ -69,9 +70,39 @@ test("compliance groups map to prompts with affected counts", () => {
   const os = recs.find((r) => r.id === "compliance-os_mac_majors_behind");
   assert.equal(os.affected_count, 3);
   assert.equal(os.remediation.name, "emergency-patching");
+  assert.equal(os.remediation.args_hint, "mac");
   const stale = recs.find((r) => r.category === "stale_devices");
   assert.equal(stale.affected_count, 2);
   assert.equal(stale.remediation.name, "stale-devices-cleanup");
+});
+
+test("os_unsupported maps to a critical emergency-patching recommendation", () => {
+  const recs = buildRecommendations(INPUTS);
+  const unsupported = recs.find((r) => r.id === "compliance-os_unsupported");
+  assert.ok(unsupported, "expected a recommendation for os_unsupported");
+  assert.equal(unsupported.severity, "critical");
+  assert.equal(unsupported.category, "compliance");
+  assert.equal(unsupported.affected_count, 1);
+  assert.equal(unsupported.remediation.type, "prompt");
+  assert.equal(unsupported.remediation.name, "emergency-patching");
+  assert.equal(unsupported.remediation.args_hint, undefined, "os_unsupported has no platform capture, so no args_hint");
+  assert.match(unsupported.summary, /unsupported OS/);
+});
+
+test("a numeric os_*_majors_behind capture (live lag-count data) omits args_hint", () => {
+  const recs = buildRecommendations({
+    certAudit: null,
+    depAudit: null,
+    staleDevices: null,
+    complianceViolators: {
+      violators: [{ id: 1, failures: ["os_2_majors_behind"] }],
+      failure_counts: { os_2_majors_behind: 1 },
+    },
+  });
+  const os = recs.find((r) => r.id === "compliance-os_2_majors_behind");
+  assert.ok(os);
+  assert.equal(os.remediation.name, "emergency-patching");
+  assert.equal(os.remediation.args_hint, undefined, "numeric lag capture must not be forwarded as a platform args_hint");
 });
 
 test("empty inputs produce an empty list, not throws", () => {

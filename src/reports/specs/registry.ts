@@ -152,7 +152,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
         `Executive Fleet Summary ${input.dateStr}\n` +
         `Devices: ${f.total} (enrolled ${f.enrolled}) | Supervised ${f.supervised_pct}% | DEP ${f.dep_pct}% | ` +
         `FileVault ${f.filevault_pct}% | On current OS ${f.os_current_pct}%\n` +
-        `Risk: APNs ${r.apns_status} | DEP tokens ${r.dep_worst_status} | Stale ${r.stale_count} | Violators ${r.violator_count}\n` +
+        `Risk: APNs ${r.apns_status} | DEP tokens ${r.dep_worst_status} | Stale ${r.stale_count} | Devices with security findings (SOFA) ${r.violator_count}\n` +
         `Recommendations: ${(input.recommendations ?? []).length}\n`
       );
     },

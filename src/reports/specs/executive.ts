@@ -4,6 +4,9 @@ import type { Recommendation } from "../../analytics/recommendations.js";
 export interface ExecutiveInput {
   dateStr: string;
   fleet: { total: number; enrolled: number; supervised_pct: number; dep_pct: number; filevault_pct: number; os_current_pct: number };
+  // violator_count is populated from the SOFA compliance summary's withIssues
+  // count (devices with CVE/update findings) on the legacy CLI path — see
+  // executiveInputLive in cli/inputs.ts — NOT from get_compliance_violators.
   risk: { apns_status: string; dep_worst_status: string; stale_count: number; violator_count: number };
   recommendations: Recommendation[];
   scopeLabel?: string;
@@ -58,7 +61,7 @@ export function buildExecutiveDossier(input: ExecutiveInput): Dossier {
 | APNs push certificate | ${r.apns_status} |
 | DEP tokens (worst) | ${r.dep_worst_status} |
 | Stale devices | ${r.stale_count} |
-| Compliance violators | ${r.violator_count} |${riskCaveat}
+| Devices with security findings (SOFA) | ${r.violator_count} |${riskCaveat}
 
 ## Top Recommendations
 

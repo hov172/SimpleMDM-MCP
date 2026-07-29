@@ -316,8 +316,12 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
   "push_munkireport_findings": { toolType: "config_write", publishable: false, supportsAutoPublish: false },
   "recommend_fixes": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
-      { resultField: "recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "danger", serialField: null, conditionField: "severity", conditionValues: ["critical"], messageTemplate: "[{category}] {summary}" },
-      { resultField: "recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "warning", serialField: null, conditionField: "severity", conditionValues: ["warning"], messageTemplate: "[{category}] {summary}" },
+      // resultField reads the unfiltered all_recommendations field (present only when
+      // every source succeeded), not the caller-facing `recommendations` field, which
+      // may be reduced by min_severity/categories/limit -- see the recommend_fixes
+      // handler in src/index.ts for why publishing the filtered list would be wrong.
+      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "danger", serialField: null, conditionField: "severity", conditionValues: ["critical"], messageTemplate: "[{category}] {summary}" },
+      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "warning", serialField: null, conditionField: "severity", conditionValues: ["warning"], messageTemplate: "[{category}] {summary}" },
     ] },
   "refresh_cellular_plans": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "refresh_device_inventory": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },

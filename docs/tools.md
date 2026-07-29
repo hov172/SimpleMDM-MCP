@@ -154,7 +154,7 @@ These tools answer questions the raw API can't in a single call. They iterate ev
 | `get_certificate_expiration_audit` | APNs push cert renewal warning bands |
 | `get_dep_token_audit` | DEP server token renewal warning bands + sync-stale flag |
 | `get_enrollment_token_audit` | Stale enrollment URLs (no use in N days) |
-| `recommend_fixes` | Prioritized fleet recommendations derived from the certificate, DEP token, compliance, and stale-device audits; each item names the gated write tool or workflow prompt that fixes it |
+| `recommend_fixes` | Prioritized fleet recommendations derived from the certificate, DEP token, compliance, and stale-device audits; each item names the gated workflow prompt or manual step that fixes it |
 | `get_write_audit_log` | Query the local write-audit log (JSONL) with filters for since/tool/tier/phase/outcome |
 
 **MunkiReport enrichment (require MunkiReport configuration)**

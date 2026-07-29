@@ -155,13 +155,34 @@ function buildComplianceRecommendations(complianceViolators: ComplianceViolators
     if (count < 1) continue;
     const osMatch = failure.match(OS_MAJORS_BEHIND_RE);
     if (osMatch) {
+      // The regex capture is the platform label on illustrative fixtures (e.g.
+      // "os_mac_majors_behind" -> "mac") but on live compliance data it can be a
+      // numeric lag count instead (e.g. "os_2_majors_behind" -> "2") -- the
+      // emergency-patching prompt's argument is a platform, not a lag number, so
+      // only forward the capture as args_hint when it isn't purely numeric.
+      const captureIsNumeric = /^\d+$/.test(osMatch[1]);
       recs.push({
         id: `compliance-${failure}`,
         severity: "warning",
         category: "compliance",
         affected_count: count,
         summary: `${count} device(s) are behind on OS major version updates (${failure})`,
-        remediation: { type: "prompt", name: "emergency-patching", args_hint: osMatch[1] },
+        remediation: captureIsNumeric
+          ? { type: "prompt", name: "emergency-patching" }
+          : { type: "prompt", name: "emergency-patching", args_hint: osMatch[1] },
+        source_tool: "get_compliance_violators",
+      });
+    } else if (failure === "os_unsupported") {
+      // An unsupported OS cannot be patched current -- there is no version to
+      // upgrade to that keeps the device supported, so this is critical (not the
+      // "warning" level used for majors-behind, which can still be patched).
+      recs.push({
+        id: `compliance-${failure}`,
+        severity: "critical",
+        category: "compliance",
+        affected_count: count,
+        summary: `${count} device(s) are running an unsupported OS`,
+        remediation: { type: "prompt", name: "emergency-patching" },
         source_tool: "get_compliance_violators",
       });
     } else if (failure === "filevault_off") {
@@ -195,8 +216,8 @@ function buildComplianceRecommendations(complianceViolators: ComplianceViolators
         source_tool: "get_compliance_violators",
       });
     }
-    // Other failure keys (e.g. os_unsupported) are outside the authoritative mapping
-    // table and intentionally produce no recommendation.
+    // Other failure keys are outside the authoritative mapping table and
+    // intentionally produce no recommendation.
   }
   return recs;
 }
