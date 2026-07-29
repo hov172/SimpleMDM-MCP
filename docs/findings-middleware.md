@@ -56,7 +56,8 @@ Two adapter details matter for tools whose findings are not per-device:
   when any of the four source audits failed — a missing `resultField` produces
   zero findings, so a partial run publishes nothing rather than erasing state.
   Severity split: `critical` recommendations publish as `danger`, `warning` as
-  `warning`; `info` recommendations are never published.
+  `warning`; `info` recommendations are never published. Full tool reference:
+  [`recommendations.md`](recommendations.md).
 
 ## Configuration
 

@@ -3,6 +3,9 @@
 | Doc | What it covers |
 |-----|----------------|
 | [`tools.md`](tools.md) | All 203 tools in per-domain tables, read/write/destructive markers, annotations, the write-safety gate, MCP resources, and prompts |
+| [`write-safety.md`](write-safety.md) | Write-safety deep dive — risk tiers, `dry_run`, single-use confirm tokens, the JSONL audit log, env vars, Docker persistence |
+| [`workflow-prompts.md`](workflow-prompts.md) | The 14 MCP prompts — the gated 7-step write protocol and all nine playbooks (offboarding, lost device, emergency patching, semester refresh, …) |
+| [`recommendations.md`](recommendations.md) | `recommend_fixes` prioritized action list, the fleet-risk/audit/recommendations resources, and the `executive-summary` report |
 | [`fleet-audit.md`](fleet-audit.md) | `/audit` deep dive — SOFA join, metrics, flags, outputs, PDF export, XProtect setup, code map |
 | [`inventory.md`](inventory.md) | `/inventory` deep dive — query-language grammar, prompt cookbook, report styles, findings, completeness model, run diffs |
 | [`logs-audit.md`](logs-audit.md) | `/logs-audit` deep dive — forensic export flags, outputs, fidelity/disclosure model, code map |

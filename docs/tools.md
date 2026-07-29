@@ -18,8 +18,8 @@ Every write invocation (plan / dry_run / execute / blocked) is appended to a JSO
 log (`MCP_WRITE_AUDIT_DIR`, default `audit_log/`) queryable via `get_write_audit_log`.
 Related env vars: `SIMPLEMDM_CONFIRM_MODE` (default `on` when writes are enabled; `off`
 executes directly and logs a startup stderr warning) and `SIMPLEMDM_CONFIRM_TTL_SECONDS`
-(default `120`, malformed values fail closed). Full walkthrough with a `wipe_device`
-example: [README — Write safety](../README.md#write-safety).
+(default `120`, malformed values fail closed). Deep dive: [`write-safety.md`](write-safety.md);
+quick walkthrough with a `wipe_device` example: [README — Write safety](../README.md#write-safety).
 
 ## Read tools (always available)
 
