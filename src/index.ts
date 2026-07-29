@@ -42,7 +42,7 @@ import { MR_BASE, MR_PREFIX, munkiReportIngest } from "./munkiReportClient.js";
 import { afterToolCall, onToolError } from "./findings/middleware.js";
 import { WRITE_TIERS, CONFIRM_TIERS, type RiskTier } from "./safety/tiers.js";
 import { canonicalArgsHash, issueToken, redeemToken } from "./safety/confirm.js";
-import { redactArgs, writeAuditEntry, type AuditEntry, type AuditPhase, type AuditOutcome } from "./safety/audit.js";
+import { redactArgs, writeAuditEntry, readAuditEntries, type AuditEntry, type AuditPhase, type AuditOutcome } from "./safety/audit.js";
 import { runReport } from "./reports/cli.js";
 import { writeReportExtras } from "./reports/engine/extras.js";
 import { compareVersions } from "./reports/domain/sofa-eval.js";
@@ -1797,6 +1797,20 @@ export const TOOLS: Tool[] = [
   { name: "check_for_update",
     description: "Read — Check whether a newer simplemdm-mcp release is available. Compares this server's running version against the latest GitHub release and returns {current_version, latest_version, update_available, release_url, upgrade}. Note: the server cannot update itself (it runs in a pinned, read-only Docker container) — when an update is available it returns the host-side upgrade steps to run.",
     inputSchema: { type: "object", properties: {} } },
+
+  { name: "get_write_audit_log",
+    description: "READ — Query the local write-audit log (JSONL, written by the write-safety gate). " +
+                 "Filters: since (ISO timestamp), tool, tier (low|medium|high|critical), " +
+                 "phase (plan|dry_run|execute|blocked), outcome (success|error|blocked), limit (default 100). " +
+                 "Local file read only — never calls the SimpleMDM API.",
+    inputSchema: { type: "object", properties: {
+      since: { type: "string", description: "ISO 8601 timestamp; only entries at/after this time." },
+      tool: { type: "string" },
+      tier: { type: "string", enum: ["low", "medium", "high", "critical"] },
+      phase: { type: "string", enum: ["plan", "dry_run", "execute", "blocked"] },
+      outcome: { type: "string", enum: ["success", "error", "blocked"] },
+      limit: { type: "integer", minimum: 1, maximum: 1000 },
+    }}},
 
   { name: "run_fleet_audit",
     description: "Runs the unified report engine CLI (node dist/reports/cli.js audit) as a host-side subprocess; writes CSV/md/html/docx/pdf files under reports/audit-YYYY-MM-DD and returns a text summary + report head. For in-process metadata-only generation (and declarative dynamic specs) use generate_report.",
@@ -4240,6 +4254,18 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
       const outDir = resolveReportPath(`reports/${report}-${date}-${time}`);
 
       return runReport({ report, scope, format, reportOnly, outDir, search });
+    }
+
+    case "get_write_audit_log": {
+      const entries = readAuditEntries(auditDir(), {
+        since: args.since as string | undefined,
+        tool: args.tool as string | undefined,
+        tier: args.tier as string | undefined,
+        phase: args.phase as string | undefined,
+        outcome: args.outcome as string | undefined,
+        limit: args.limit as number | undefined,
+      });
+      return { entries, count: entries.length, audit_dir: auditDir() };
     }
 
     default: throw new Error(`Unknown tool: ${name}`);

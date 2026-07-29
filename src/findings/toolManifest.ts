@@ -291,6 +291,7 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
     adapters: [
       { resultField: "unattributed", findingType: "unattributed_device", category: "Inventory", severity: "info", serialField: "serial", messageTemplate: "{device_name} has no user attribution value set" },
     ] },
+  "get_write_audit_log": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_app_installs": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_apps": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
   "list_assignment_groups": { toolType: "read_only_query", publishable: false, supportsAutoPublish: false },
