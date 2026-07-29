@@ -18,10 +18,15 @@ All notable changes to this project are documented here. Format follows
 ### Breaking behavior
 - High/critical write tools now return a confirmation plan (JSON with `write_gate: "confirmation_required"`, tier, confirm_token, expires_at, and other metadata) on the first call instead of executing immediately, **when writes are enabled and confirm mode is on**. Set `SIMPLEMDM_CONFIRM_MODE=off` to restore immediate execution for headless/scriptable deployments. With `SIMPLEMDM_ALLOW_WRITES` unset (default), nothing changes — writes still refuse to run.
 
+### Fixed
+- **Docker: audit log was silently dropped in-container** — the image now pre-creates `/app/audit_log` for the `node` user (previously `/app` was root-owned, so every audit write degraded to a stderr warning). Mount `-v "$PWD/audit_log:/app/audit_log"` to keep the trail across `--rm` container sessions.
+- **Findings collapse on the MunkiReport dashboard** — the module fingerprints findings on `(source, finding_type, serial)`, so serial-less rows of one finding type collapsed into a single dashboard row (last message wins, severity lost). `recommend_fixes` adapters now publish the stable recommendation `id` as the serial key and `get_dep_token_audit` adapters use `server_name`; auto-publish also reads the unfiltered `all_recommendations` field (omitted when any source audit fails) so filtered or partial calls can never auto-resolve open findings.
+
 ### Documentation
-- README: new "Write safety" section covering tiers, dry-run, the two-step confirm flow (with a `wipe_device` example), audit log, `get_write_audit_log` query, and all new environment variables.
+- README: new "Write safety" section covering tiers, dry-run, the two-step confirm flow (with a `wipe_device` example), audit log, `get_write_audit_log` query, and all new environment variables; Docker examples mount `audit_log/`; report section covers `executive-summary` and `recommend_fixes`.
+- docs: `tools.md` gained Write-safety gate / MCP resources / Prompts sections; `findings-middleware.md` documents serial-key fingerprinting and the `recommend_fixes` publish source; stale counts corrected across `docs/README.md` and `aggregation-tools-roadmap.md`; report deep-dive pages cross-link `executive-summary`.
 - `.gitignore`: added `audit_log/` next to existing `reports/` entry.
-- Example config `examples/claude-desktop-with-writes.json` updated to show new environment variables with their defaults.
+- Example configs updated: `claude-desktop-with-writes.json` shows the new environment variables; `docker-run.sh` dual-tags the image and mounts `reports/` + `audit_log/`.
 
 Tool count: **203** (87 write tools + 116 read/query tools).
 

@@ -8,7 +8,9 @@ is its security posture and software footprint?* — and exports the results to 
 JSON, a SHA-256 integrity manifest, and a detailed combined report (Markdown / HTML /
 Word / PDF).
 
-It is a **sibling** to the [`/audit`](fleet-audit.md) command, not a replacement:
+It is a **sibling** to the [`/audit`](fleet-audit.md) command (the report engine's
+other siblings are [`/inventory`](inventory.md) and the `executive-summary`
+leadership report), not a replacement:
 
 | | `/audit` (SOFA security) | `/logs-audit` (this) |
 |---|---|---|

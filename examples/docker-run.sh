@@ -10,8 +10,12 @@ V=$(node -p "require('./package.json').version")
 # simplemdm-mcp:latest, and a stale :latest silently serves an old build.
 docker build --build-arg VERSION="$V" -t "simplemdm-mcp:$V" -t "simplemdm-mcp:latest" .
 
-# Run with an .env file (recommended):
-docker run --rm -i --env-file .env "simplemdm-mcp:$V"
+# Run with an .env file (recommended). The mounts keep report output and the
+# write-safety audit trail on disk after the --rm container exits:
+docker run --rm -i --env-file .env \
+  -v "$PWD/reports:/app/reports" \
+  -v "$PWD/audit_log:/app/audit_log" \
+  "simplemdm-mcp:$V"
 
 # Or pass env vars directly:
 # docker run --rm -i \

@@ -26,7 +26,7 @@ caller — it's logged (and optionally queued for retry, see below), not thrown.
 
 | Tool category | Publishes by default? | Notes |
 |---|---|---|
-| **Compliance / Health-check** (`get_compliance_violators`, `get_stale_devices`, `get_certificate_expiration_audit`, …) | Yes, in `auto` mode | 14 tools with a per-row/per-object adapter, verified against each tool's real return shape. 5 of them (`get_dep_unassigned`, `get_device_user_count_outliers`, `get_enrollment_token_audit`, `get_os_eligibility`, `get_pending_commands`) only emit `severity: "info"` findings, so they publish nothing at the default `MCP_PUBLISH_MIN_SEVERITY=warning` — set it to `info` to include them. |
+| **Compliance / Health-check** (`get_compliance_violators`, `get_stale_devices`, `get_certificate_expiration_audit`, `recommend_fixes`, …) | Yes, in `auto` mode | 16 tools with a per-row/per-object adapter, verified against each tool's real return shape. 5 of them (`get_dep_unassigned`, `get_device_user_count_outliers`, `get_enrollment_token_audit`, `get_os_eligibility`, `get_pending_commands`) only emit `severity: "info"` findings, so they publish nothing at the default `MCP_PUBLISH_MIN_SEVERITY=warning` — set it to `info` to include them. `recommend_fixes` is a special case — see "Aggregated tools and serial keys" below. |
 | **Inventory** (`get_unmanaged_apps`, `get_app_coverage`, `get_orphaned_apps`, …) | No — opt-in only | See `MCP_PUBLISH_INVENTORY_TOOLS` below. All findings are `severity: "info"`. |
 | **Action** (`lock_device`, `wipe_device`, `restart_device`, …) | Only on **failure** | Publishes a single `severity: "danger"` finding when the action genuinely fails against SimpleMDM (a non-2xx API response) — never on success (there's no "healthy" state for an action), and never for a client/config error (bad arguments, `SIMPLEMDM_ALLOW_WRITES` unset) that never reached the network. Failure findings use their own source namespace `mcp_auto_action_<toolName>` (not `mcp_auto_<toolName>`), category `Action Failure`, finding type `action_failed_<toolName>`. |
 | **Audit** (`run_fleet_audit`) | Only via the existing `publish`/`scan_id` params (CLI `--publish`/`--scan-id`) | Unchanged, separate code path (`src/reports/domain/findings-map.ts`) — not part of this middleware. `run_device_logs_audit` (the `logs` report) has no findings-publish path at all. |
@@ -35,6 +35,28 @@ caller — it's logged (and optionally queued for retry, see below), not thrown.
 Run `node dist/reports/cli.js findings validate` any time to confirm every
 currently-registered tool has exactly one manifest entry (see [CLI
 subcommands](#cli-subcommands) below) — useful after adding a new tool.
+
+### Aggregated tools and serial keys
+
+Two adapter details matter for tools whose findings are not per-device:
+
+- **Serial keys are fingerprint keys.** The MunkiReport module fingerprints a
+  finding on `(source, finding_type, serial_number)` — the message is *not* part
+  of the fingerprint. Multiple serial-less rows of one `finding_type` therefore
+  collapse into a single dashboard finding (last message wins, severity lost;
+  observed live 2026-07-29). Adapters for non-device findings must put a stable
+  per-row key in `serialField`: `recommend_fixes` uses the recommendation `id`
+  (e.g. `compliance-os_unsupported`), `get_dep_token_audit` uses `server_name`.
+  Stable keys also make `occurrence_count` meaningful across runs.
+- **`recommend_fixes` publishes from `all_recommendations`, not the caller-visible
+  list.** The tool's `recommendations` field is shaped by `min_severity` /
+  `categories` / `limit`, and publishing a filtered list under `replace: true`
+  would silently auto-resolve still-open findings. The adapters instead read the
+  unfiltered `all_recommendations` field, which the handler **omits entirely**
+  when any of the four source audits failed — a missing `resultField` produces
+  zero findings, so a partial run publishes nothing rather than erasing state.
+  Severity split: `critical` recommendations publish as `danger`, `warning` as
+  `warning`; `info` recommendations are never published.
 
 ## Configuration
 

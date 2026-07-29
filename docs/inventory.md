@@ -10,8 +10,10 @@ It is one report in the **unified TypeScript report engine** (`src/reports/`, co
 `dist/reports/cli.js`), exposed via the `/inventory` Claude Code skill, the
 `run_inventory_report` MCP tool (spawns the CLI as a host-side subprocess, writes files),
 and the in-process `generate_report` MCP tool (catalog mode `report: "inventory"`).
-Siblings: [`/audit`](fleet-audit.md) (fleet security posture vs SOFA) and
-[`/logs-audit`](logs-audit.md) (forensic activity logs).
+Siblings: [`/audit`](fleet-audit.md) (fleet security posture vs SOFA),
+[`/logs-audit`](logs-audit.md) (forensic activity logs), and the
+`executive-summary` report (leadership one-pager: KPIs, risk, top
+recommendations — via `generate_report` with `report: "executive-summary"`).
 
 - **Read-only**: a read-only `SIMPLEMDM_API_KEY` in `.env` is sufficient; zero writes.
 - **Local-only output**: `reports/` is gitignored; exports contain live tenant data and

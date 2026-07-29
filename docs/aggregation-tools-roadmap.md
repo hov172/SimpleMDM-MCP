@@ -2,7 +2,7 @@
 
 A tiered list of derived/aggregation tools (beyond the raw SimpleMDM API) that deliver real value to a Mac admin team. Tiering reflects **impact** (how often the question gets asked, how much manual work it replaces) vs **cost** (build time, API load, maintenance burden, overlap with existing tools/prompts).
 
-> **Status (0.31.x):** 30 derived tools shipped (the original 28 from 0.5.0, plus later additions). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
+> **Status (0.36.x):** 31 derived tools shipped (the original 28 from 0.5.0, plus later additions — most recently `get_certificate_expiration_audit`, `get_dep_token_audit` (0.35.0), and `recommend_fixes` + `get_write_audit_log` (0.36.0; `recommend_fixes` aggregates the cert/DEP/compliance/stale audits into a prioritized action list with MunkiReport auto-publish, and `get_write_audit_log` queries the local write-safety audit trail — no fleet iteration). 2 drafted tools were rejected after senior-dev review and remain unbuilt — listed at the end with reasoning. Several shipped tools depend on optionally-populated SimpleMDM fields and degrade to empty when the field isn't there for your tenant. All list endpoints and fleet-iteration results are now cached in-memory (default 5 min TTL, configurable via `SIMPLEMDM_CACHE_TTL_MS`) with automatic invalidation on writes (added in 0.6.0). Response slimming on heavy list endpoints reduces MCP transport payloads.
 >
 > A complementary **[`/audit` command](../README.md#fleet-audit-audit)** (added in 0.10.0) bundles much of this fleet analytics into a one-shot, exportable SOFA-based macOS security report (CSV / Markdown / Word / PDF). It is now part of the unified TypeScript report engine (`dist/reports/cli.js`), exposed via the `/audit` skill, the `run_fleet_audit` MCP tool (host-side subprocess), and the in-process `generate_report` MCP tool. It talks directly to the SimpleMDM API + the SOFA feed.
 
@@ -166,7 +166,7 @@ Open work (not yet started):
 
 ## MCP context budget
 
-The catalog is now **200 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
+The catalog is now **203 tools**. Every conversation pays a token tax for the full `tools/list` payload. On clients with smaller context windows (or many MCP servers configured), this matters.
 
 Mitigations available today:
 - **Per-tool deny via permissions** (Claude Code): users can deny individual tools in their `~/.claude/settings.json` `permissions.deny` array (e.g. `"mcp__simplemdm__get_top_installed_apps"`) without modifying this server. Useful for clients that never use the analytics surface.

@@ -14,6 +14,9 @@ It is driven by the **unified TypeScript report engine** (`src/reports/`, compil
 files to disk), and the in-process `generate_report` MCP tool (catalog mode `report:
 "audit"`, returns `WriteResult` metadata). It talks **directly to the SimpleMDM API**
 (read-only) and the public SOFA feed — no external app, service, or database.
+Siblings in the same engine: [`/inventory`](inventory.md) (searchable fleet
+inventory), [`/logs-audit`](logs-audit.md) (forensic activity logs), and the
+`executive-summary` leadership report (KPIs, risk, top recommendations).
 
 ---
 

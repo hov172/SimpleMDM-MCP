@@ -7,7 +7,7 @@ Sample MCP client configurations and a query cookbook for SimpleMDM-MCP.
 | File | Purpose |
 |------|---------|
 | [`claude-desktop.json`](claude-desktop.json) | Drop-in `mcpServers` block for Claude Desktop. Read-only by default. |
-| [`claude-desktop-with-writes.json`](claude-desktop-with-writes.json) | Same as above, with `SIMPLEMDM_ALLOW_WRITES=true`. Writes still prompt per call via MCP annotations. |
+| [`claude-desktop-with-writes.json`](claude-desktop-with-writes.json) | Same as above, with `SIMPLEMDM_ALLOW_WRITES=true` and the write-safety knobs (`SIMPLEMDM_CONFIRM_MODE`, `SIMPLEMDM_CONFIRM_TTL_SECONDS`, `MCP_WRITE_AUDIT_DIR`). High/critical writes require a confirm token; every write is audit-logged. Docker users: also mount `audit_log/` (see below) or the audit trail vanishes with the `--rm` container. |
 | [`claude-desktop-with-munkireport.json`](claude-desktop-with-munkireport.json) | Adds MunkiReport enrichment so `get_munkireport_*` tools resolve to your MR instance. See the short setup in [README.md](../README.md#munkireport-setup). |
 | [`claude-code-add.sh`](claude-code-add.sh) | One-line `claude mcp add` invocation. |
 | [`codex.toml`](codex.toml) | Codex CLI MCP server configuration. |
@@ -100,8 +100,12 @@ Use one of these commands as the MCP server process:
 
 With Docker:
 ```bash
-docker run --rm -i --env-file /absolute/path/to/SimpleMDM-MCP/.env simplemdm-mcp
+docker run --rm -i --env-file /absolute/path/to/SimpleMDM-MCP/.env \
+  -v /absolute/path/to/SimpleMDM-MCP/reports:/app/reports \
+  -v /absolute/path/to/SimpleMDM-MCP/audit_log:/app/audit_log simplemdm-mcp
 ```
+(The mounts keep report output and the write-safety audit trail on disk after the
+`--rm` container exits; both are optional for read-only use.)
 
 From source:
 ```bash

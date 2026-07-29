@@ -1,6 +1,25 @@
 # Tools
 
-The server registers **203 tools** covering the full SimpleMDM API surface (32 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+The server registers **203 tools** covering the full SimpleMDM API surface (31 derived fleet-analytics tools, 16 MunkiReport tools, 16 Apple schema helper tools). Reads are always available; writes require `SIMPLEMDM_ALLOW_WRITES=true`. Every tool ships with MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so compatible clients can render the correct confirmation UI.
+
+## Write-safety gate
+
+Every write tool carries a risk tier (`low` / `medium` / `high` / `critical`, shown as a
+`[risk tier: X]` suffix on the tool description; the map lives in
+[`src/safety/tiers.ts`](../src/safety/tiers.ts)) and accepts two extra optional parameters:
+
+- **`dry_run: true`** — returns a plan of what would change (targets, tier, redacted args)
+  without calling the SimpleMDM write API. Works on every write tool, any tier.
+- **`confirm_token`** — high/critical tools do **not** execute on first call; they return a
+  plan with a single-use token bound to the exact arguments. Re-call with identical
+  arguments plus `confirm_token` to execute. Low/medium tiers execute directly.
+
+Every write invocation (plan / dry_run / execute / blocked) is appended to a JSONL audit
+log (`MCP_WRITE_AUDIT_DIR`, default `audit_log/`) queryable via `get_write_audit_log`.
+Related env vars: `SIMPLEMDM_CONFIRM_MODE` (default `on` when writes are enabled; `off`
+executes directly and logs a startup stderr warning) and `SIMPLEMDM_CONFIRM_TTL_SECONDS`
+(default `120`, malformed values fail closed). Full walkthrough with a `wipe_device`
+example: [README — Write safety](../README.md#write-safety).
 
 ## Read tools (always available)
 
@@ -295,3 +314,25 @@ All tools below modify fleet state. The API permission column tells you what the
 | Tool | API Permission |
 |------|---------------|
 | `update_account` | Account: write |
+
+## MCP resources (15)
+
+Read-only `simplemdm://` URIs for clients that support MCP resources — each delegates to
+the corresponding tool: `fleet/summary`, `reports/security-posture`, `reports/os-versions`,
+`reports/enrollment`, `reports/filevault`, `inventory/devices`,
+`inventory/assignment-groups`, `inventory/apps`, `reports/top-apps`,
+`reports/unmanaged-apps`, `reports/stale-devices`, `reports/storage-health`,
+`fleet/risk` (posture + APNs/DEP status + stale devices + recent write errors),
+`audit/recent-writes` (last 50 write-audit entries, local read),
+`recommendations` (current `recommend_fixes` output).
+
+## Prompts (14)
+
+Workflow templates exposed over MCP — 5 read-only (fleet-health-dashboard,
+security-audit, patch-compliance-review, app-inventory-audit, configure-webhooks-guide)
+and 9 write-capable prompts that follow the gated 7-step protocol
+(plan → dry-run → present → confirm → execute → verify → report): device-offboarding,
+new-device-onboarding, stale-devices-cleanup, compliance-violators-remediation,
+profile-coverage-remediation, lost-device-response, emergency-patching,
+semester-refresh, lab-provisioning. Full list with arguments:
+[README — prompt table](../README.md).

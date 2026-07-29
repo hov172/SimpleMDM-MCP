@@ -2,7 +2,7 @@
 
 | Doc | What it covers |
 |-----|----------------|
-| [`tools.md`](tools.md) | All 200 tools in per-domain tables, read/write/destructive markers, annotations |
+| [`tools.md`](tools.md) | All 203 tools in per-domain tables, read/write/destructive markers, annotations, the write-safety gate, MCP resources, and prompts |
 | [`fleet-audit.md`](fleet-audit.md) | `/audit` deep dive — SOFA join, metrics, flags, outputs, PDF export, XProtect setup, code map |
 | [`inventory.md`](inventory.md) | `/inventory` deep dive — query-language grammar, prompt cookbook, report styles, findings, completeness model, run diffs |
 | [`logs-audit.md`](logs-audit.md) | `/logs-audit` deep dive — forensic export flags, outputs, fidelity/disclosure model, code map |
