@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.36.0] - 2026-07-29
 
 ### Added
 - **Write-safety layer** — all 87 write tools now classified into four risk tiers (low/medium/high/critical; see [`src/safety/tiers.ts`](src/safety/tiers.ts)), with dry-run and confirm-token enforcement. High/critical tools return a plan on first call (no execution) when `SIMPLEMDM_ALLOW_WRITES=true` and `SIMPLEMDM_CONFIRM_MODE=on` (the default); re-call with the returned single-use token to execute. `dry_run: true` on any write tool previews without executing. Audit log: JSONL daily files under `audit_log/` (default location) with per-invocation phase/outcome/args tracking; query via `get_write_audit_log`.
