@@ -4433,14 +4433,14 @@ export const PROMPTS = [
   },
   {
     name: "new-device-onboarding",
-    description: "Verify a newly enrolled device: profiles assigned, apps installed, group membership, and recent MDM command log.",
+    description: "Verify and remediate onboarding gaps with the gated write workflow: assign groups and profiles, sync apps, refresh inventory (dry-run + confirm-token gated).",
     arguments: [
       { name: "device_ref", description: "Device ID or serial number of the newly enrolled device.", required: true },
     ],
   },
   {
     name: "device-offboarding",
-    description: "Prepare a device for offboarding: unscope from assignment groups, lock or wipe (destructive — requires confirmation), and note remaining profiles.",
+    description: "Offboard a device with the gated write workflow: unscope groups/profiles, then lock or wipe (dry-run + confirm-token gated), verify, and report recovery notes.",
     arguments: [
       { name: "device_ref", description: "Device ID or serial number to offboard.", required: true },
     ],
@@ -4452,21 +4452,21 @@ export const PROMPTS = [
   },
   {
     name: "stale-devices-cleanup",
-    description: "Find devices that appear enrolled but have not checked in recently; propose sync, lock, or unenroll actions per device.",
+    description: "Find stale devices and remediate with the gated write workflow: sync borderline, lock long-stale (dry-run + confirm-token gated); never unenrolls or wipes.",
     arguments: [
       { name: "days", description: "Number of days since last check-in to consider stale. Default 14.", required: false },
     ],
   },
   {
     name: "compliance-violators-remediation",
-    description: "Find compliance violators and produce a prioritized remediation plan grouped by failure type. Read-only — proposes actions, does not execute.",
+    description: "Remediate compliance violators with the gated write workflow: update OS, assign profiles, clear passcodes by category (dry-run + confirm-token gated); escalates manual re-enrollment cases.",
     arguments: [
       { name: "max_os_major_lag", description: "Major versions behind to count as out-of-date. Default 1.", required: false },
     ],
   },
   {
     name: "profile-coverage-remediation",
-    description: "For a given profile_id, list the missing-profile devices and propose either bulk assignment via assignment groups or per-device assign_profile_to_device calls.",
+    description: "Close profile coverage gaps with the gated write workflow: assign to groups (bulk) or devices (per-device), sync profiles (dry-run + confirm-token gated); fully reversible.",
     arguments: [
       { name: "profile_id", description: "SimpleMDM profile ID to verify coverage for.", required: true },
     ],
@@ -4483,7 +4483,63 @@ export const PROMPTS = [
     description: "Guidance and walkthrough for manually configuring, securing, and testing SimpleMDM webhooks via the admin web console.",
     arguments: [],
   },
+  {
+    name: "lost-device-response",
+    description: "Lost/stolen device response with the gated write workflow: enable Lost Mode, locate, optionally lock; wipe only on explicit user demand. Includes escalation and recovery guidance.",
+    arguments: [
+      { name: "device_ref", description: "Device ID or serial number of the lost/stolen device.", required: true },
+    ],
+  },
+  {
+    name: "emergency-patching",
+    description: "Emergency OS patching with the gated write workflow: identify vulnerable devices, stage update_os pushes (dry-run + confirm-token gated), verify uptake.",
+    arguments: [
+      { name: "platform", description: "Platform to patch: mac, ios, or ipad.", required: true },
+      { name: "max_major_lag", description: "Major versions behind to target. Default 1.", required: false },
+    ],
+  },
+  {
+    name: "semester-refresh",
+    description: "Education semester refresh for one assignment group with the gated write workflow: re-baseline profiles and apps, refresh inventory, verify coverage.",
+    arguments: [
+      { name: "group", description: "Assignment group name to refresh (e.g. a lab or cohort).", required: true },
+    ],
+  },
+  {
+    name: "lab-provisioning",
+    description: "Provision a lab cohort with the gated write workflow: ensure the assignment group exists, assign profiles/apps, push, and verify coverage.",
+    arguments: [
+      { name: "group", description: "Assignment group name for the lab cohort.", required: true },
+      { name: "profile_ids", description: "Comma-separated profile IDs to assign. Optional.", required: false },
+      { name: "app_ids", description: "Comma-separated app IDs to assign. Optional.", required: false },
+    ],
+  },
 ];
+
+// Shared gated-write protocol appended to every write-capable prompt body.
+// The 7-step order and the dry_run/confirm_token references are lint-enforced
+// by test/gatedPrompts.test.mjs for every GATED_PROMPTS member.
+const GATED_WORKFLOW_RULES = `
+Follow the gated write protocol, in this exact order:
+1. PLAN — enumerate the exact target devices/objects with read tools only; no writes yet.
+2. DRY-RUN — call each intended write tool with dry_run: true and collect the returned plan objects.
+3. PRESENT — show the user one consolidated plan: targets, risk tiers, and exactly what will change.
+4. CONFIRM — wait for the user to explicitly approve (they must type CONFIRM). For high/critical-tier tools the first real call returns write_gate: "confirmation_required" with a single-use confirm_token; re-call with the identical arguments plus confirm_token to execute. Never proceed on inferred consent; never reuse a token.
+5. EXECUTE — run the writes in the stated order; stop on the first unexpected failure and report it before continuing.
+6. VERIFY — re-query state with read tools to prove each change landed.
+7. REPORT — summarize outcomes (get_write_audit_log has the audit trail) and restate the RECOVERY notes for anything irreversible.`;
+
+export const GATED_PROMPTS = new Set<string>([
+  "device-offboarding",
+  "new-device-onboarding",
+  "stale-devices-cleanup",
+  "compliance-violators-remediation",
+  "profile-coverage-remediation",
+  "lost-device-response",
+  "emergency-patching",
+  "semester-refresh",
+  "lab-provisioning",
+]);
 
 export function promptBody(name: string, args: Record<string, string> | undefined): string {
   const a = args ?? {};
@@ -4495,27 +4551,100 @@ export function promptBody(name: string, args: Record<string, string> | undefine
     case "security-audit":
       return "Run a full security audit. Call get_security_posture. For each posture metric below 80%, note it as an outlier. Specifically check: supervised, dep_enrolled, filevault_enabled, firmware_password, recovery_lock_password, activation_lock, user_approved_mdm, passcode_compliant. For macOS specifically, if FileVault enablement is under 80%, list the Macs that are off (call the simplemdm://reports/filevault resource). End with a prioritized remediation plan.";
     case "new-device-onboarding":
-      return `Verify new-device onboarding for ${a.device_ref || "the specified device"}. Call get_device_full_profile with device_id or serial_number = ${a.device_ref || "{device_ref}"}. Then report: assigned configuration profiles, installed managed apps vs still-pending apps, assignment group memberships, supervised status, DEP status, and the most recent 5 MDM commands with timestamps and status. Flag anything unusual.`;
+      return `Verify onboarding for ${a.device_ref || "the specified device"} and remediate gaps with the gated write protocol below.
+Workflow specifics:
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): assigned profiles, installed vs pending managed apps, group memberships, supervised/DEP status, last 5 MDM commands. Flag anything unusual.
+- Intended writes (only for gaps found): assign_device_to_group for a missing expected group; sync_device to re-push assigned apps; refresh_device_inventory to force fresh inventory. If no gaps, report healthy and stop after step 3.
+- VERIFY by re-calling get_device_full_profile after check-in: pending apps shrinking, groups correct.
+RECOVERY: all onboarding writes are reversible or repeatable (unassign_device_from_group reverses grouping; syncs/refreshes are idempotent).
+${GATED_WORKFLOW_RULES}`;
     case "device-offboarding":
-      return `Prepare ${a.device_ref || "the specified device"} for offboarding. First call get_device_full_profile to confirm the device. List its current assignment groups, installed profiles, and any outstanding MDM commands. Propose (but do not execute) the offboarding steps: 1) unassign from each assignment group, 2) clear sensitive profiles, 3) lock or wipe (destructive — require explicit confirmation from the user before calling). Do not call any write tools without the user typing CONFIRM.`;
+      return `Offboard ${a.device_ref || "the specified device"} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): capture assignment groups, directly assigned profiles, installed managed apps, and pending MDM commands.
+- Intended writes, in order: unassign_device_from_group for each group; unassign_profile_from_device for each directly assigned profile; then exactly ONE of lock_device (recoverable) or wipe_device (irreversible) — ask the user which end-state they want BEFORE the dry-run pass.
+- VERIFY by re-calling get_device_full_profile: removed groups gone, profiles unassigned, and the lock/wipe command visible in the recent command log.
+RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN or clear_passcode. A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
+${GATED_WORKFLOW_RULES}`;
     case "patch-compliance-review":
       return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
     case "stale-devices-cleanup": {
       const days = a.days || "14";
-      return `Find stale devices using get_stale_devices with days=${days}. Group the result by os major version and propose remediation: sync_device for borderline cases, lock_device only if a device is past 30 days. Do not unenroll or wipe anything automatically — present the plan and wait for confirmation.`;
+      return `Clean up stale devices using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_stale_devices (days=${days}); group results by OS major version and staleness age.
+- Intended writes per device: sync_device for borderline cases (under 30 days); lock_device (high tier) only past 30 days. NEVER propose unenroll_device or wipe_device in this workflow — flag candidates for the user to handle in device-offboarding instead.
+- VERIFY by re-calling get_stale_devices after devices have had time to check in; report which recovered.
+RECOVERY: sync_device is idempotent; a lock is reversible via the lock PIN or clear_passcode. Devices that never check in again need physical recovery or the device-offboarding workflow.
+${GATED_WORKFLOW_RULES}`;
     }
     case "compliance-violators-remediation": {
       const lag = a.max_os_major_lag || "1";
-      return `Call get_compliance_violators with max_os_major_lag=${lag}. Group the result by failure type (passcode_not_compliant, filevault_off, not_supervised, not_user_approved_mdm, os_*_majors_behind). For each group, propose the remediation tool that would address it (e.g. clear_passcode + user re-enrollment for passcode failures; profile reassignment for FileVault; update_os for OS lag). Do not call any write tool. End with a numbered remediation list ranked by device count.`;
+      return `Remediate compliance violators using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_compliance_violators (max_os_major_lag=${lag}); group by failure type (passcode_not_compliant, filevault_off, not_supervised, not_user_approved_mdm, os_*_majors_behind).
+- Intended writes by group: update_os (high) for OS lag; assign_profile_to_device or group assignment for FileVault/profile gaps; clear_passcode (critical) ONLY for passcode failures the user explicitly selects — surface it separately in the plan. not_supervised and not_user_approved_mdm are NOT remediable via API — report them as manual re-enrollment work.
+- VERIFY by re-calling get_compliance_violators and comparing counts per failure type.
+RECOVERY: profile assignments are reversible (unassign_*). OS updates are NOT reversible. clear_passcode is NOT reversible — the passcode is gone and the user must set a new one at the device.
+${GATED_WORKFLOW_RULES}`;
     }
     case "profile-coverage-remediation": {
       const pid = a.profile_id || "{profile_id}";
-      return `Call get_devices_missing_profile with profile_id=${pid}. If more than 20 devices are missing it, recommend creating or expanding an assignment group rather than per-device assignment. Otherwise, list the per-device assign_profile_to_device calls that would close the gap. Do not execute any writes — produce the plan only.`;
+      return `Close profile coverage gaps for profile_id=${pid} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_devices_missing_profile (profile_id=${pid}). If more than 20 devices are missing it, plan a group-based rollout (assign_profile_to_group on an existing or new assignment group) instead of per-device calls; otherwise plan per-device assign_profile_to_device.
+- Intended writes: the chosen assignment calls, then sync_profiles_in_group (group path) to push.
+- VERIFY by re-calling get_devices_missing_profile: the missing list should shrink to zero (allow time for check-ins).
+RECOVERY: fully reversible — unassign_profile_from_device / unassign_profile_from_group remove the assignment.
+${GATED_WORKFLOW_RULES}`;
     }
     case "app-inventory-audit": {
       const limit = a.limit || "25";
       return `Run a cross-fleet app inventory audit. Call get_top_installed_apps with limit=${limit} and get_unmanaged_apps in parallel. Then: 1) flag any unmanaged app installed on more than 50% of the fleet as a strong candidate for catalog addition (so updates and configuration can be managed); 2) flag catalog apps with very low install_pct as candidates for removal or reassignment; 3) call out anything that looks like obviously legitimate Apple/Adobe/Microsoft helper processes (don't recommend managing those). End with a 5–10 item action list ranked by impact.`;
     }
+    case "lost-device-response":
+      return `Respond to a lost/stolen report for ${a.device_ref || "the specified device"} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): confirm identity (name, serial, user), supervision status (Lost Mode requires supervision), last check-in, last known location if present.
+- Intended writes, in order: enable_lost_mode (high — displays a return message and phone number you compose with the user); update_lost_mode_location to request a fresh location; play_lost_mode_sound if the device may be nearby. Optionally lock_device with a PIN as a second layer. wipe_device (critical) ONLY if the user explicitly declares the device unrecoverable and accepts data loss — surface it as a separate confirmation.
+- VERIFY: re-check the device's lost-mode status and location responses in the command log.
+RECOVERY: Lost Mode is reversible with disable_lost_mode once recovered. A wipe is NOT reversible. Escalation guidance: file a police report with the serial number; Activation Lock keeps the device unusable by others even when wiped; do NOT disable_activation_lock on a stolen device.
+${GATED_WORKFLOW_RULES}`;
+
+    case "emergency-patching": {
+      const platform = a.platform || "{platform}";
+      const lag = a.max_major_lag || "1";
+      return `Run emergency OS patching for platform=${platform} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_compliance_violators (max_os_major_lag=${lag}) and get_fleet_summary: enumerate the vulnerable ${platform} devices (IDs, names, current OS). Stage the rollout: a small pilot set first, then the remainder.
+- Intended writes: update_os (high tier) per target device, pilot set first.
+- VERIFY: after devices check in, re-call get_fleet_summary / get_compliance_violators and report the shrinking behind-count; refresh_device_inventory on stragglers to force fresh data.
+RECOVERY: OS updates are NOT reversible — that is why the pilot set goes first; a failed pilot stops the rollout. Devices with insufficient disk or battery will silently skip the update — they surface in VERIFY, not EXECUTE.
+${GATED_WORKFLOW_RULES}`;
+    }
+
+    case "semester-refresh": {
+      const group = a.group || "{group}";
+      return `Run a semester refresh for assignment group "${group}" using the gated write protocol below.
+Workflow specifics:
+- PLAN: resolve the group with list_assignment_groups; enumerate its devices, assigned profiles, and apps. Confirm with the user what "refreshed" means for this cohort (profiles re-pushed, apps updated, inventory current).
+- Intended writes, in order: sync_profiles_in_group to re-push the profile baseline; update_apps_in_group then push_apps_to_group for the app baseline; refresh_device_inventory (low) per device to bring analytics current.
+- VERIFY: spot-check 2-3 devices with get_device_full_profile (profiles present, apps updating) and re-run the group listing.
+RECOVERY: all semester-refresh writes are re-pushes of the existing baseline — repeatable and non-destructive. Nothing in this workflow removes user data.
+${GATED_WORKFLOW_RULES}`;
+    }
+
+    case "lab-provisioning": {
+      const group = a.group || "{group}";
+      return `Provision the lab cohort "${group}" using the gated write protocol below.
+Workflow specifics:
+- PLAN: check whether assignment group "${group}" exists via list_assignment_groups. Parse profile_ids=${a.profile_ids || "(none given)"} and app_ids=${a.app_ids || "(none given)"}; confirm the final profile/app baseline with the user.
+- Intended writes, in order: create_assignment_group if missing (medium); assign_profile_to_group per profile; assign_app_to_group per app; then push_apps_to_group and sync_profiles_in_group to deploy.
+- VERIFY: get_devices_missing_profile per assigned profile should trend to zero for group members as they check in.
+RECOVERY: fully reversible — unassign_profile_from_group / unassign_app_from_group undo assignments; delete_assignment_group (critical) removes the group itself if created in error.
+${GATED_WORKFLOW_RULES}`;
+    }
+
     default:
       throw new Error(`Unknown prompt: ${name}`);
   }

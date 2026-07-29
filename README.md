@@ -555,8 +555,12 @@ The server ships workflow **prompts** — templated starting points selectable f
 | `compliance-violators-remediation` | `max_os_major_lag` (default 1) | Calls `get_compliance_violators`, groups by failure type, proposes remediation tools per group |
 | `profile-coverage-remediation` | `profile_id` (required) | Calls `get_devices_missing_profile`, recommends bulk vs per-device assignment based on gap size |
 | `configure-webhooks-guide` | — | Walkthrough and guidance for manually configuring, securing, and testing SimpleMDM webhooks |
+| `lost-device-response` | `device_ref` | Lost/stolen device playbook: Lost Mode, locate, optional lock; wipe only on explicit user demand, with escalation and recovery guidance |
+| `emergency-patching` | `platform` (required), `max_major_lag` (default 1) | Stages `update_os` pushes for vulnerable devices as a pilot-then-rollout, then verifies uptake |
+| `semester-refresh` | `group` (required) | Education semester refresh for one assignment group: re-baselines profiles and apps, refreshes inventory, verifies coverage |
+| `lab-provisioning` | `group` (required), `profile_ids` (optional), `app_ids` (optional) | Ensures a lab assignment group exists, assigns profiles/apps, pushes, and verifies coverage |
 
-Destructive prompts (offboarding, stale cleanup) include explicit guards: the LLM is told **not** to call write tools without you typing `CONFIRM`.
+14 prompts ship in total. Destructive or write-capable prompts (offboarding, stale cleanup, lost-device-response, emergency-patching, semester-refresh, lab-provisioning, compliance-violators-remediation, profile-coverage-remediation, new-device-onboarding) follow a gated write protocol: plan → dry-run → present → wait for you to type `CONFIRM` → execute → verify → report.
 
 ---
 
