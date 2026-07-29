@@ -4440,7 +4440,7 @@ export const PROMPTS = [
   },
   {
     name: "device-offboarding",
-    description: "Prepare a device for offboarding: unscope from assignment groups, lock or wipe (destructive — requires confirmation), and note remaining profiles.",
+    description: "Offboard a device with the gated write workflow: unscope groups/profiles, then lock or wipe (dry-run + confirm-token gated), verify, and report recovery notes.",
     arguments: [
       { name: "device_ref", description: "Device ID or serial number to offboard.", required: true },
     ],
@@ -4485,6 +4485,23 @@ export const PROMPTS = [
   },
 ];
 
+// Shared gated-write protocol appended to every write-capable prompt body.
+// The 7-step order and the dry_run/confirm_token references are lint-enforced
+// by test/gatedPrompts.test.mjs for every GATED_PROMPTS member.
+const GATED_WORKFLOW_RULES = `
+Follow the gated write protocol, in this exact order:
+1. PLAN — enumerate the exact target devices/objects with read tools only; no writes yet.
+2. DRY-RUN — call each intended write tool with dry_run: true and collect the returned plan objects.
+3. PRESENT — show the user one consolidated plan: targets, risk tiers, and exactly what will change.
+4. CONFIRM — wait for the user to explicitly approve (they must type CONFIRM). For high/critical-tier tools the first real call returns write_gate: "confirmation_required" with a single-use confirm_token; re-call with the identical arguments plus confirm_token to execute. Never proceed on inferred consent; never reuse a token.
+5. EXECUTE — run the writes in the stated order; stop on the first unexpected failure and report it before continuing.
+6. VERIFY — re-query state with read tools to prove each change landed.
+7. REPORT — summarize outcomes (get_write_audit_log has the audit trail) and restate the RECOVERY notes for anything irreversible.`;
+
+export const GATED_PROMPTS = new Set<string>([
+  "device-offboarding",
+]);
+
 export function promptBody(name: string, args: Record<string, string> | undefined): string {
   const a = args ?? {};
   switch (name) {
@@ -4497,7 +4514,13 @@ export function promptBody(name: string, args: Record<string, string> | undefine
     case "new-device-onboarding":
       return `Verify new-device onboarding for ${a.device_ref || "the specified device"}. Call get_device_full_profile with device_id or serial_number = ${a.device_ref || "{device_ref}"}. Then report: assigned configuration profiles, installed managed apps vs still-pending apps, assignment group memberships, supervised status, DEP status, and the most recent 5 MDM commands with timestamps and status. Flag anything unusual.`;
     case "device-offboarding":
-      return `Prepare ${a.device_ref || "the specified device"} for offboarding. First call get_device_full_profile to confirm the device. List its current assignment groups, installed profiles, and any outstanding MDM commands. Propose (but do not execute) the offboarding steps: 1) unassign from each assignment group, 2) clear sensitive profiles, 3) lock or wipe (destructive — require explicit confirmation from the user before calling). Do not call any write tools without the user typing CONFIRM.`;
+      return `Offboard ${a.device_ref || "the specified device"} using the gated write protocol below.
+Workflow specifics:
+- PLAN with get_device_full_profile (device_id or serial_number = ${a.device_ref || "{device_ref}"}): capture assignment groups, directly assigned profiles, installed managed apps, and pending MDM commands.
+- Intended writes, in order: unassign_device_from_group for each group; unassign_profile_from_device for each directly assigned profile; then exactly ONE of lock_device (recoverable) or wipe_device (irreversible) — ask the user which end-state they want BEFORE the dry-run pass.
+- VERIFY by re-calling get_device_full_profile: removed groups gone, profiles unassigned, and the lock/wipe command visible in the recent command log.
+RECOVERY: group and profile unassignments are reversible (assign_device_to_group / assign_profile_to_device). A lock is reversible via the lock PIN or clear_passcode. A wipe is NOT reversible — the device returns to Setup Assistant and must re-enroll via DEP; if Activation Lock is enabled, the prior user's Apple ID may still be required.
+${GATED_WORKFLOW_RULES}`;
     case "patch-compliance-review":
       return "Review OS version distribution. Call get_fleet_summary and inspect os_version_breakdown. Identify the latest macOS, iOS, iPadOS major version observed. List device counts that are more than one major version behind each, and summarize patch risk. Recommend which device groups to prioritize for update_os.";
     case "stale-devices-cleanup": {
