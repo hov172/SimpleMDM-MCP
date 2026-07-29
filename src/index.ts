@@ -74,6 +74,13 @@ const resolveReportPath = (p: string): string => p.startsWith("/") ? p : resolve
 const ALLOW_WRITES   = process.env.SIMPLEMDM_ALLOW_WRITES === "true";
 const USE_LOCAL_APP  = process.env.LOCAL_APP_MODE === "true";
 
+// One-time startup warning: with writes enabled and confirm mode off, high/
+// critical-tier writes execute immediately with no confirm-token step (spec
+// §1.3). Read once at startup, not per-call — this mirrors ALLOW_WRITES above.
+if (ALLOW_WRITES && process.env.SIMPLEMDM_CONFIRM_MODE === "off") {
+  console.error("[write-safety] SIMPLEMDM_CONFIRM_MODE=off — confirm tokens disabled; high/critical writes execute immediately.");
+}
+
 const MR_HNAME   = process.env.MUNKIREPORT_AUTH_HEADER_NAME ?? "";
 const MR_HVALUE  = process.env.MUNKIREPORT_AUTH_HEADER_VALUE ?? "";
 const MR_COOKIE  = process.env.MUNKIREPORT_COOKIE ?? "";

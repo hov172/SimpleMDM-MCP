@@ -21,8 +21,15 @@ process.env.SIMPLEMDM_CONFIRM_MODE = "off";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+
+// Keep this test's gated lock_device/wipe_device audit writes out of the
+// repo's real default audit_log/ dir (mirrors test/safety/gateWiring.test.mjs).
+process.env.MCP_WRITE_AUDIT_DIR = mkdtempSync(join(tmpdir(), "afw-audit-"));
 
 // A 404 (never retried by fetchWithRetry, unlike 429/5xx) so throwForStatus
 // raises an HttpError immediately -- a stand-in for a real SimpleMDM failure

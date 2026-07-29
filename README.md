@@ -311,7 +311,7 @@ All 87 write tools are classified into **risk tiers** (low/medium/high/critical)
 
 The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
 
-**Dry-run mode** — pass `dry_run: true` on any write tool to preview the action without executing it. The response includes `write_gate: "dry_run"`, a description of what would happen, the target device(s) or resource, and `executed: false`. No API call is made.
+**Dry-run mode** — pass `dry_run: true` on any write tool to preview the action without executing it. The response includes `write_gate: "dry_run"`, a description of what would happen, and `executed: false`. No API call is made. When the write names a device (`device_id`/`device_ids`), `targets` is resolved to the matching device record(s); for non-device writes (e.g. profile or group operations), `targets` is an empty array and `args` remains the source of truth for what will be affected.
 
 **Confirm-token flow** — when `SIMPLEMDM_CONFIRM_MODE=on` (the default when writes are enabled) and you call a high/critical tool, the server returns a plan instead of executing:
 
@@ -347,10 +347,7 @@ The tier definitions live in [`src/safety/tiers.ts`](src/safety/tiers.ts).
    { "device_id": "42", "confirm_token": "a1b2c3d4e5f6..." }
    ```
    
-   Response (executes):
-   ```json
-   { "executed": true, ... }
-   ```
+   The gate consumes the token and lets the call through to the real SimpleMDM API — the response is the raw result from that API call (e.g. SimpleMDM's job/status payload for `wipe_device`), not a gate-shaped object. There is no `executed` field on execute responses; that field only appears in `plan`/`dry_run` responses. The absence of a `write_gate` field in the response is what indicates the write actually executed.
 
 Low and medium-tier tools execute directly (no token required). **Confirm mode can be disabled** by setting `SIMPLEMDM_CONFIRM_MODE=off`, which restores the prior behavior of immediate execution for high/critical tools — useful for headless/scriptable deployments. Read tools are always unaffected.
 
