@@ -18,7 +18,7 @@ The server registers **203 tools** covering the full SimpleMDM API surface (32 d
 | `run_inventory_report` | Run the searchable fleet inventory report via the unified report engine CLI (`node dist/reports/cli.js inventory`) as a host-side subprocess; writes CSVs + a md/html/docx/pdf dossier to `reports/` and returns a text summary. Relative output paths resolve under the installed package root |
 | `run_report_diff` | Compare two local inventory report run dirs (both under the install root's `reports/`): devices added/removed, meaningful field changes, findings new vs resolved; writes `diff-vs-<before>.md` into the after dir. Purely local — no API calls |
 | `run_config_backup` | Disaster-recovery export: downloads every custom profile's mobileconfig + custom declarations, plus scripts/groups/attributes records, with a sha256 manifest, to `reports/config-backup-<ts>/` under the installed package root |
-| `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs) and return `WriteResult` metadata (out_dir + per-file sha256). Relative output paths resolve under the installed package root. Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
+| `generate_report` | Generate a fleet dossier **in-process** (audit/inventory/logs/executive-summary) and return `WriteResult` metadata (out_dir + per-file sha256). Relative output paths resolve under the installed package root. Two modes: catalog (`report` + `scope`, same registry as the CLI) or dynamic (`spec`, a declarative report rendered in the house style over a chosen data adapter) |
 
 **Apple schema helpers**
 
