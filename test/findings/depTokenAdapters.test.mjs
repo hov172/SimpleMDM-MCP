@@ -32,8 +32,15 @@ test("dep token adapters publish only renew_now/expired (danger) and renew_soon 
   for (const f of findings) {
     assert.equal(f.category, "DEP Tokens");
     assert.equal(f.finding_type, "dep_token_expiring");
-    assert.equal(f.serial_number, undefined); // org-level, no serial
   }
+
+  // serial_number carries the per-server key: MunkiReport fingerprints on
+  // (source, finding_type, serial), so serial-less rows of one type collapse
+  // into a single dashboard finding (observed live 2026-07-29).
+  assert.deepEqual(
+    findings.map((f) => f.serial_number).sort(),
+    ["A-renewnow", "B-renewsoon", "D-expired"],
+  );
 
   const expired = findings.find(f => f.message.includes("D-expired"));
   assert.equal(expired.severity, "danger");

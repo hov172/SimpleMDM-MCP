@@ -178,8 +178,11 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
     ] },
   "get_dep_token_audit": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
-      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "danger", serialField: null, conditionField: "warning", conditionValues: ["renew_now", "expired"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
-      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "warning", serialField: null, conditionField: "warning", conditionValues: ["renew_soon"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
+      // serialField carries the per-server key: MunkiReport fingerprints on
+      // (source, finding_type, serial) — serial-less rows of one type collapse
+      // into a single finding (verified live 2026-07-29).
+      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "danger", serialField: "server_name", conditionField: "warning", conditionValues: ["renew_now", "expired"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
+      { resultField: "servers", findingType: "dep_token_expiring", category: "DEP Tokens", severity: "warning", serialField: "server_name", conditionField: "warning", conditionValues: ["renew_soon"], messageTemplate: 'DEP token "{server_name}" ({organization_name}) expires in {days_until_expiry} days ({warning})' },
     ] },
   "get_compliance_violators": { toolType: "compliance", publishable: true, supportsAutoPublish: true,
     adapters: [
@@ -320,8 +323,11 @@ export const TOOL_MANIFEST: Record<string, ToolManifestEntry> = {
       // every source succeeded), not the caller-facing `recommendations` field, which
       // may be reduced by min_severity/categories/limit -- see the recommend_fixes
       // handler in src/index.ts for why publishing the filtered list would be wrong.
-      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "danger", serialField: null, conditionField: "severity", conditionValues: ["critical"], messageTemplate: "[{category}] {summary}" },
-      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "warning", serialField: null, conditionField: "severity", conditionValues: ["warning"], messageTemplate: "[{category}] {summary}" },
+      // serialField carries the stable recommendation id so each rec keeps its
+      // own dashboard row and fingerprint (MunkiReport fingerprints on
+      // source/finding_type/serial; serial-less rows collapse — verified live).
+      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "danger", serialField: "id", conditionField: "severity", conditionValues: ["critical"], messageTemplate: "[{category}] {summary}" },
+      { resultField: "all_recommendations", findingType: "recommended_fix", category: "Recommendations", severity: "warning", serialField: "id", conditionField: "severity", conditionValues: ["warning"], messageTemplate: "[{category}] {summary}" },
     ] },
   "refresh_cellular_plans": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
   "refresh_device_inventory": { toolType: "action", publishable: true, supportsAutoPublish: true, actionFailure: { entityIdField: "device_id", entityLabel: "device" } },
