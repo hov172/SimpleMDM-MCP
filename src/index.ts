@@ -1745,7 +1745,7 @@ export const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {} } },
 
   { name: "get_munkireport_alerts",
-    description: "Current SimpleMDM alert/regression EVENTS from the module: 13 built-in types (command failed, FileVault/supervision/firewall/SIP/activation-lock disabled, enrollment/ADE regressed, passcode noncompliant, device stale, action accepted/failed) plus custom rules, newest first. Requires the module's get_events route (module >= the 2026-07-07 build).",
+    description: "Current SimpleMDM alert/regression EVENTS from the module: 13 built-in types (admin action accepted/failed, command failed, recovery lock failed, enrollment/ADE-DEP regressed, FileVault/supervision/firewall/SIP disabled, passcode noncompliant, activation lock disabled, device became stale) plus custom rules, newest first. Requires the module's get_events route (module >= the 2026-07-07 build).",
     inputSchema: { type: "object", properties: {
       serial_number: { type: "string", description: "Filter to one device." },
       type: { type: "string", enum: ["danger", "warning", "info"], description: "Filter by severity." },
