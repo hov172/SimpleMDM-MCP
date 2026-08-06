@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [0.36.1] - 2026-08-05
+
+Maintenance release. No tool behavior, schema, or route changes — a tool
+description correction only.
+
+### Fixed
+- **`get_munkireport_alerts` description omitted one of the 13 event types** — the description asserted "13 built-in types" but its parenthetical enumerated only twelve: `recovery_lock` ("Recovery Lock Failed") was missing, so the string contradicted its own count. Verified against the module's authoritative catalogue (`built_in_event_catalog()` in `simplemdm_controller.php`), which returns exactly 13 entries. The list is now in that catalogue's order and uses its labels: activation lock is its own entry rather than being folded into the FileVault/supervision/firewall/SIP cluster, `ADE` is `ADE-DEP`, and `device stale` is `device became stale`.
+
 ## [0.36.0] - 2026-07-29
 
 ### Added
