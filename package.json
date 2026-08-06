@@ -38,7 +38,7 @@
   "author": "Jay Ayala (hov172)",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
