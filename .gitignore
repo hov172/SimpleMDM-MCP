@@ -32,3 +32,6 @@ docs/superpowers/
 /.codex-adversarial-review.out
 .gstack/
 .worktrees/
+
+# Local design/spec working copy — duplicated in endpoint-operations-console; never commit here
+Designs/
