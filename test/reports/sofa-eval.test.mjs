@@ -119,11 +119,48 @@ test("summarize produces headline counts", () => {
   const s = summarize(ev, aggregateCveDetail(ev, t));
   assert.equal(s.total, 4);
   assert.equal(s.osOutdated, 3);
-  assert.equal(s.noFileVault, 3);
+  // Two of the three Macs lack FileVault. The iPad is NOT counted: it cannot run
+  // FileVault, so counting it inflates the headline. (Was 3 back when noFileVault
+  // counted every platform while noSip/noFirewall counted Macs only.)
+  assert.equal(s.noFileVault, 2);
   assert.equal(typeof s.noSip, "number");
   assert.equal(typeof s.noFirewall, "number");
   assert.equal(s.unfixedCves, 1);
   assert.equal(s.xprotectCollected, true);
+});
+
+test("FileVault counts are Mac-only, and the summary agrees with the per-device rows", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  // One Mac without FileVault, plus three devices that cannot run it at all.
+  const ev = [
+    evaluateDevice({ id: 1, model: "Mac14,3", osVersion: "26.0", filevault_enabled: false }, t),
+    evaluateDevice({ id: 2, model: "iPad13,1", osVersion: "26.4.2" }, t),
+    evaluateDevice({ id: 3, model: "iPhone15,2", osVersion: "26.4.2" }, t),
+    evaluateDevice({ id: 4, model: "iPod9,1", osVersion: "15.8" }, t),
+  ];
+  assert.equal(summarize(ev).noFileVault, 1);
+
+  // The per-device rows must not contradict that headline. A non-Mac previously
+  // rendered fv="on", which reads as "encrypted" for the very devices the summary
+  // was at the same time counting as unencrypted.
+  const rows = allDeviceRows(ev);
+  assert.equal(rows[0].fv, "off");
+  for (const r of rows.slice(1)) {
+    assert.equal(r.fv, "N/A");
+    assert.equal(r.sip, "N/A");
+    assert.equal(r.fw, "N/A");
+  }
+});
+
+test("group breakdown counts FileVault on Macs only", () => {
+  const t = buildMajorTables(macFeed, iosFeed);
+  const ev = [
+    evaluateDevice({ id: 1, model: "Mac14,3", osVersion: "26.0", filevault_enabled: false, device_group: "Lab" }, t),
+    evaluateDevice({ id: 2, model: "iPad13,1", osVersion: "26.4.2", device_group: "Lab" }, t),
+  ];
+  const lab = groupBreakdownRows(ev).find((r) => r.device_group === "Lab");
+  assert.equal(lab.devices, 2);
+  assert.equal(lab.no_filevault, 1);
 });
 
 test("xprotectCollected is false when no device reports xprotect_version", () => {

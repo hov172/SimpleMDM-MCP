@@ -31,6 +31,7 @@ Run the audit engine and report where the files landed. Do NOT commit the output
 
 ## Notes
 - Read-only: the engine performs no SimpleMDM writes; a read-only `SIMPLEMDM_API_KEY` in `.env` is enough.
+- FileVault / SIP / Firewall are **Mac-only**. iPads and iPhones show `N/A` in those columns and are excluded from the No FileVault / No SIP / No Firewall headline counts. Those totals are therefore out of the **Mac** count, not the fleet count — when relaying them, say "N of M Macs", not "N of M devices".
 - XProtect checks populate only if the `xprotect_version` custom attribute is collected (see `reports/xprotect/STAGING.md`); otherwise they report `N/A (not set up)` (and `N/A` per device).
 - Requires `SIMPLEMDM_API_KEY` in `.env` (read-only key is sufficient).
 - Page size: `--page-size a3` (default, roomy A3-landscape) or `--page-size a4` (compact A4-landscape that shrinks the wide All Devices table to fit a standard page). Maps to the `page_size` param on `run_fleet_audit`.

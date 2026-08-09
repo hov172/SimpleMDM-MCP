@@ -213,7 +213,6 @@ test("securityPosture evaluates real device fields (platform, FileVault, finding
   const mbp = results.find((r) => r.serial === "C02AAA111");
   assert.ok(mbp, "MacBookPro fixture must be present");
   assert.equal(mbp.filevaultOk, true);
-  assert.equal(mbp.hasFilevault, true, "hasFilevault must reflect raw filevault_enabled");
   assert.equal(mbp.model, "MacBookPro18,1");
 });
 
