@@ -2,7 +2,7 @@
 
 ## Security Report
 
-Devices with issues: **3** / 4. OS Outdated 3 · No FileVault 3 · No SIP 1 · No Firewall 2 · XProtect Outdated 1 · Unfixed CVEs 1
+Devices with issues: **3** / 4. OS Outdated 3 · No FileVault 2 · No SIP 1 · No Firewall 2 · XProtect Outdated 1 · Unfixed CVEs 1
 
 | name | serial | device_group | os | findings | unfixed_cves | fail_count |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ _Per-release CVE counts. The full CVE IDs for each release are in `cve-detail.cs
 
 | device_group | devices | os_outdated | no_filevault | no_sip | no_firewall | unfixed_cve_devices |
 | --- | --- | --- | --- | --- | --- | --- |
-| (none) | 4 | 3 | 3 | 1 | 2 | 1 |
+| (none) | 4 | 3 | 2 | 1 | 2 | 1 |
 
 ## All Devices
 
@@ -54,4 +54,4 @@ _Per-release CVE counts. The full CVE IDs for each release are in `cve-detail.cs
 | Mac-Behind |  | AAA1 |  | 26.0 | 26.5.1 | 26.5.1 | 2 | Mac14,3 | off | off | off | outdated |  |
 | Mac-Current |  | BBB2 |  | 26.5.1 | 26.5.1 | 26.5.1 | 0 | Mac14,3 | on | on | on | ok |  |
 | Mac-EOL |  | CCC3 |  | 13.7.8 | 13.7.8 | 26.5.1 | 0 | iMac21,1 | off | on | off | N/A |  |
-| iPad-1 |  | DDD4 |  | 26.4.2 | 26.5.1 | 26.5.1 | 0 | iPad13,1 | on | on | on | N/A |  |
+| iPad-1 |  | DDD4 |  | 26.4.2 | 26.5.1 | 26.5.1 | 0 | iPad13,1 | N/A | N/A | N/A | N/A |  |

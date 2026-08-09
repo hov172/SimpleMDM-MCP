@@ -61,7 +61,6 @@ export interface EvaluatedDevice {
   sipOk: boolean;
   firewallOk: boolean;
   xprotect: XProtectStatus;
-  hasFilevault: boolean;
   findings: string[];
   failCount: number;
   lastSeen: string | null;
@@ -172,7 +171,6 @@ export function evaluateDevice(device: Record<string, unknown>, tables: SofaTabl
     osStatus: os.status, latest: os.latest, latestMinor: os.latest, latestMajor, maxMajor,
     recommended, cvesBehind: os.cvesBehind, exploitedBehind: os.exploitedBehind,
     filevaultOk, sipOk, firewallOk, xprotect,
-    hasFilevault: device.filevault_enabled === true, // raw, all-platform (for fleet count)
     findings, failCount: findings.length,
     lastSeen: (device.last_seen_at as string | null) ?? null,
   };
@@ -397,7 +395,10 @@ export function summarize(evaluatedDevices: EvaluatedDevice[], _cveDetail: CveDe
     total: evaluatedDevices.length,
     withIssues: evaluatedDevices.filter((d) => d.failCount > 0).length,
     osOutdated: evaluatedDevices.filter((d) => d.latestMajor && compareVersions(d.osVersion, d.latestMajor) < 0).length,
-    noFileVault: evaluatedDevices.filter((d) => !d.hasFilevault).length,
+    // Mac-only, like noSip/noFirewall below. iPads and iPhones cannot run FileVault,
+    // so counting them reports a device as unencrypted that has no FileVault to enable
+    // — and contradicts allDeviceRows, which shows those same devices as "N/A".
+    noFileVault: macs.filter((d) => !d.filevaultOk).length,
     noSip: macs.filter((d) => !d.sipOk).length,
     noFirewall: macs.filter((d) => !d.firewallOk).length,
     xprotectOutdated: macs.filter((d) => d.xprotect.status === "outdated").length,
@@ -440,7 +441,7 @@ export function groupBreakdownRows(ev: EvaluatedDevice[]): Record<string, unknow
     const r = byGroup.get(g)!;
     r.devices++;
     if (d.latestMajor && compareVersions(d.osVersion, d.latestMajor) < 0) r.os_outdated++;
-    if (!d.hasFilevault) r.no_filevault++;
+    if (d.platform === "macOS" && !d.filevaultOk) r.no_filevault++;
     if (d.platform === "macOS" && !d.sipOk) r.no_sip++;
     if (d.platform === "macOS" && !d.firewallOk) r.no_firewall++;
     if ((d.cvesBehind || 0) > 0) r.unfixed_cve_devices++;
@@ -451,6 +452,12 @@ export function groupBreakdownRows(ev: EvaluatedDevice[]): Record<string, unknow
 // ASCII-only marks so CSV cells render correctly regardless of how a spreadsheet
 // app decodes the file.
 function mark(ok: boolean): string { return ok ? "on" : "off"; }
+// FileVault, SIP and the firewall are macOS concepts. evaluateDevice passes non-Macs
+// as `true` so they never raise a finding, but rendering that as "on" states they are
+// protected. "N/A" is the honest cell, and it matches how the summary counts them.
+function macMark(platform: string, ok: boolean): string {
+  return platform === "macOS" ? mark(ok) : "N/A";
+}
 function xpMark(status: string): string { return status === "absent" ? "N/A" : status; } // ok | outdated | invalid
 
 export function allDeviceRows(ev: EvaluatedDevice[]): Record<string, unknown>[] {
@@ -458,7 +465,8 @@ export function allDeviceRows(ev: EvaluatedDevice[]): Record<string, unknown>[] 
     name: d.name, device_name: d.deviceName ?? "", serial: d.serial, device_group: d.deviceGroup ?? "",
     os_version: d.osVersion, latest_minor: d.latestMinor ?? "", latest_major: d.latestMajor ?? "",
     unfixed_cves: d.cvesBehind ?? "", product: d.model,
-    fv: mark(d.filevaultOk), sip: mark(d.sipOk), fw: mark(d.firewallOk), xp: xpMark(d.xprotect.status),
+    fv: macMark(d.platform, d.filevaultOk), sip: macMark(d.platform, d.sipOk),
+    fw: macMark(d.platform, d.firewallOk), xp: xpMark(d.xprotect.status),
     last_seen: shortTs(d.lastSeen),
   }));
 }

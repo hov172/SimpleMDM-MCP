@@ -1,2 +1,2 @@
 device_group,devices,os_outdated,no_filevault,no_sip,no_firewall,unfixed_cve_devices
-(none),4,3,3,1,2,1
+(none),4,3,2,1,2,1

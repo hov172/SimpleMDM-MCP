@@ -2,4 +2,4 @@ name,device_name,serial,device_group,os_version,latest_minor,latest_major,unfixe
 Mac-Behind,,AAA1,,26.0,26.5.1,26.5.1,2,"Mac14,3",off,off,off,outdated,
 Mac-Current,,BBB2,,26.5.1,26.5.1,26.5.1,0,"Mac14,3",on,on,on,ok,
 Mac-EOL,,CCC3,,13.7.8,13.7.8,26.5.1,0,"iMac21,1",off,on,off,N/A,
-iPad-1,,DDD4,,26.4.2,26.5.1,26.5.1,0,"iPad13,1",on,on,on,N/A,
+iPad-1,,DDD4,,26.4.2,26.5.1,26.5.1,0,"iPad13,1",N/A,N/A,N/A,N/A,
