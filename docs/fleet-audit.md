@@ -142,7 +142,11 @@ For each device the audit determines:
 - **Upgrade path** — the chain to the newest version the **hardware** can run
   (e.g. `14.6.1 → 15.7.7 → 26.5.1`); hardware that can't reach a supported macOS is
   flagged **REPLACE**.
-- **FileVault / SIP / Firewall** — from the native device fields (Mac-only checks).
+- **FileVault / SIP / Firewall** — from the native device fields `filevault_enabled`,
+  `system_integrity_protection_enabled` and `firewall.enabled`. **Mac-only**: these are
+  macOS concepts, so iPads and iPhones report `N/A` per device and are left out of the
+  headline counts. They are never rendered `on`, which would read as a pass on a device
+  that was never measured.
 - **XProtect** — the device's XProtect version vs SOFA's latest (requires the
   `xprotect_version` custom attribute; otherwise reported as N/A — see
   [XProtect](#xprotect-optional)).
@@ -174,7 +178,7 @@ OS Outdated <n> | No FileVault <n> | No SIP <n> | No Firewall <n> | XProtect Out
 | Metric | Definition |
 |---|---|
 | **OS Outdated** | devices **not on the newest version their hardware can run** |
-| **No FileVault** | **all** devices without FileVault enabled (non-Macs count as "no") |
+| **No FileVault** | Macs reporting FileVault off. iPads and iPhones are **excluded** — they cannot run FileVault, so counting them inflates the figure |
 | **No SIP** | Macs reporting System Integrity Protection off |
 | **No Firewall** | Macs reporting the application firewall off |
 | **XProtect Outdated** | Macs below SOFA's XProtect baseline; **`N/A (not set up)`** when the attribute isn't collected |
@@ -190,7 +194,7 @@ contain live tenant data and are never committed.
 | File | Granularity | Contents |
 |---|---|---|
 | `summary.txt` | fleet | the headline breakdown |
-| `all-devices.csv` | per device (all) | `name, device_name, serial, device_group, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW = `on`/`off`; XP = `ok`/`outdated`/`invalid`/`N/A`) |
+| `all-devices.csv` | per device (all) | `name, device_name, serial, device_group, os_version, latest_minor, latest_major, unfixed_cves, product, fv, sip, fw, xp, last_seen` (FV/SIP/FW = `on`/`off` on Macs, `N/A` on every other platform; XP = `ok`/`outdated`/`invalid`/`N/A`) |
 | `security-report.csv` | per device with issues | `name, serial, device_group, model, os, findings, unfixed_cves, exploited, fail_count, last_seen` |
 | `need-updates.csv` | per device needing update | `name, serial, device_group, model, current, path, target, replace` |
 | `by-group.csv` | per device group | `device_group, devices, os_outdated, no_filevault, no_sip, no_firewall, unfixed_cve_devices` |

@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **Fleet audit counted FileVault on devices that cannot run it** — `summarize()` computed `noFileVault` over every evaluated device, while the two counts immediately beneath it, `noSip` and `noFirewall`, counted Macs only; `groupBreakdownRows()` had the same split. On a fleet of 400 Macs plus 45 iPads/iPods this reported **443 of 445 devices** with no FileVault, where the true figure is **398 of 400 Macs** — the 45 non-Macs have no FileVault to enable. The report also contradicted itself: `allDeviceRows()` rendered those same non-Macs as `fv=on`, because `evaluateDevice()` passes non-Macs as `true` so they never raise a finding, so the summary counted them as unencrypted while the per-device table showed them as protected. Both counts are now Mac-only, and the new `macMark()` renders `fv`/`sip`/`fw` as `N/A` on non-Macs rather than `on` — `on` reads as a pass on a device that was never measured. `EvaluatedDevice.hasFilevault` is removed; it existed only to feed these two counts, and keeping a raw all-platform flag beside the Mac-only `filevaultOk` is what let the definitions drift apart. Verified read-only against a live tenant: `filevault_enabled` true on 2 Macs / false on 398, `system_integrity_protection_enabled` true on 130 / false on 270, `firewall.enabled` true on 5 / false on 395 — matching the per-device columns exactly, so the defect was in aggregation only, not in how the fields are read.
+
 ## [0.36.1] - 2026-08-05
 
 Maintenance release. No tool behavior, schema, or route changes — a tool
