@@ -224,6 +224,40 @@ test("flatten exposes the evaluateDevice-compatible shape (still legacy-sourced 
   assert.equal(d.device_group_id, null);
 });
 
+/**
+ * SimpleMDM reports an ungrouped device as `{"data": {"id": null}}` — the relationship
+ * object is PRESENT and the id inside it is null. On a real 445-device tenant that is 119
+ * devices, 105 of them Macs.
+ *
+ * The trap: `data` is a truthy object for grouped and ungrouped devices alike, so a check
+ * that tests the relationship for presence rather than reading `.id` reports every
+ * ungrouped device as grouped. That inverts the count silently and in the dangerous
+ * direction — it hides the devices no profile can reach.
+ *
+ * `flatten` already reads `.data?.id`, which is correct. This pins it, because
+ * "simplifying" that to a truthiness check on `.data` looks like a tidy-up and is not.
+ */
+const withGroup = (data) => ({ id: 1, attributes: {}, relationships: { device_group: { data } } });
+
+test("an ungrouped device is {data:{id:null}} — present relationship, null id", () => {
+  assert.equal(flatten(withGroup({ id: null })).device_group_id, null,
+    "reading the relationship for presence instead of .id would call this device grouped");
+  // The object being truthy is exactly what makes the wrong check pass.
+  assert.ok(withGroup({ id: null }).relationships.device_group.data);
+});
+
+test("a grouped device keeps its id, including id 0", () => {
+  assert.equal(flatten(withGroup({ id: 42 })).device_group_id, 42);
+  // 0 is a valid id and must not be coalesced to null by a falsy check.
+  assert.equal(flatten(withGroup({ id: 0 })).device_group_id, 0);
+});
+
+test("every other absent shape also reads as ungrouped, not as a crash", () => {
+  assert.equal(flatten(withGroup(null)).device_group_id, null);
+  assert.equal(flatten({ id: 1, attributes: {}, relationships: {} }).device_group_id, null);
+  assert.equal(flatten({ id: 1, attributes: {} }).device_group_id, null);
+});
+
 const mkBundle = (id, serial, n, name) => ({
   device: { id, attributes: { serial_number: serial, name: name ?? serial } },
   logs: Array.from({ length: n }, () => ({ attributes: { event_type: "status.changed", at: "05/01/26 00:00:00" } })),
