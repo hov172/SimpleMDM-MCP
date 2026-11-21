@@ -1,30 +1,53 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "_comment": "OpenCode + Ollama (local model) + SimpleMDM MCP. Copy to ~/.config/opencode/opencode.json (global) or ./opencode.json (per project). Replace /absolute/path/to/SimpleMDM-MCP. Pull the model first: ollama pull qwen3:32b. Ollama requires a 64k+ context window for OpenCode.",
+  "_comment": "OpenCode + Ollama (local model) + SimpleMDM MCP. Copy to ~/.config/opencode/opencode.json (global) or ./opencode.json (per project). Replace /absolute/path/to/SimpleMDM-MCP. Verified 2026-11-21 on a 16 GB M2 with qwen3:14b (~3.5 min per turn). Run Ollama with OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_KEEP_ALIVE=-1 and set SIMPLEMDM_TOOL_ALLOWLIST in .env.",
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama",
-      "options": { "baseURL": "http://localhost:11434/v1" },
+      "options": {
+        "baseURL": "http://localhost:11434/v1",
+        "headerTimeout": 1500000,
+        "timeout": 1500000
+      },
       "models": {
-        "qwen3:32b": { "name": "Qwen3 32B (tool calling)" },
-        "llama3.3:70b": { "name": "Llama 3.3 70B (tool calling)" }
+        "qwen3:14b": {
+          "name": "Qwen3 14B (tool calling; verified)"
+        },
+        "qwen2.5-coder:3b": {
+          "name": "Qwen2.5 coder 3B (titles only)"
+        }
       }
     }
   },
-  "model": "ollama/qwen3:32b",
+  "model": "ollama/qwen3:14b",
   "mcp": {
     "servers": {
       "simplemdm": {
         "type": "local",
         "command": [
-          "docker", "run", "--rm", "-i",
-          "--env-file", "/absolute/path/to/SimpleMDM-MCP/.env",
-          "-v", "/absolute/path/to/SimpleMDM-MCP/reports:/app/reports",
-          "-v", "/absolute/path/to/SimpleMDM-MCP/audit_log:/app/audit_log",
+          "docker",
+          "run",
+          "--rm",
+          "-i",
+          "--env-file",
+          "/absolute/path/to/SimpleMDM-MCP/.env",
+          "-v",
+          "/absolute/path/to/SimpleMDM-MCP/reports:/app/reports",
+          "-v",
+          "/absolute/path/to/SimpleMDM-MCP/audit_log:/app/audit_log",
           "simplemdm-mcp"
-        ]
+        ],
+        "codemode": false
       }
+    }
+  },
+  "small_model": "ollama/qwen2.5-coder:3b",
+  "agent": {
+    "mdm": {
+      "mode": "primary",
+      "description": "SimpleMDM fleet assistant (MCP tools only)",
+      "prompt": "You are a SimpleMDM fleet assistant. Answer by calling the simplemdm_* tools. Be brief."
     }
   }
 }

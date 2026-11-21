@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+- **OpenCode + Ollama: verified working recipe** — `codemode: false` on the MCP server entry (OpenCode v2 otherwise hides MCP tools behind an `execute` tool, which is why local models returned empty "stop" messages), a short custom agent prompt (~3k-token turns instead of ~23k), raised provider timeouts, `small_model` for titles, `OLLAMA_KEEP_ALIVE=-1`. qwen3:14b on a 16 GB M2 calls `get_fleet_summary` and answers in ~3.5 min. `examples/opencode.json` updated accordingly.
+
 ## [0.38.0] - 2026-11-21
 
 ### Added

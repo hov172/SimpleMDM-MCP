@@ -72,12 +72,20 @@ ollama pull qwen3:32b               # alternatives: llama3.3:70b, devstral
 
 Pick a model that genuinely supports tool calling. Small or older models ignore tools or invent arguments — that is a model limit, not a server one.
 
-> **Measured on a 16 GB M2 (2026-11-20):** the full catalog is ~24k tokens of tool schema per turn. qwen3:4b and qwen3:14b both failed to complete a single tool call — the 14B model ingests prompts at ~65 tok/s, so it needs ~6 minutes just to *read* the tool list, longer than OpenCode's 5-minute provider timeout. 32B/70B models are slower still on this class of hardware. **On a laptop, set `SIMPLEMDM_TOOL_ALLOWLIST`** (step 3) to expose a handful of tools; that removes the server's share of the prompt. It is not sufficient on its own: with 3 tools exposed, OpenCode's own system prompt and built-in tools still measured ~23k tokens, and qwen3:14b still took 10+ minutes per turn on the same M2. Treat local Ollama under OpenCode as viable only on much faster hardware (M-series Max/Ultra) or with a hosted model; the allowlist is what keeps this server from making it worse.
+> **Verified working (2026-11-21, 16 GB M2):** qwen3:14b + `codemode: false` + `SIMPLEMDM_TOOL_ALLOWLIST` + the `mdm` agent in [`opencode.json`](opencode.json) called `simplemdm_get_fleet_summary` and answered in ~3.5 minutes per turn. Three things were required, in order of importance:
+>
+> 1. **`"codemode": false` on the MCP server entry.** OpenCode v2 hides MCP tools behind an `execute` code tool by default; a local model never sees `simplemdm_*` and silently returns an empty "stop" message. This is the root cause of "tool calls ignored" with Ollama.
+> 2. **A custom agent with a short `prompt`.** OpenCode's default agent prompt is ~23k tokens; the `mdm` agent brings a turn to ~3k, cutting prompt-read time from minutes to seconds.
+> 3. **Provider timeouts** (`headerTimeout`/`timeout` = 1500000) so a slow first turn is not cut off at OpenCode's 5-minute default.
+>
+> Model notes: qwen3:14b works (its thinking phase is what makes the turn ~2 min). qwen2.5:7b was faster (25 s/turn) but wrote the tool call as text instead of a structured call, so it never executed. qwen3:4b never completed a call. Set `small_model` to a tiny model so title generation does not compete for the GPU.
+>
+> **Earlier measurement, before `codemode: false` was found (2026-11-20):** the full catalog is ~24k tokens of tool schema per turn. qwen3:4b and qwen3:14b both failed to complete a single tool call — the 14B model ingests prompts at ~65 tok/s, so it needs ~6 minutes just to *read* the tool list, longer than OpenCode's 5-minute provider timeout. 32B/70B models are slower still on this class of hardware. **On a laptop, set `SIMPLEMDM_TOOL_ALLOWLIST`** (step 3) to expose a handful of tools; that removes the server's share of the prompt. It is not sufficient on its own: with 3 tools exposed, OpenCode's own system prompt and built-in tools still measured ~23k tokens, and qwen3:14b still took 10+ minutes per turn on the same M2. Treat local Ollama under OpenCode as viable only on much faster hardware (M-series Max/Ultra) or with a hosted model; the allowlist is what keeps this server from making it worse.
 
 **2. Raise Ollama's context window.** This server exposes 300+ tools, and their schemas cost roughly 30–40k tokens before you type anything. Ollama's default context (4k–8k) silently truncates the tool list, and [Ollama's OpenCode guide](https://docs.ollama.com/integrations/opencode) states OpenCode needs **64k or higher**:
 
 ```bash
-OLLAMA_CONTEXT_LENGTH=65536 ollama serve
+OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_KEEP_ALIVE=-1 ollama serve   # 32k fits the ~3k-token mdm-agent turn; keep-alive pins the model so later turns reuse the cached prefix
 ```
 
 Or bake it into a model variant:
