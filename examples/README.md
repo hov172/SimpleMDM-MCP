@@ -11,6 +11,7 @@ Sample MCP client configurations and a query cookbook for SimpleMDM-MCP.
 | [`claude-desktop-with-munkireport.json`](claude-desktop-with-munkireport.json) | Adds MunkiReport enrichment so `get_munkireport_*` tools resolve to your MR instance. See the short setup in [README.md](../README.md#munkireport-setup). |
 | [`claude-code-add.sh`](claude-code-add.sh) | One-line `claude mcp add` invocation. |
 | [`codex.toml`](codex.toml) | Codex CLI MCP server configuration. |
+| [`opencode.json`](opencode.json) | OpenCode config: Ollama local-model provider + SimpleMDM MCP server (Docker). |
 | [`docker-run.sh`](docker-run.sh) | `docker run` with version-tagged build. |
 | [`query-cookbook.md`](query-cookbook.md) | 30+ example natural-language queries grouped by intent — copy/paste into Claude. |
 
@@ -56,6 +57,66 @@ env = { SIMPLEMDM_API_KEY = "your-api-key-here" }
 ```
 
 Restart `codex`. The SimpleMDM tools will appear in tool listings during a session.
+
+---
+### OpenCode + Ollama (local models)
+
+[OpenCode](https://opencode.ai) is an open-source terminal coding agent that supports stdio MCP servers and any OpenAI-compatible provider, so it can drive this server with a **local Ollama model** — no cloud API key for the LLM side at all. Drop-in config: [`opencode.json`](opencode.json).
+
+**1. Install and pull a tool-calling model.**
+
+```bash
+brew install ollama opencode        # or: curl -fsSL https://opencode.ai/install | bash
+ollama pull qwen3:32b               # alternatives: llama3.3:70b, devstral
+```
+
+Pick a model that genuinely supports tool calling. Small or older models ignore tools or invent arguments — that is a model limit, not a server one.
+
+**2. Raise Ollama's context window.** This server exposes 300+ tools, and their schemas cost roughly 30–40k tokens before you type anything. Ollama's default context (4k–8k) silently truncates the tool list, and [Ollama's OpenCode guide](https://docs.ollama.com/integrations/opencode) states OpenCode needs **64k or higher**:
+
+```bash
+OLLAMA_CONTEXT_LENGTH=65536 ollama serve
+```
+
+Or bake it into a model variant:
+
+```bash
+printf 'FROM qwen3:32b
+PARAMETER num_ctx 65536
+' > Modelfile
+ollama create qwen3-mdm -f Modelfile      # then reference "qwen3-mdm" in opencode.json
+```
+
+**3. Build the server image** (once per release):
+
+```bash
+cd /absolute/path/to/SimpleMDM-MCP
+cp .env.example .env    # set SIMPLEMDM_API_KEY (read-only key recommended)
+docker build -t simplemdm-mcp .
+```
+
+**4. Configure OpenCode.** Copy [`opencode.json`](opencode.json) to `~/.config/opencode/opencode.json` (global) or `./opencode.json` in a project directory, and replace `/absolute/path/to/SimpleMDM-MCP`. The file registers Ollama as an `@ai-sdk/openai-compatible` provider at `http://localhost:11434/v1` and the SimpleMDM server under `mcp.servers` as a `local` (stdio) MCP server launched through `docker run --rm -i`. Servers connect automatically; add `"disabled": true` to keep one configured but off (there is no `enabled` field). Shortcut: `ollama launch opencode --config` writes the Ollama provider block for you, after which you only add the `mcp` section.
+
+Without Docker, swap the `command` array for the built entry point. The field is `environment` (not `env`), and `{env:NAME}` reads from your shell — `$NAME` is not expanded:
+
+```json
+"command": ["node", "/absolute/path/to/SimpleMDM-MCP/dist/index.js"],
+"environment": { "SIMPLEMDM_API_KEY": "{env:SIMPLEMDM_API_KEY}" }
+```
+
+**5. Run it.**
+
+```bash
+opencode
+```
+
+Use `/models` to confirm the Ollama model is selected, then ask: *"Give me a fleet summary."* The SimpleMDM tools appear in OpenCode's tool list; `check_for_update` is a cheap first call to prove the server is up.
+
+**Notes**
+
+- The write-safety gate (plan → dry-run → confirm token) is ordinary tool calls, so it works identically under a local model. Keep `SIMPLEMDM_ALLOW_WRITES` unset unless you need writes.
+- Expect slower turns than a hosted model: a 32B model on Apple silicon takes several seconds per tool decision, and multi-step audits chain many calls.
+- Report files (`run_fleet_audit`, `run_inventory_report`) land in the mounted `reports/` directory on the host.
 
 ---
 ### ChatGPT

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "_comment": "OpenCode + Ollama (local model) + SimpleMDM MCP. Copy to ~/.config/opencode/opencode.json (global) or ./opencode.json (per project). Replace /absolute/path/to/SimpleMDM-MCP. Pull the model first: ollama pull qwen3:32b. Ollama requires a 64k+ context window for OpenCode.",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": { "baseURL": "http://localhost:11434/v1" },
+      "models": {
+        "qwen3:32b": { "name": "Qwen3 32B (tool calling)" },
+        "llama3.3:70b": { "name": "Llama 3.3 70B (tool calling)" }
+      }
+    }
+  },
+  "model": "ollama/qwen3:32b",
+  "mcp": {
+    "servers": {
+      "simplemdm": {
+        "type": "local",
+        "command": [
+          "docker", "run", "--rm", "-i",
+          "--env-file", "/absolute/path/to/SimpleMDM-MCP/.env",
+          "-v", "/absolute/path/to/SimpleMDM-MCP/reports:/app/reports",
+          "-v", "/absolute/path/to/SimpleMDM-MCP/audit_log:/app/audit_log",
+          "simplemdm-mcp"
+        ]
+      }
+    }
+  }
+}

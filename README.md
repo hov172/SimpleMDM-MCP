@@ -274,10 +274,10 @@ claude mcp remove simplemdm
 ```
 
 ---
-### Codex, ChatGPT, and other MCP clients
+### Codex, OpenCode, ChatGPT, and other MCP clients
 
 This is a standard stdio MCP server — any MCP-capable client can use it. Setup walkthroughs
-for **Codex CLI**, **ChatGPT** (via an HTTPS bridge), and generic stdio clients live in
+for **Codex CLI**, **OpenCode + Ollama** (fully local LLM), **ChatGPT** (via an HTTPS bridge), and generic stdio clients live in
 [`examples/README.md`](examples/README.md), alongside drop-in config files for every client.
 
 ---
@@ -382,6 +382,7 @@ The [`examples/`](examples/) directory ships drop-in client configs and a starte
 - [`claude-desktop-with-munkireport.json`](examples/claude-desktop-with-munkireport.json) — Claude Desktop + MunkiReport enrichment
 - [`claude-code-add.sh`](examples/claude-code-add.sh) — one-line Claude Code registration
 - [`codex.toml`](examples/codex.toml) — Codex CLI config snippet
+- [`opencode.json`](examples/opencode.json) — OpenCode + Ollama (local model) config
 - [`docker-run.sh`](examples/docker-run.sh) — versioned `docker build` + run
 - [`query-cookbook.md`](examples/query-cookbook.md) — 30+ natural-language queries grouped by intent
 
