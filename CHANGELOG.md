@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.38.0] - 2026-11-21
 
 ### Added
 - **`SIMPLEMDM_TOOL_ALLOWLIST`** — comma-separated tool names or `*` globs that limit what `tools/list` advertises and `tools/call` accepts (hidden tools return `isError` "not exposed"). Unset keeps every tool. Startup logs `exposing N of M tools` plus any patterns that matched nothing. Motivation: the full 300+ tool catalog is ~24k tokens of schema; local Ollama models under OpenCode could not finish reading it inside the client's 5-minute timeout on a 16 GB M2 (measured with qwen3:4b and qwen3:14b).
