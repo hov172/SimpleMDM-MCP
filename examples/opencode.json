@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "_comment": "OpenCode + Ollama (local model) + SimpleMDM MCP. Copy to ~/.config/opencode/opencode.json (global) or ./opencode.json (per project). Replace /absolute/path/to/SimpleMDM-MCP. Verified 2026-11-21 on a 16 GB M2 with qwen3:14b (~3.5 min per turn). Run Ollama with OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_KEEP_ALIVE=-1 and set SIMPLEMDM_TOOL_ALLOWLIST in .env.",
+  "_comment": "OpenCode + Ollama (local model) + SimpleMDM MCP. Copy to ~/.config/opencode/opencode.json (global) or ./opencode.json (per project). Replace /absolute/path/to/SimpleMDM-MCP. Any tool-calling model works \u2014 change the `models`/`model` entries (or the whole `provider` block for a hosted service); qwen3:14b is the one verified on a 16 GB M2 (~2.5 min per turn). Run Ollama with OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_KEEP_ALIVE=-1.",
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",

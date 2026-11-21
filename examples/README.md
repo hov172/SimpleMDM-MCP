@@ -63,15 +63,15 @@ Restart `codex`. The SimpleMDM tools will appear in tool listings during a sessi
 
 [OpenCode](https://opencode.ai) is an open-source terminal coding agent that supports stdio MCP servers and any OpenAI-compatible provider, so it can drive this server with a **local Ollama model** — no cloud API key for the LLM side at all. Drop-in config: [`opencode.json`](opencode.json).
 
-**1. Install and pull a tool-calling model.**
+**1. Install, then pull any model you like.** The only hard requirement is **structured tool calling** (Ollama's model library tags these; filter on "tools"). Everything below works the same with a different local model, a larger one on a bigger machine, or a hosted provider in place of Ollama — only the `provider`/`model` lines in `opencode.json` change. `qwen3:14b` is simply the one verified end-to-end here.
 
 ```bash
 brew install ollama opencode        # or: curl -fsSL https://opencode.ai/install | bash
-ollama pull qwen3:14b               # verified on a 16 GB M2; qwen3:32b needs ~20 GB RAM
+ollama pull qwen3:14b               # the verified example; swap for any tool-calling model that fits your RAM
 ollama pull qwen2.5-coder:3b        # tiny model OpenCode uses for session titles (small_model)
 ```
 
-Pick a model that genuinely supports tool calling. Small or older models ignore tools or invent arguments — that is a model limit, not a server one.
+Whatever you pick, it must emit real structured tool calls. Models that write the call as text (qwen2.5:7b did) or never finish (qwen3:4b did) are model limits, not server ones — the server only sees the call once the client parses it.
 
 > **Verified working (2026-11-21, 16 GB M2):** qwen3:14b + `codemode: false` + `SIMPLEMDM_TOOL_ALLOWLIST` + the `mdm` agent in [`opencode.json`](opencode.json) called `simplemdm_get_fleet_summary` and answered in ~3.5 minutes per turn. Three things were required, in order of importance:
 >
@@ -132,7 +132,7 @@ opencode run --agent mdm "Give me a fleet summary."     # one-shot
 opencode                                                  # interactive: /agent mdm, then ask
 ```
 
-The `mdm` agent is what keeps a turn at ~2.4k tokens; the default `build` agent adds ~20k tokens of built-in tool schemas and takes 4–5 minutes per turn on the same hardware. Use `/models` to confirm `ollama/qwen3:14b` is selected. The SimpleMDM tools appear in OpenCode's tool list; `check_for_update` is a cheap first call to prove the server is up.
+The `mdm` agent is what keeps a turn at ~2.4k tokens; the default `build` agent adds ~20k tokens of built-in tool schemas and takes 4–5 minutes per turn on the same hardware. Use `/models` to pick whichever model you configured. The SimpleMDM tools appear in OpenCode's tool list; `check_for_update` is a cheap first call to prove the server is up.
 
 **Notes**
 
