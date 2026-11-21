@@ -845,12 +845,14 @@ export const TOOLS: Tool[] = [
     inputSchema: { type: "object", properties: {
       search: { type: "string" },
       include_awaiting_enrollment: { type: "boolean" },
+      show_secrets: { type: "boolean", description: "Include device secrets (FileVault key, firmware/recovery-lock passwords, Activation Lock bypass codes, admin passwords, lock/erase PINs). Requires the Device Secrets API key permission; omitted otherwise." },
     }}},
 
   { name: "get_device",
     description: "Full detail for one device: hardware, OS version, enrollment status, supervised/DEP/FileVault posture, battery, storage, custom attributes.",
     inputSchema: { type: "object", required: ["device_id"], properties: {
       device_id: { type: "string" },
+      show_secrets: { type: "boolean", description: "Include device secrets (FileVault key, firmware/recovery-lock passwords, Activation Lock bypass codes, admin passwords, lock/erase PINs). Requires the Device Secrets API key permission; omitted otherwise." },
     }}},
 
   { name: "get_device_profiles",
@@ -2993,10 +2995,10 @@ export async function handleTool(name: string, args: Args): Promise<unknown> {
 
     // ── Devices read ─────────────────────────────────────────────────────────
     case "list_devices": {
-      const r = await collectAllPages<AnyRecord>(`/devices${qs(args, ["search", "include_awaiting_enrollment"])}`);
+      const r = await collectAllPages<AnyRecord>(`/devices${qs(args, ["search", "include_awaiting_enrollment", "show_secrets"])}`);
       return { data: slimRelationships(r.data), has_more: r.has_more };
     }
-    case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}`);
+    case "get_device": return api(`/devices/${seg(args.device_id, "device_id")}${qs(args, ["show_secrets"])}`);
     case "get_activation_lock_status": {
       const id = seg(args.device_id, "device_id");
       const dev = await api(`/devices/${id}`) as { data?: { attributes?: Record<string, unknown> } };

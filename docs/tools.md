@@ -65,8 +65,8 @@ See [Apple Schema Helpers](apple-schema-helpers.md) for the end-to-end workflow:
 **Devices**
 | Tool | Description |
 |------|-------------|
-| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (auto-paginates) |
-| `get_device` | Full device detail — hardware, OS, posture, battery, storage |
+| `list_devices` | Search/filter devices by name, serial, UDID, IMEI, MAC (auto-paginates). `show_secrets: true` includes device secrets when the API key has the Device Secrets permission |
+| `get_device` | Full device detail — hardware, OS, posture, battery, storage. `show_secrets: true` includes FileVault key, firmware/recovery-lock passwords, Activation Lock bypass codes, admin passwords, lock/erase PINs (Device Secrets permission required) |
 | `get_activation_lock_status` | Whether Activation Lock is enabled on a device (`is_activation_lock_enabled`), with the device `name`, `serial_number`, supervision, and DEP status |
 | `get_device_profiles` | Installed configuration profiles on a device |
 | `get_device_installed_apps` | Installed apps with managed/unmanaged state |
@@ -245,6 +245,8 @@ All tools below modify fleet state. The API permission column tells you what the
 > - `wipe_device` covers the full "advanced wipe" feature set (sometimes referenced as `wipe_device_advanced` in the SimpleMDM spec). All advanced parameters — `return_to_service`, `wifi_network_id`, `obliteration_behavior`, `preserve_managed_apps`, and the rest — are accepted by the single `wipe_device` tool; no separate advanced-wipe tool is needed.
 > - **Disabling Activation Lock** can be done two ways: the standalone `disable_activation_lock` tool (`POST /devices/{id}/disable_activation_lock` — verified live 2026-07-06; requires the API key's write scope, 403 otherwise), or the `disable_activation_lock` *parameter* on `wipe_device` (cleared during a wipe). Use `get_activation_lock_status` to check current state.
 > - **Sending a device message** IS available via `push_message` (`POST /devices/{id}/push_message`, max 225 chars, delivered through the SimpleMDM mobile app; verified live 2026-07-06). Only the previously guessed endpoint name `send_message` was wrong — hence the earlier removal and the 0.31.0 reinstatement.
+> - **Device secrets (`show_secrets`)**: SimpleMDM gates `filevault_recovery_key`, `firmware_password`, `recovery_lock_password`, `activation_lock_bypass_codes`, `admin_passwords`, `device_lock_pins`, and `device_erase_pins` behind a **Device Secrets** API key permission plus a `show_secrets` request argument. `list_devices` and `get_device` forward it. New keys default to hiding secrets; keys created before the change keep returning them.
+> - **Binary Restriction / App Privacy Permissions**: SimpleMDM's console profiles for these are built-in profiles (assign by ID via `assign_profile_to_group` / `assign_profile_to_device`). The underlying Apple declaration is `com.apple.configuration.app.settings` (OS **27+**, supervised): binary allow/deny rules live under `Allowed.AllowedBinaries` / `Allowed.DeniedBinaries` (match on `CDHash`, `SigningID`, `TeamID`, `PathPrefix`, `SigningState`; `AlwaysAllowManagedApps` guards the allow list) and app privacy defaults under `Privacy.PermissionDefaults`. It is in the schema cache, so `build_custom_declaration_payload` validates it and `create_custom_declaration` delivers it. Allow mode is aggressive — test on one device first.
 > - **Safari Bookmarks**: SimpleMDM has no bookmarks-specific endpoint. Managed Safari bookmarks are an Apple **Declarative Device Management** configuration (`com.apple.configuration.safari.bookmarks`, iOS/macOS/visionOS **26+**). The `create_safari_bookmarks_declaration` tool builds that declaration from a simple `{title, url}` / nested-`folder` tree and delivers it via SimpleMDM's `/custom_declarations` API. Assign the resulting declaration to devices or groups to deploy.
 
 **Device CRUD**
