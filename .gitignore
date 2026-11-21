@@ -35,3 +35,6 @@ docs/superpowers/
 
 # Local design/spec working copy — duplicated in endpoint-operations-console; never commit here
 Designs/
+
+# Python bytecode cache from scripts/*.py
+__pycache__/
