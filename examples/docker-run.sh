@@ -22,5 +22,11 @@ docker run --rm -i --env-file .env \
 #   -e SIMPLEMDM_API_KEY=your-api-key-here \
 #   "simplemdm-mcp:$V"
 
+# Optional: expose only a subset of tools (runtime setting, no rebuild needed) —
+# useful for local/small models that cannot ingest the full 300+ tool catalog:
+# docker run --rm -i --env-file .env \
+#   -e SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,list_devices,get_device \
+#   "simplemdm-mcp:$V"
+
 # Inspect the version label of the built image:
 # docker inspect "simplemdm-mcp:$V" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}'
