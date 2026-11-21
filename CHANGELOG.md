@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.37.0] - 2026-11-20
 
 ### Added
 - **`show_secrets` on `list_devices` and `get_device`** — forwards SimpleMDM's new Devices API argument. With an API key holding the Device Secrets permission, responses include `filevault_recovery_key`, `firmware_password`, `recovery_lock_password`, `activation_lock_bypass_codes`, `admin_passwords`, `device_lock_pins`, and `device_erase_pins`. Omitted when not requested; new keys default to hiding secrets, existing keys keep current behavior.
