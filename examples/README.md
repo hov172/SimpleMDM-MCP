@@ -72,6 +72,8 @@ ollama pull qwen3:32b               # alternatives: llama3.3:70b, devstral
 
 Pick a model that genuinely supports tool calling. Small or older models ignore tools or invent arguments — that is a model limit, not a server one.
 
+> **Measured on a 16 GB M2 (2026-11-20):** the full catalog is ~24k tokens of tool schema per turn. qwen3:4b and qwen3:14b both failed to complete a single tool call — the 14B model ingests prompts at ~65 tok/s, so it needs ~6 minutes just to *read* the tool list, longer than OpenCode's 5-minute provider timeout. 32B/70B models are slower still on this class of hardware. **On a laptop, set `SIMPLEMDM_TOOL_ALLOWLIST`** (step 3) to expose a handful of tools; that drops the prompt to a few hundred tokens and makes local models workable.
+
 **2. Raise Ollama's context window.** This server exposes 300+ tools, and their schemas cost roughly 30–40k tokens before you type anything. Ollama's default context (4k–8k) silently truncates the tool list, and [Ollama's OpenCode guide](https://docs.ollama.com/integrations/opencode) states OpenCode needs **64k or higher**:
 
 ```bash
@@ -87,13 +89,21 @@ PARAMETER num_ctx 65536
 ollama create qwen3-mdm -f Modelfile      # then reference "qwen3-mdm" in opencode.json
 ```
 
-**3. Build the server image** (once per release):
+**3. Build the server image** (once per release) **and trim the tool list**:
 
 ```bash
 cd /absolute/path/to/SimpleMDM-MCP
 cp .env.example .env    # set SIMPLEMDM_API_KEY (read-only key recommended)
 docker build -t simplemdm-mcp .
 ```
+
+Add an allowlist to `.env` so a local model only sees the tools it needs (names or `*` globs, comma-separated):
+
+```bash
+SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,get_security_posture,get_stale_devices,list_devices,get_device
+```
+
+Hidden tools are absent from `tools/list` and refused by `tools/call`. Widen the list as the model proves it can handle more; leave the variable unset for hosted models (Claude, GPT) that take the full catalog without trouble.
 
 **4. Configure OpenCode.** Copy [`opencode.json`](opencode.json) to `~/.config/opencode/opencode.json` (global) or `./opencode.json` in a project directory, and replace `/absolute/path/to/SimpleMDM-MCP`. The file registers Ollama as an `@ai-sdk/openai-compatible` provider at `http://localhost:11434/v1` and the SimpleMDM server under `mcp.servers` as a `local` (stdio) MCP server launched through `docker run --rm -i`. Servers connect automatically; add `"disabled": true` to keep one configured but off (there is no `enabled` field). Shortcut: `ollama launch opencode --config` writes the Ollama provider block for you, after which you only add the `mcp` section.
 

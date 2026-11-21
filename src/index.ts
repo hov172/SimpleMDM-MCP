@@ -4817,10 +4817,35 @@ export const server = new Server(
   { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+// ─── Tool allowlist ──────────────────────────────────────────────────────────
+// SIMPLEMDM_TOOL_ALLOWLIST="get_fleet_summary,get_device,list_*" trims what
+// tools/list advertises (and what tools/call accepts). Unset/empty = every tool.
+// Purpose: local models (Ollama etc.) choke on the ~24k-token schema of all 300+
+// tools; a short allowlist brings the prompt down to a few hundred tokens.
+export function filterTools(tools: Tool[], spec: string | undefined): { tools: Tool[]; unmatched: string[] } {
+  const patterns = (spec ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  if (patterns.length === 0) return { tools, unmatched: [] };
+  const escape = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regexes = patterns.map(p => new RegExp("^" + p.split("*").map(escape).join(".*") + "$"));
+  const kept = tools.filter(t => regexes.some(r => r.test(t.name)));
+  const unmatched = patterns.filter((_, i) => !tools.some(t => regexes[i].test(t.name)));
+  return { tools: kept, unmatched };
+}
+
+const EXPOSED = filterTools(TOOLS, process.env.SIMPLEMDM_TOOL_ALLOWLIST);
+const EXPOSED_NAMES = new Set(EXPOSED.tools.map(t => t.name));
+if (EXPOSED.tools.length !== TOOLS.length) {
+  console.error(`[tool-allowlist] exposing ${EXPOSED.tools.length} of ${TOOLS.length} tools (SIMPLEMDM_TOOL_ALLOWLIST)` +
+    (EXPOSED.unmatched.length ? `; patterns matching nothing: ${EXPOSED.unmatched.join(", ")}` : ""));
+}
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: EXPOSED.tools }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
+  if (!EXPOSED_NAMES.has(name)) {
+    return { content: [{ type: "text", text: `Tool "${name}" is not exposed by this server (SIMPLEMDM_TOOL_ALLOWLIST).` }], isError: true };
+  }
   // Tracks whether we got past validateArgs before a throw, so the catch block
   // below can tell a client error (bad/missing arguments -- never worth a fleet
   // finding) apart from a real operational/API failure from handleTool (which
