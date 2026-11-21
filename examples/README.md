@@ -75,7 +75,7 @@ Pick a model that genuinely supports tool calling. Small or older models ignore 
 > **Verified working (2026-11-21, 16 GB M2):** qwen3:14b + `codemode: false` + `SIMPLEMDM_TOOL_ALLOWLIST` + the `mdm` agent in [`opencode.json`](opencode.json) called `simplemdm_get_fleet_summary` and answered in ~3.5 minutes per turn. Three things were required, in order of importance:
 >
 > 1. **`"codemode": false` on the MCP server entry.** OpenCode v2 hides MCP tools behind an `execute` code tool by default; a local model never sees `simplemdm_*` and silently returns an empty "stop" message. This is the root cause of "tool calls ignored" with Ollama.
-> 2. **A custom agent with a short `prompt`.** OpenCode's default agent prompt is ~23k tokens; the `mdm` agent brings a turn to ~3k, cutting prompt-read time from minutes to seconds.
+> 2. **A custom agent with a short `prompt` and OpenCode's built-in tools switched off** (the `tools: {bash: false, …}` map in the example). The built-in tool schemas, not the system prompt, are most of OpenCode's ~23k-token baseline; with them off a turn is ~3k tokens, cutting prompt-read time from minutes to seconds. Verified both ways: the same run took 23,366 input tokens without the map and 2,932 with it.
 > 3. **Provider timeouts** (`headerTimeout`/`timeout` = 1500000) so a slow first turn is not cut off at OpenCode's 5-minute default.
 >
 > Model notes: qwen3:14b works (its thinking phase is what makes the turn ~2 min). qwen2.5:7b was faster (25 s/turn) but wrote the tool call as text instead of a structured call, so it never executed. qwen3:4b never completed a call. Set `small_model` to a tiny model so title generation does not compete for the GPU.

@@ -47,7 +47,27 @@
     "mdm": {
       "mode": "primary",
       "description": "SimpleMDM fleet assistant (MCP tools only)",
-      "prompt": "You are a SimpleMDM fleet assistant. Answer by calling the simplemdm_* tools. Be brief."
+      "prompt": "You are a SimpleMDM fleet assistant. Answer by calling the simplemdm_* tools. Be brief.",
+      "tools": {
+        "bash": false,
+        "edit": false,
+        "write": false,
+        "read": false,
+        "glob": false,
+        "grep": false,
+        "list": false,
+        "webfetch": false,
+        "websearch": false,
+        "todowrite": false,
+        "todoread": false,
+        "task": false,
+        "patch": false,
+        "multiedit": false,
+        "skill": false,
+        "question": false,
+        "execute": false,
+        "experimental_image_generate": false
+      }
     }
   }
 }
