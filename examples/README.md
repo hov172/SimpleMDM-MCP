@@ -67,7 +67,8 @@ Restart `codex`. The SimpleMDM tools will appear in tool listings during a sessi
 
 ```bash
 brew install ollama opencode        # or: curl -fsSL https://opencode.ai/install | bash
-ollama pull qwen3:32b               # alternatives: llama3.3:70b, devstral
+ollama pull qwen3:14b               # verified on a 16 GB M2; qwen3:32b needs ~20 GB RAM
+ollama pull qwen2.5-coder:3b        # tiny model OpenCode uses for session titles (small_model)
 ```
 
 Pick a model that genuinely supports tool calling. Small or older models ignore tools or invent arguments — that is a model limit, not a server one.
@@ -84,7 +85,7 @@ Pick a model that genuinely supports tool calling. Small or older models ignore 
 >
 > **Earlier measurement, before `codemode: false` was found (2026-11-20):** the full catalog is ~24k tokens of tool schema per turn. qwen3:4b and qwen3:14b both failed to complete a single tool call — the 14B model ingests prompts at ~65 tok/s, so it needs ~6 minutes just to *read* the tool list, longer than OpenCode's 5-minute provider timeout. 32B/70B models are slower still on this class of hardware. **On a laptop, set `SIMPLEMDM_TOOL_ALLOWLIST`** (step 3) to expose a handful of tools; that removes the server's share of the prompt. It is not sufficient on its own: with 3 tools exposed, OpenCode's own system prompt and built-in tools still measured ~23k tokens, and qwen3:14b still took 10+ minutes per turn on the same M2. Treat local Ollama under OpenCode as viable only on much faster hardware (M-series Max/Ultra) or with a hosted model; the allowlist is what keeps this server from making it worse.
 
-**2. Raise Ollama's context window.** This server exposes 300+ tools, and their schemas cost roughly 30–40k tokens before you type anything. Ollama's default context (4k–8k) silently truncates the tool list, and [Ollama's OpenCode guide](https://docs.ollama.com/integrations/opencode) states OpenCode needs **64k or higher**:
+**2. Start Ollama with a big enough context and keep the model loaded.** A verified `mdm`-agent turn is ~2.4k tokens with the 8-tool allowlist; without the allowlist the full catalog alone is ~24k tokens, and Ollama's default 4k–8k context silently truncates the tool list ([Ollama's OpenCode guide](https://docs.ollama.com/integrations/opencode) says 64k+ for the default agent):
 
 ```bash
 OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_KEEP_ALIVE=-1 ollama serve   # 32k fits the ~3k-token mdm-agent turn; keep-alive pins the model so later turns reuse the cached prefix
@@ -107,10 +108,10 @@ cp .env.example .env    # set SIMPLEMDM_API_KEY (read-only key recommended)
 docker build -t simplemdm-mcp .
 ```
 
-Add an allowlist to `.env` so a local model only sees the tools it needs (names or `*` globs, comma-separated):
+Give the local model a short allowlist (names or `*` globs, comma-separated). Put it on the `docker run` command in `opencode.json` — as the example does with `-e SIMPLEMDM_TOOL_ALLOWLIST=…` — rather than in `.env`, so other clients of the same image (Claude Desktop/Code) keep the full catalog:
 
-```bash
-SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,get_security_posture,get_stale_devices,list_devices,get_device
+```
+"-e", "SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,get_security_posture,get_stale_devices,get_push_certificate,get_dep_token_audit,list_devices,get_device",
 ```
 
 Hidden tools are absent from `tools/list` and refused by `tools/call`. Widen the list as the model proves it can handle more; leave the variable unset for hosted models (Claude, GPT) that take the full catalog without trouble. If a local model still times out, raise OpenCode's provider timeouts (`provider.ollama.options.headerTimeout` / `timeout`, milliseconds) — the default 5-minute header timeout is shorter than a 14B model's prompt-ingestion time on a laptop.
@@ -124,13 +125,14 @@ Without Docker, swap the `command` array for the built entry point. The field is
 "environment": { "SIMPLEMDM_API_KEY": "{env:SIMPLEMDM_API_KEY}" }
 ```
 
-**5. Run it.**
+**5. Run it — with the `mdm` agent.**
 
 ```bash
-opencode
+opencode run --agent mdm "Give me a fleet summary."     # one-shot
+opencode                                                  # interactive: /agent mdm, then ask
 ```
 
-Use `/models` to confirm the Ollama model is selected, then ask: *"Give me a fleet summary."* The SimpleMDM tools appear in OpenCode's tool list; `check_for_update` is a cheap first call to prove the server is up.
+The `mdm` agent is what keeps a turn at ~2.4k tokens; the default `build` agent adds ~20k tokens of built-in tool schemas and takes 4–5 minutes per turn on the same hardware. Use `/models` to confirm `ollama/qwen3:14b` is selected. The SimpleMDM tools appear in OpenCode's tool list; `check_for_update` is a cheap first call to prove the server is up.
 
 **Notes**
 

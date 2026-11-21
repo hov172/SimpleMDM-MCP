@@ -30,6 +30,8 @@
           "run",
           "--rm",
           "-i",
+          "-e",
+          "SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,get_security_posture,get_stale_devices,get_push_certificate,get_dep_token_audit,list_devices,get_device",
           "--env-file",
           "/absolute/path/to/SimpleMDM-MCP/.env",
           "-v",
