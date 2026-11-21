@@ -207,3 +207,32 @@ Optional environment:
 - `SIMPLEMDM_ALLOW_WRITES=true`
 
 If your client supports MCP but has a different config format, map the same command, args, and env values into that client’s schema.
+
+#### Per-client config shapes (untested here, same command everywhere)
+
+These clients all take a local stdio server; only the wrapper JSON differs. Replace `/absolute/path/to/SimpleMDM-MCP`. The `args` array below is the Docker command from above split into tokens:
+
+```json
+["run", "--rm", "-i", "--env-file", "/absolute/path/to/SimpleMDM-MCP/.env",
+ "-v", "/absolute/path/to/SimpleMDM-MCP/reports:/app/reports",
+ "-v", "/absolute/path/to/SimpleMDM-MCP/audit_log:/app/audit_log", "simplemdm-mcp"]
+```
+
+| Client | File | Shape |
+|---|---|---|
+| **Cursor** | `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project) | `{"mcpServers": {"simplemdm": {"command": "docker", "args": [...]}}}` |
+| **Windsurf** | `~/.codeium/windsurf/mcp_config.json` | same `mcpServers` shape as Cursor |
+| **Cline** (VS Code ext.) | MCP Servers panel → *Configure* → `cline_mcp_settings.json` | same `mcpServers` shape as Cursor |
+| **Gemini CLI** | `~/.gemini/settings.json` | `{"mcpServers": {"simplemdm": {"command": "docker", "args": [...]}}}` |
+| **VS Code (Copilot agent mode)** | `.vscode/mcp.json` | `{"servers": {"simplemdm": {"type": "stdio", "command": "docker", "args": [...]}}}` |
+| **Zed** | `settings.json` | `{"context_servers": {"simplemdm": {"command": {"path": "docker", "args": [...]}}}}` |
+| **Goose** | `~/.config/goose/config.yaml` or *Extensions → Add → Command-line* | `extensions: simplemdm: {type: stdio, cmd: docker, args: [...], enabled: true}` |
+
+Notes that apply to all of them:
+
+- **Secrets stay out of the client config.** `--env-file …/.env` keeps the API key in the repo's `.env`; if a client cannot run Docker with an env file, use its `env` block with `SIMPLEMDM_API_KEY` and the `node …/dist/index.js` command instead.
+- **Small or local models:** add `"-e", "SIMPLEMDM_TOOL_ALLOWLIST=check_for_update,get_fleet_summary,list_devices,get_device"` to `args` so the model is not handed the full 300+ tool catalog (see the OpenCode section for why).
+- **Tools "not visible" to the model:** check whether the client wraps MCP tools behind a code-execution tool (OpenCode's `codemode`) or requires enabling each server; that was the whole problem with OpenCode, not the server.
+- **Writes** stay off unless `SIMPLEMDM_ALLOW_WRITES=true` is in the env; the confirm-token flow is ordinary tool calls and works in every client.
+
+If you verify one of these, a PR adding the exact working file to this directory is welcome.
